@@ -11,6 +11,10 @@ of the oware / mancala family.
   move always sits at the bottom.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
 - **Undo** (vs AI) — restores your previous position.
+- **Challenges** — 12 fixed puzzle positions. You play North and move first;
+  win one to unlock the next (progress saved in `localStorage`).
+- **Tutorial** — a guided 13-step walkthrough with demo moves, a hands-on turn,
+  and a short free-play finish.
 
 ## Rules
 
@@ -39,7 +43,9 @@ npm test          # engine rule assertions
 | `src/lib/ai.ts` | Negamax search + difficulty levels |
 | `src/lib/ai.worker.ts` | Runs the AI off the main thread |
 | `src/lib/useGame.ts` | Game state machine + seed-by-seed animation |
-| `src/components/` | Menu, Game, Board, Seeds, Learn UI |
+| `src/lib/progress.ts` | Challenge unlock progress (localStorage) |
+| `src/content/challenges.json` | The 12 fixed challenge positions |
+| `src/components/` | Menu, Game, Board, Seeds, Learn, Challenges, Tutorial UI |
 
 The engine and AI are a faithful port of a long-standing C implementation; their
 rules (including historical quirks) are intentionally preserved verbatim.

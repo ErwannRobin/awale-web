@@ -3,7 +3,8 @@ import { useState } from 'react';
 interface Props {
   onPlayAI: (level: number) => void;
   onPlayLocal: () => void;
-  onLearn: () => void;
+  onTutorial: () => void;
+  onChallenges: () => void;
   onToast: (msg: string) => void;
 }
 
@@ -18,7 +19,7 @@ function Diamond() {
   return <span className="diamond" aria-hidden>◇</span>;
 }
 
-export default function Menu({ onPlayAI, onPlayLocal, onLearn, onToast }: Props) {
+export default function Menu({ onPlayAI, onPlayLocal, onTutorial, onChallenges, onToast }: Props) {
   const [pickAI, setPickAI] = useState(false);
 
   return (
@@ -58,9 +59,9 @@ export default function Menu({ onPlayAI, onPlayLocal, onLearn, onToast }: Props)
             <span className="pill-icon">🤖</span>
             <span className="pill-body"><span className="pill-title">PLAY VS AI</span><span className="pill-sub">Choose difficulty</span></span>
           </button>
-          <button className="pill" onClick={onLearn}>
+          <button className="pill" onClick={onTutorial}>
             <span className="pill-icon">🎓</span>
-            <span className="pill-body"><span className="pill-title">LEARN</span><span className="pill-sub">Rules &amp; how to play</span></span>
+            <span className="pill-body"><span className="pill-title">LEARN</span><span className="pill-sub">Interactive tutorial</span></span>
           </button>
         </div>
       ) : (
@@ -82,13 +83,13 @@ export default function Menu({ onPlayAI, onPlayLocal, onLearn, onToast }: Props)
       )}
 
       <div className="menu-cards">
-        <button className="info-card" onClick={() => onToast('Daily Challenge — coming soon')}>
-          <span className="info-icon">📅</span>
-          <span><strong>Daily Challenge</strong><br /><span className="muted">A fresh board every day</span></span>
+        <button className="info-card" onClick={onChallenges}>
+          <span className="info-icon">🧩</span>
+          <span><strong>Challenges</strong><br /><span className="muted">12 puzzles to solve</span></span>
         </button>
-        <button className="info-card" onClick={() => onToast('Rewards — coming soon')}>
-          <span className="info-icon">⭐</span>
-          <span><strong>Earn Rewards</strong><br /><span className="muted">Win games, unlock more</span></span>
+        <button className="info-card" onClick={() => onToast('Leaderboard — coming soon')}>
+          <span className="info-icon">🏆</span>
+          <span><strong>Leaderboard</strong><br /><span className="muted">Compete for the top</span></span>
         </button>
         <button className="info-card" onClick={() => onToast('Ranks — coming soon')}>
           <span className="info-icon">👑</span>

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Board from './Board';
-import { useGame } from '../lib/useGame';
+import { useGame, type GameSetup } from '../lib/useGame';
 
 interface Props {
   mode: 'ai' | 'local';
   level: number;
+  setup?: GameSetup;      // custom start position (challenges)
+  goal?: string;          // challenge goal text (shown instead of rotating tips)
+  title?: string;         // e.g. "Challenge 3"
+  oppName?: string;       // override opponent label
   onExit: () => void;
   onLearn: () => void;
   onToast: (msg: string) => void;
@@ -43,20 +47,22 @@ function PlayerCard({
   );
 }
 
-export default function Game({ mode, level, onExit, onLearn, onToast }: Props) {
-  const { state, play, hint, undo, newGame } = useGame({ mode, level });
+export default function Game({ mode, level, setup, goal, title, oppName: oppOverride, onExit, onLearn, onToast }: Props) {
+  const { state, play, hint, undo, newGame, humanPlayer } = useGame({ mode, level, setup });
   const [tip, setTip] = useState(0);
+  const isChallenge = !!setup;
 
   useEffect(() => {
+    if (goal) return; // challenges show a fixed goal, not rotating tips
     const id = window.setInterval(() => setTip(t => (t + 1) % TIPS.length), 6000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [goal]);
 
-  const viewpoint: 0 | 1 = mode === 'ai' ? 0 : state.turn;
+  const viewpoint: 0 | 1 = mode === 'ai' ? humanPlayer : state.turn;
   const opp = (1 - viewpoint) as 0 | 1;
 
   const youName = mode === 'ai' ? 'You' : viewpoint === 0 ? 'South' : 'North';
-  const oppName = mode === 'ai' ? LEVEL_NAMES[level] : viewpoint === 0 ? 'North' : 'South';
+  const oppName = oppOverride ?? (mode === 'ai' ? LEVEL_NAMES[level] : viewpoint === 0 ? 'North' : 'South');
 
   const interactive =
     state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint);
@@ -73,17 +79,19 @@ export default function Game({ mode, level, onExit, onLearn, onToast }: Props) {
     return { pill: `${youName}'s Turn`, line: 'Select a highlighted pit to sow.' };
   }, [state.phase, state.turn, viewpoint, mode, oppName, youName]);
 
+  const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return 'Draw';
-    if (mode === 'ai') return state.winner === viewpoint ? 'You win!' : `${oppName} wins`;
+    if (isChallenge) return humanWon ? 'Challenge complete!' : 'Not this time';
+    if (mode === 'ai') return humanWon ? 'You win!' : `${oppName} wins`;
     return `${state.winner === 0 ? 'South' : 'North'} wins`;
   };
 
   return (
-    <div className={`screen game ${mode === 'local' ? `view-${viewpoint}` : ''}`}>
+    <div className="screen game">
       <header className="game-top">
-        <button className="round-btn" onClick={onExit} aria-label="Back to menu">←</button>
-        <div className="brand">◇ AWALÉ ◇</div>
+        <button className="round-btn" onClick={onExit} aria-label="Back">←</button>
+        <div className="brand">{title ? title.toUpperCase() : '◇ AWALÉ ◇'}</div>
         <div className="game-top-right">
           <button className="round-btn" onClick={onLearn} aria-label="How to play">?</button>
           <button className="round-btn" onClick={() => onToast('Settings — coming soon')} aria-label="Settings">⚙</button>
@@ -114,15 +122,25 @@ export default function Game({ mode, level, onExit, onLearn, onToast }: Props) {
       <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
 
       <div className="game-bottom">
-        <div className="tip-card">
-          <span className="tip-orn" aria-hidden>✧</span>
-          <div>
-            <div className="tip-text">{TIPS[tip]}</div>
-            <button className="tip-more" onClick={onLearn}>Learn more →</button>
+        {goal ? (
+          <div className="tip-card goal-card">
+            <span className="tip-orn" aria-hidden>◈</span>
+            <div>
+              {title && <div className="goal-title">{title}</div>}
+              <div className="tip-text">{goal}</div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="tip-card">
+            <span className="tip-orn" aria-hidden>✧</span>
+            <div>
+              <div className="tip-text">{TIPS[tip]}</div>
+              <button className="tip-more" onClick={onLearn}>Learn more →</button>
+            </div>
+          </div>
+        )}
         <div className="game-controls">
-          <button className="ctrl" onClick={newGame}>↻ New Game</button>
+          <button className="ctrl" onClick={newGame}>↻ {isChallenge ? 'Restart' : 'New Game'}</button>
           {mode === 'ai' && (
             <button className="ctrl" onClick={() => void hint()} disabled={!interactive}>💡 Hint</button>
           )}
@@ -142,11 +160,12 @@ export default function Game({ mode, level, onExit, onLearn, onToast }: Props) {
               <span className="over-dash">—</span>
               <span><strong>{state.scores[opp]}</strong> {oppName}</span>
             </div>
+            {isChallenge && humanWon && <p className="over-note">Next challenge unlocked.</p>}
             <button className="pill pill-green" onClick={newGame}>
-              <span className="pill-body"><span className="pill-title">PLAY AGAIN</span></span>
+              <span className="pill-body"><span className="pill-title">{isChallenge ? 'TRY AGAIN' : 'PLAY AGAIN'}</span></span>
             </button>
             <button className="pill" onClick={onExit}>
-              <span className="pill-body"><span className="pill-title">BACK TO MENU</span></span>
+              <span className="pill-body"><span className="pill-title">{isChallenge ? 'CHALLENGES' : 'BACK TO MENU'}</span></span>
             </button>
           </div>
         </div>

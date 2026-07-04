@@ -25,15 +25,30 @@ export interface GameState {
   lastCaptured: number | null;
 }
 
-interface Options { mode: 'ai' | 'local'; level: number }
+// A custom start position (used by Challenges). Without it the game begins from
+// the standard opening with the human as South, moving first.
+export interface GameSetup {
+  pits: number[];
+  scores: [number, number];   // [player 0 (South), player 1 (North)]
+  humanPlayer: 0 | 1;
+  firstPlayer: 0 | 1;
+  onResult?: (humanWon: boolean, scores: number[]) => void;
+}
 
-export function useGame({ mode, level }: Options) {
+interface Options { mode: 'ai' | 'local'; level: number; setup?: GameSetup }
+
+export function useGame({ mode, level, setup }: Options) {
   const clientRef = useRef<AIClient | null>(null);
   if (clientRef.current === null) clientRef.current = new AIClient();
 
-  const [pits, setPits] = useState<number[]>(fresh);
-  const [scores, setScores] = useState<number[]>([0, 0]);
-  const [turn, setTurn] = useState<0 | 1>(0);
+  const humanPlayer: 0 | 1 = setup?.humanPlayer ?? 0;
+  const firstPlayer: 0 | 1 = setup?.firstPlayer ?? 0;
+  const startPits = useCallback(() => (setup ? [...setup.pits] : fresh()), [setup]);
+  const startScores = useCallback(() => (setup ? [...setup.scores] : [0, 0]), [setup]);
+
+  const [pits, setPits] = useState<number[]>(startPits);
+  const [scores, setScores] = useState<number[]>(startScores);
+  const [turn, setTurn] = useState<0 | 1>(firstPlayer);
   const [phase, setPhase] = useState<Phase>('idle');
   const [winner, setWinner] = useState<Winner>(null);
   const [hintPit, setHintPit] = useState<number | null>(null);
@@ -42,15 +57,14 @@ export function useGame({ mode, level }: Options) {
   const [lastCaptured, setLastCaptured] = useState<number | null>(null);
 
   // Logical truth (kept in refs so async steps read the latest values).
-  const pitsRef = useRef<number[]>(fresh());
-  const scoresRef = useRef<number[]>([0, 0]);
-  const turnRef = useRef<0 | 1>(0);
+  const pitsRef = useRef<number[]>(startPits());
+  const scoresRef = useRef<number[]>(startScores());
+  const turnRef = useRef<0 | 1>(firstPlayer);
   const phaseRef = useRef<Phase>('idle');
   const timers = useRef<number[]>([]);
   const history = useRef<{ pits: number[]; scores: number[]; turn: 0 | 1 }[]>([]);
   const [historyLen, setHistoryLen] = useState(0);
-
-  const humanPlayer: 0 | 1 = 0; // In AI mode the person is South (bottom).
+  const resultFired = useRef(false);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
   const at = (ms: number, fn: () => void) => { timers.current.push(window.setTimeout(fn, ms)); };
@@ -74,9 +88,14 @@ export function useGame({ mode, level }: Options) {
 
   const finish = useCallback(() => {
     setPhaseBoth('over');
-    setWinner(decideWinner(scoresRef.current));
+    const w = decideWinner(scoresRef.current);
+    setWinner(w);
     setActivePit(null);
-  }, []);
+    if (!resultFired.current) {
+      resultFired.current = true;
+      setup?.onResult?.(w === humanPlayer, [...scoresRef.current]);
+    }
+  }, [setup, humanPlayer]);
 
   // Blocked player: the side to move has no legal move → each keeps their row.
   const handleBlocked = useCallback((player: 0 | 1) => {
@@ -214,7 +233,7 @@ export function useGame({ mode, level }: Options) {
       setHistoryLen(history.current.length);
     }
     animateMove(pit);
-  }, [mode, animateMove]);
+  }, [mode, animateMove, humanPlayer]);
 
   const hint = useCallback(async () => {
     if (phaseRef.current !== 'idle') return;
@@ -234,6 +253,7 @@ export function useGame({ mode, level }: Options) {
     if (!snap) return;
     setHistoryLen(history.current.length);
     clearTimers();
+    resultFired.current = false;
     pitsRef.current = [...snap.pits];
     scoresRef.current = [...snap.scores];
     turnRef.current = snap.turn;
@@ -252,23 +272,27 @@ export function useGame({ mode, level }: Options) {
     clientRef.current!.newGame(level);
     history.current = [];
     setHistoryLen(0);
-    pitsRef.current = fresh();
-    scoresRef.current = [0, 0];
-    turnRef.current = 0;
-    setPits(fresh());
-    setScores([0, 0]);
-    setTurn(0);
+    resultFired.current = false;
+    pitsRef.current = startPits();
+    scoresRef.current = startScores();
+    turnRef.current = firstPlayer;
+    setPits(startPits());
+    setScores(startScores());
+    setTurn(firstPlayer);
     setWinner(null);
     setHintPit(null);
     setActivePit(null);
     setCapturing([]);
     setLastCaptured(null);
     setPhaseBoth('idle');
-  }, [level]);
+    // If the AI moves first from this position, kick it off.
+    if (mode === 'ai' && firstPlayer !== humanPlayer) at(300, () => runAI(firstPlayer));
+  }, [level, startPits, startScores, firstPlayer, mode, humanPlayer, runAI]);
 
-  // Initialise the worker's stateful AI for this game's level.
+  // Initialise the worker's stateful AI, and kick the AI if it opens.
   useEffect(() => {
     clientRef.current!.newGame(level);
+    if (mode === 'ai' && firstPlayer !== humanPlayer) at(400, () => runAI(firstPlayer));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -281,7 +305,7 @@ export function useGame({ mode, level }: Options) {
     lastCaptured,
   };
 
-  return { state, play, hint, undo, newGame };
+  return { state, play, hint, undo, newGame, humanPlayer };
 }
 
 const owner6 = (pit: number) => (Math.floor((pit % 12) / 6) as 0 | 1);

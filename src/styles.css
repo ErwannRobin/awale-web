@@ -439,6 +439,65 @@ body {
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+.over-note { margin: -4px 0 6px; color: var(--gold-soft); font-size: 0.92rem; }
+
+/* =====================================================================
+   CHALLENGES
+   ===================================================================== */
+.challenges-body { max-width: 680px; margin: 0 auto; width: 100%; padding: 16px 0 40px; }
+.challenge-list { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.challenge-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(52,34,20,0.82), rgba(28,18,10,0.9));
+  border: 1px solid var(--panel-line);
+  color: var(--ivory); text-align: left; cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.2s, transform 0.12s;
+}
+.challenge-item:hover:not(:disabled) { border-color: var(--gold); transform: translateY(-2px); }
+.challenge-item.locked { opacity: 0.5; cursor: not-allowed; }
+.challenge-item.done { border-color: rgba(110,150,80,0.7); }
+.challenge-num {
+  width: 40px; height: 40px; flex: none; border-radius: 12px;
+  display: grid; place-items: center; font-weight: 800; font-size: 1.05rem;
+  background: linear-gradient(160deg, var(--gold-soft), var(--gold)); color: #2a1a08;
+}
+.challenge-item.locked .challenge-num { background: rgba(0,0,0,0.35); color: var(--ivory); }
+.challenge-item.done .challenge-num { background: linear-gradient(160deg, #7fae5f, #4e7a3a); color: #10240a; }
+.challenge-text { display: flex; flex-direction: column; gap: 3px; }
+.challenge-head { font-weight: 700; letter-spacing: 0.02em; display: inline-flex; align-items: center; gap: 8px; }
+.challenge-tag {
+  font-size: 0.68rem; letter-spacing: 0.04em; padding: 1px 8px; border-radius: 999px;
+  background: rgba(212,168,69,0.18); border: 1px solid var(--panel-line); color: var(--gold-soft);
+}
+.challenge-goal { color: rgba(244,234,210,0.72); font-size: 0.86rem; line-height: 1.35; }
+
+/* Challenge goal banner reuses the tip-card frame */
+.goal-card { border-color: var(--gold); }
+.goal-title { color: var(--gold-soft); font-weight: 700; letter-spacing: 0.05em; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 3px; }
+
+/* =====================================================================
+   TUTORIAL
+   ===================================================================== */
+.tut-progress {
+  min-width: 56px; text-align: right; color: var(--gold-soft);
+  font-size: 0.9rem; letter-spacing: 0.05em;
+}
+.tut-card {
+  display: flex; align-items: center; gap: 14px;
+  max-width: 620px; margin: 16px auto 6px; width: 100%;
+  padding: 16px 20px; border-radius: 16px;
+  background: linear-gradient(180deg, rgba(58,38,20,0.9), rgba(30,19,11,0.92));
+  border: 1px solid var(--gold);
+  box-shadow: 0 0 24px rgba(212,168,69,0.14);
+}
+.tut-text { font-size: 1.02rem; line-height: 1.4; color: var(--ivory); }
+.tut-footer { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 16px; }
+.tut-hint { color: var(--gold-soft); font-size: 0.92rem; letter-spacing: 0.02em; }
+.tut-next { min-width: 200px; justify-content: center; }
+.tutorial .board-wrap { margin-top: 6px; }
+
 /* =====================================================================
    RESPONSIVE — vertical board on narrow phones
    ===================================================================== */

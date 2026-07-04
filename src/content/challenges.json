@@ -1,0 +1,14 @@
+[
+ {"goal":"For this first challenge, the goal is quite easy : win !","scoreJ1":0,"scoreJ2":18,"situation":[2,2,2,2,2,2,0,5,0,5,0,5]},
+ {"goal":"For this second challenge, you will have to win in less than 5 moves","scoreJ1":8,"scoreJ2":15,"situation":[15,0,0,0,0,0,0,0,4,0,5,0]},
+ {"goal":"For this 3rd challenge, you must starve the opponent to steal all the seeds","scoreJ1":23,"scoreJ2":22,"situation":[0,0,0,0,0,0,2,0,0,0,0,1]},
+ {"goal":"For this fourth event, you also have to win but ...","scoreJ1":0,"scoreJ2":0,"situation":[1,1,1,1,1,1,6,6,6,6,6,6]},
+ {"goal":"For this fifth challenge, you can't afford to lose any seeds !","scoreJ1":23,"scoreJ2":14,"situation":[1,0,0,0,0,1,2,0,0,4,2,1]},
+ {"goal":"For this 6th challenge, you need to take your time. Be patient !","scoreJ1":17,"scoreJ2":2,"situation":[0,0,0,0,1,12,0,0,1,1,0,14]},
+ {"goal":"You will perhaps need to make some sacrifices to win this 7th challenge !","scoreJ1":17,"scoreJ2":19,"situation":[3,0,0,0,0,3,2,0,0,0,0,4]},
+ {"goal":"To win this 8th challenge, you only need to win ... against this crafty opponent !","scoreJ1":0,"scoreJ2":0,"levelIA":3,"situation":[4,4,4,4,4,4,4,4,4,4,4,4]},
+ {"goal":"Don't worry : the situation is not so bad as it looks like !","scoreJ1":15,"scoreJ2":10,"levelIA":2,"situation":[0,0,2,1,14,0,1,1,1,1,1,1]},
+ {"goal":"10th challenge : Don't trust your instinct !","scoreJ1":16,"scoreJ2":14,"situation":[0,0,2,1,12,0,0,1,0,1,0,1]},
+ {"goal":"For this 11th challenge, you will have to know how to count ... and count on your patience !","scoreJ1":23,"scoreJ2":0,"situation":[1,0,1,0,1,0,5,0,0,2,1,14]},
+ {"goal":"For this last challenge, the only thing you'll have to do is to blank your opponent. Good luck !","scoreJ1":23,"scoreJ2":0,"levelIA":3,"situation":[4,4,4,4,4,4,4,4,4,4,4,4]}
+]
