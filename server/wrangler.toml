@@ -27,8 +27,22 @@ run_worker_first = true
 tag = "v1"
 new_sqlite_classes = ["Room", "Lobby"]
 
-# Sign-in. One object per verification session, one per account — see
-# `src/identity.ts` for why both live in the same class.
+# Sign-in, at tag v2 because that is what the live Worker actually applied: a
+# hand-run `wrangler deploy` of this branch created the Identity class there
+# before the branch was merged.
+#
+# Two rules follow from that, and both have already cost a broken deploy.
+#
+# Every tag the published script has ever been at must appear in this file,
+# even one that did nothing. Wrangler compares the script's tag against this
+# list, and a tag it cannot find reads as "this script has had no migrations at
+# all" — so it replays from v1, tries to create a Room class that already holds
+# rooms, and Cloudflare refuses (error 10074).
+#
+# And this entry must stay v2 rather than being renumbered to sit after some
+# later tag. The live script is already at v2 with Identity created; moving the
+# class to a v3 would make wrangler try to create it a second time, which fails
+# the same way. Add the next tag, never edit this one.
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Identity"]

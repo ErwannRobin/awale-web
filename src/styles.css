@@ -18,15 +18,16 @@
   --panel-line: rgba(212, 168, 69, 0.28);
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
 
-  --page-bg: #150c06;
-  --table-1: #6b3f21;   /* table gradient, lightest → darkest */
-  --table-2: #4a2a13;
-  --table-3: #2c180b;
-  --table-4: #180d05;
+  --page-bg: #130a05;
+  --table-1: #6b4024;   /* table gradient, lightest → darkest */
+  --table-2: #472711;
+  --table-3: #2a160a;
+  --table-4: #1a0f06;
+  --sheen: rgba(255, 205, 145, 0.2);  /* warm pool of light over the table */
   --accent-rgb: 70, 110, 60;      /* ambient leaf glow */
-  --grain-1: 90, 54, 26;          /* table wood grain */
-  --grain-2: 64, 36, 16;
-  --vignette: rgba(0, 0, 0, 0.55);
+  --grain-1: 126, 78, 40;         /* table wood grain */
+  --grain-2: 48, 26, 11;
+  --vignette: rgba(8, 3, 0, 0.68);
   --ring: rgba(212, 168, 69, 0.75);
   --ring-glow: rgba(212, 168, 69, 0.5);
   --board-1: #8a5a30;             /* board body gradient */
@@ -51,6 +52,25 @@
   --ivory-72: rgba(244 234 210 / 0.72);
   --ivory-80: rgba(244 234 210 / 0.80);
 
+
+  /* Textures, shared by the table and the board. Neutral black/white alpha,
+     so one copy serves every theme.
+
+     --wood-grain: feTurbulence with a deliberately lopsided baseFrequency
+     (high across, very low down) draws long irregular streaks — real wood
+     figure, which repeating gradients cannot fake at desktop size, where they
+     average out into a flat wash. Two passes: dark pores, then a lighter one
+     on another seed for the catch of the light. Use it as
+     `600px 100% repeat-x`: tiling in BOTH axes leaves a visible horizontal
+     seam, because a y-frequency this low has no whole period to stitch on,
+     while stretching to the box height means there is no vertical repeat to
+     seam at all.
+
+     --wood-noise: a fine isotropic film, laid over the finished surface. It
+     is what stops large gradients from looking like plastic. */
+  --wood-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='d' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.22 0.012' numOctaves='4' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.34 0 0 0 -0.17'/%3E%3C/filter%3E%3Cfilter id='l' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.22 0.012' numOctaves='4' seed='29' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.22 0 0 0 -0.13'/%3E%3C/filter%3E%3Crect width='600' height='600' filter='url(%23d)'/%3E%3Crect width='600' height='600' filter='url(%23l)'/%3E%3C/svg%3E");
+  --wood-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+
   font-synthesis: none;
 }
 
@@ -71,6 +91,7 @@
   --table-2: #182029;
   --table-3: #0e1319;
   --table-4: #06080c;
+  --sheen: rgba(186, 210, 246, 0.09);
   --accent-rgb: 60, 100, 110;
   --grain-1: 40, 52, 66;
   --grain-2: 24, 32, 42;
@@ -117,6 +138,7 @@
   --table-2: #e3cda6;
   --table-3: #d3b784;
   --table-4: #c6a86f;
+  --sheen: rgba(255, 252, 240, 0.5);
   --accent-rgb: 150, 170, 110;
   --grain-1: 214, 186, 138;
   --grain-2: 198, 166, 116;
@@ -177,29 +199,68 @@ button { font-family: inherit; touch-action: manipulation; }
   isolation: isolate;
 }
 .app::before {
-  /* deep-brown wood grain */
+  /* Polished hardwood: pore grain over a slow figure, lit from above.
+     Sizes are deliberately mixed: the pore lines are absolute (a pore is a
+     pore at any screen size), the figure grows with the viewport so a wide
+     desktop shows a few broad boards rather than a dozen narrow ones, and the
+     pool of light is capped in px so it stays a light SOURCE instead of
+     flooding the whole table once the window gets big.
+
+     The caps use vw/vh rather than %: Chromium rejects a math function that
+     mixes px and % in a gradient SIZE, and one bad layer voids the whole
+     declaration. These pseudo-elements are `fixed; inset: 0`, so vw/vh and %
+     measure the same box anyway. */
   content: '';
   position: fixed;
   inset: 0;
   z-index: -3;
   background:
-    repeating-linear-gradient(2deg, rgba(0,0,0,0.06) 0 3px, rgba(255,255,255,0.012) 3px 7px, rgba(0,0,0,0.04) 7px 12px),
-    repeating-linear-gradient(90deg, rgba(var(--grain-1), 0.25) 0 90px, rgba(var(--grain-2), 0.25) 90px 190px),
-    radial-gradient(120% 90% at 50% 12%, var(--table-1) 0%, var(--table-2) 42%, var(--table-3) 78%, var(--table-4) 100%);
+    var(--wood-grain)
+      0 0 / 600px 100% repeat-x,
+    /* Broad boards across the table, on periods that grow with the viewport
+       so a wide window shows a few of them rather than a dozen. */
+    repeating-linear-gradient(90.6deg,
+      rgba(var(--grain-1), 0.10) 0px,
+      rgba(var(--grain-2), 0.10) max(150px, 17vw),
+      rgba(var(--grain-1), 0.10) max(300px, 34vw)),
+    repeating-linear-gradient(89.4deg,
+      rgba(var(--grain-2), 0.08) 0px,
+      rgba(var(--grain-1), 0.08) max(235px, 27vw),
+      rgba(var(--grain-2), 0.08) max(470px, 54vw)),
+    radial-gradient(min(1400px, 140vw) min(760px, 80vh) at 50% -6%,
+      var(--sheen), transparent 72%),
+    /* The table. A vertical fall reads the same at every aspect ratio; the
+       percentage ellipse it replaces stretched into a formless wash on wide
+       screens. */
+    linear-gradient(180deg,
+      var(--table-1) 0%,
+      var(--table-2) 30%,
+      var(--table-3) 70%,
+      var(--table-4) 100%);
 }
 .app::after {
-  /* kilim + leaf accents + soft vignette */
+  /* Matte finish, a soft glow behind the play column, and a vignette that
+     closes the wide empty flanks of a desktop window. */
   content: '';
   position: fixed;
   inset: 0;
   z-index: -2;
   pointer-events: none;
   background:
-    radial-gradient(38% 46% at -6% 78%, rgba(var(--accent-rgb), 0.30), transparent 60%),
-    radial-gradient(34% 40% at 104% 22%, rgba(var(--accent-rgb), 0.26), transparent 60%),
-    radial-gradient(30% 34% at 100% 92%, rgba(var(--accent-rgb), 0.22), transparent 62%),
-    repeating-linear-gradient(45deg, rgba(var(--grain-1), 0.05) 0 8px, transparent 8px 16px),
-    radial-gradient(130% 120% at 50% 42%, transparent 45%, var(--vignette) 100%);
+    var(--wood-noise)
+      0 0 / 180px 180px repeat,
+    /* Warmth held to roughly the width of .screen, so the content sits in the
+       lit part of the table however wide the window is. */
+    radial-gradient(min(760px, 92vw) min(680px, 78vh) at 50% 32%,
+      rgba(255, 208, 150, 0.055), transparent 72%),
+    radial-gradient(min(620px, 46vw) min(520px, 52vh) at -4% 82%,
+      rgba(var(--accent-rgb), 0.10), transparent 66%),
+    radial-gradient(min(560px, 42vw) min(460px, 46vh) at 104% 16%,
+      rgba(var(--accent-rgb), 0.09), transparent 66%),
+    /* One vignette, capped in px so an ultrawide window still gets a falloff
+       at its flanks rather than a uniform field of brown. */
+    radial-gradient(min(1500px, 132vw) min(1150px, 132vh) at 50% 30%,
+      transparent 32%, var(--vignette) 100%);
 }
 
 .screen {
@@ -408,11 +469,15 @@ a.pill { text-decoration: none; color: inherit; }
   display: flex; align-items: stretch; gap: clamp(6px, 1.4vw, 16px);
   padding: clamp(12px, 2.4vw, 26px);
   border-radius: 90px;
+  /* The same wood as the table, at the same physical grain width, so the
+     block reads as cut from it rather than pasted on top. */
   background:
-    repeating-linear-gradient(90deg, rgba(0,0,0,0.10) 0 3px, rgba(255,255,255,0.02) 3px 7px),
-    linear-gradient(180deg, var(--board-1) 0%, var(--board-2) 46%, var(--board-3) 100%);
+    var(--wood-grain) 0 0 / 600px 100% repeat-x,
+    radial-gradient(120% 90% at 50% -12%, rgba(255, 214, 160, 0.14), transparent 62%),
+    linear-gradient(176deg, var(--board-1) 0%, var(--board-2) 46%, var(--board-3) 100%);
   box-shadow:
     inset 0 3px 8px rgba(255,220,170,0.22),
+    inset 0 0 0 1px rgba(212, 168, 69, 0.12),   /* thin gilt inlay along the rim */
     inset 0 -14px 30px rgba(0,0,0,0.5),
     0 26px 60px rgba(0,0,0,0.6);
   border: 1px solid rgba(0,0,0,0.4);
