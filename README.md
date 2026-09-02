@@ -30,9 +30,9 @@ can, and you may not capture *every* one of their seeds if another move exists
 
 ```bash
 npm install
-npm run dev       # start the dev server
+npm run dev       # dev server, exposed on the LAN so a phone can load it
 npm run build     # typecheck + production build
-npm test          # engine rule assertions
+npm test          # engine, layout, AI and self-play suites
 ```
 
 ### Structure
@@ -42,10 +42,56 @@ npm test          # engine rule assertions
 | `src/lib/engine.ts` | Board model, move validation, sowing, capture, end-game |
 | `src/lib/ai.ts` | Negamax search + difficulty levels |
 | `src/lib/ai.worker.ts` | Runs the AI off the main thread |
+| `src/lib/aiClient.ts` | Worker wrapper, with an inline fallback where workers don't exist |
 | `src/lib/useGame.ts` | Game state machine + seed-by-seed animation |
-| `src/lib/progress.ts` | Challenge unlock progress (localStorage) |
+| `src/lib/layout.ts` | Pit arrangement + the counterclockwise invariant |
+| `src/lib/useOrientation.ts` | The one browser-specific piece of the layout |
+| `src/lib/storage.ts` | Pluggable key/value persistence |
+| `src/lib/progress.ts` | Challenge unlock progress |
 | `src/content/challenges.json` | The 12 fixed challenge positions |
 | `src/components/` | Menu, Game, Board, Seeds, Learn, Challenges, Tutorial UI |
 
 The engine and AI are a faithful port of a long-standing C implementation; their
-rules (including historical quirks) are intentionally preserved verbatim.
+rules (including historical quirks) are intentionally preserved verbatim. The
+quirks that survive on purpose, and the ones that turned out to be bugs, are
+listed in [`AUDIT.md`](AUDIT.md).
+
+### The counterclockwise invariant
+
+Seeds are sown by walking pit indices `0 → 1 → … → 11 → 0`, and that walk **must
+read counterclockwise on screen**. Whether it does is decided entirely by where
+each index is drawn, so the arrangement lives in `src/lib/layout.ts` and is
+asserted by `test/layout.test.ts` — for both viewpoints and both orientations.
+
+A layout that rotates the board *and mirrors it* silently reverses the sowing
+direction; that bug shipped once. Never set `flex-direction` on `.board`,
+`.pit-grid` or `.pit-row` from CSS — `Board.tsx` sets it from the layout module.
+
+## Native mobile app
+
+The game logic is deliberately platform-free: `src/lib/` has no DOM
+dependencies except `useOrientation.ts`, persistence goes through a swappable
+`KeyValueStore`, and the AI runs inline when Web Workers are unavailable.
+
+**Progressive web app** — works today. `public/manifest.webmanifest` plus icons
+make the built site installable from the browser ("Add to Home Screen"). There
+is no service worker yet, so it is not offline-capable.
+
+**Capacitor (iOS + Android)** — `capacitor.config.ts` is already in the repo:
+
+```bash
+npm i @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android
+npm run build
+npx cap add ios && npx cap add android
+npx cap sync
+npx cap open ios      # or: npx cap open android
+```
+
+The app-shell CSS (safe-area insets, `100dvh`, no rubber-band scroll, no tap
+highlight, no double-tap zoom, touch-only hover rules) is already in place, so
+the WebView build should not read as a web page in a frame.
+
+**React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
+rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it
+needs (`useWindowDimensions` instead of `matchMedia`) in its doc comment, and
+`storage.ts` carries the `@capacitor/preferences` / `AsyncStorage` example.

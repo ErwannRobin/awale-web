@@ -23,7 +23,20 @@ body {
   -webkit-font-smoothing: antialiased;
   background: #150c06;
   overflow-x: hidden;
+  /* App-shell behaviour: no rubber-band scroll past the edges, no grey flash
+     on tap, no accidental text selection or double-tap zoom when dragging
+     across pits. All of it matters inside a native WebView. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
+
+button { font-family: inherit; touch-action: manipulation; }
+
+/* Text that is genuinely worth copying stays selectable. */
+.learn-body, .tut-text, .challenge-goal { -webkit-user-select: text; user-select: text; }
 
 /* ---- ambient table background --------------------------------------- */
 .app {
@@ -60,8 +73,15 @@ body {
 .screen {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 18px clamp(12px, 3vw, 30px) 28px;
+  /* Respect the notch / home indicator: index.html sets viewport-fit=cover, so
+     without these insets the top bar slides under the status bar on iOS. */
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    calc(clamp(12px, 3vw, 30px) + env(safe-area-inset-right))
+    calc(28px + env(safe-area-inset-bottom))
+    calc(clamp(12px, 3vw, 30px) + env(safe-area-inset-left));
   min-height: 100vh;
+  min-height: 100dvh;   /* dvh keeps mobile browser chrome from cropping the board */
   display: flex;
   flex-direction: column;
 }
@@ -266,9 +286,13 @@ body {
   max-width: 100%;
 }
 
-.pit-grid { display: flex; flex-direction: column; justify-content: center; gap: 4px; position: relative; }
+/* NOTE: `flex-direction` on .board, .pit-grid and .pit-row is set inline by
+   Board.tsx from lib/layout.ts. Do not override it here — a mirrored board
+   reverses the sowing direction from counterclockwise to clockwise. */
+.pit-grid { display: flex; justify-content: center; gap: 4px; position: relative; }
 .pit-row { display: flex; gap: clamp(6px, 1.4vw, 16px); }
-.board-midline { height: 1px; background: linear-gradient(90deg, transparent, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent); margin: 2px 6px; }
+.board-midline-landscape { height: 1px; background: linear-gradient(90deg, transparent, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent); margin: 2px 6px; }
+.board-midline-portrait { width: 1px; margin: 6px 2px; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent); }
 
 .pit {
   --size: clamp(52px, 9.4vw, 96px);
@@ -430,7 +454,7 @@ body {
 .learn-cta { max-width: 240px; margin: 22px auto 0; justify-content: center; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   z-index: 40;
   background: rgba(20,12,6,0.94); border: 1px solid var(--gold);
   color: var(--ivory); padding: 12px 22px; border-radius: 999px;
@@ -501,6 +525,8 @@ body {
 /* =====================================================================
    RESPONSIVE — vertical board on narrow phones
    ===================================================================== */
+/* Keep this breakpoint in sync with PORTRAIT_MAX_WIDTH in lib/useOrientation.ts —
+   the pit ORDER is decided there; this only resizes what it arranges. */
 @media (max-width: 620px) {
   .menu-cards { grid-template-columns: 1fr; }
   .players { grid-template-columns: 1fr; gap: 10px; }
@@ -512,19 +538,36 @@ body {
 
   .pit { --size: clamp(46px, 15vw, 74px); }
   .board {
-    flex-direction: column;
     align-items: center;
     border-radius: 60px;
     gap: 10px;
     padding: 16px 20px;
   }
-  .pit-grid { flex-direction: row; }
-  .pit-row { flex-direction: column; }
-  .board-midline { width: 1px; height: auto; margin: 6px 2px; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent); }
   .store { width: auto; height: clamp(46px, 12vw, 70px); flex-direction: row; padding: 0 12px; }
   .store-hollow { inset: 8px; }
 }
 
 @media (max-width: 380px) {
   .brand { letter-spacing: 0.24em; }
+}
+
+/* =====================================================================
+   TOUCH / NATIVE SHELL
+   Hover affordances only where a pointer exists, plus the handful of rules a
+   WebView build (Capacitor / TWA) needs to stop feeling like a web page.
+   ===================================================================== */
+@media (hover: none) {
+  .pill:hover, .info-card:hover, .icon-btn:hover, .round-btn:hover,
+  .ctrl:hover:not(:disabled), .challenge-item:hover:not(:disabled),
+  .pit-legal:hover { transform: none; }
+}
+.pit-legal:active { transform: scale(0.96); }
+.pill:active, .ctrl:active, .info-card:active, .challenge-item:active:not(:disabled) { transform: scale(0.985); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

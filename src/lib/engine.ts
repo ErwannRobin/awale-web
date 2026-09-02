@@ -2,6 +2,9 @@
 // engine. The logic here is intentionally identical to the original; do not
 // "improve" it, quirks included.
 
+/** 48 seeds on the board, so 25 is an unassailable majority. */
+export const WINNING_SCORE = 25;
+
 export const owner = (pit: number) => Math.floor((pit % 12) / 6);
 
 // Does playing pit i capture ALL the opponent's seeds? (empty pits count as "yes" —

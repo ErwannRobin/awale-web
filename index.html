@@ -2,9 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- user-scalable=no keeps a double-tap on a pit from zooming the board.
+         maximum-scale is paired with it because iOS Safari ignores the former. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1a100a" />
+    <meta name="description" content="Awalé — the classic African seed-sowing strategy game of the oware family." />
+    <meta name="color-scheme" content="dark" />
     <title>Awalé — The strategy. The culture. The legacy.</title>
+
+    <!-- Installable web app; the same metadata a Capacitor/TWA shell reads. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Awalé" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%235a3a1e'/%3E%3Ccircle cx='38' cy='42' r='11' fill='%23cfc3a5'/%3E%3Ccircle cx='62' cy='44' r='11' fill='%236e8a5a'/%3E%3Ccircle cx='50' cy='63' r='11' fill='%23d4a845'/%3E%3C/svg%3E" />
   </head>
   <body>

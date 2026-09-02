@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isValid, distribute } from './engine';
-import { AIClient } from './aiClient';
+import { isValid, distribute, WINNING_SCORE } from './engine.ts';
+import { AIClient } from './aiClient.ts';
 
 export type Phase = 'idle' | 'animating' | 'thinking' | 'over';
 export type Winner = 0 | 1 | 'draw' | null;
@@ -61,13 +61,15 @@ export function useGame({ mode, level, setup }: Options) {
   const scoresRef = useRef<number[]>(startScores());
   const turnRef = useRef<0 | 1>(firstPlayer);
   const phaseRef = useRef<Phase>('idle');
-  const timers = useRef<number[]>([]);
+  // Plain setTimeout (not window.setTimeout) so this state machine runs
+  // unchanged under React Native.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const history = useRef<{ pits: number[]; scores: number[]; turn: 0 | 1 }[]>([]);
   const [historyLen, setHistoryLen] = useState(0);
   const resultFired = useRef(false);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
-  const at = (ms: number, fn: () => void) => { timers.current.push(window.setTimeout(fn, ms)); };
+  const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
 
   const setPhaseBoth = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
@@ -179,7 +181,7 @@ export function useGame({ mode, level, setup }: Options) {
       setPits([...pitsRef.current]);
       setScores([...scoresRef.current]);
 
-      if (!result.running || scoresRef.current[player] >= 25) {
+      if (!result.running || scoresRef.current[player] >= WINNING_SCORE) {
         finish();
         return;
       }

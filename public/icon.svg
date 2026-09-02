@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="wood" cx="50%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#8a5a30"/>
+      <stop offset="55%" stop-color="#5c3417"/>
+      <stop offset="100%" stop-color="#2c180b"/>
+    </radialGradient>
+    <radialGradient id="hollow" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#20120a"/>
+      <stop offset="100%" stop-color="#4a2c14"/>
+    </radialGradient>
+    <radialGradient id="green" cx="34%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#a7d288"/><stop offset="45%" stop-color="#6e9a54"/><stop offset="100%" stop-color="#3f6030"/>
+    </radialGradient>
+    <radialGradient id="ivory" cx="34%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#fbf4e2"/><stop offset="48%" stop-color="#e5d4b0"/><stop offset="100%" stop-color="#b39d74"/>
+    </radialGradient>
+    <radialGradient id="gold" cx="34%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#f4d488"/><stop offset="46%" stop-color="#d4a845"/><stop offset="100%" stop-color="#98701f"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Full-bleed background: the safe zone for maskable icons is the middle 80%. -->
+  <rect width="512" height="512" fill="url(#wood)"/>
+
+  <!-- Board hollow -->
+  <rect x="96" y="150" width="320" height="212" rx="106" fill="#43240f" opacity="0.85"/>
+  <g fill="url(#hollow)">
+    <circle cx="176" cy="204" r="42"/><circle cx="256" cy="204" r="42"/><circle cx="336" cy="204" r="42"/>
+    <circle cx="176" cy="308" r="42"/><circle cx="256" cy="308" r="42"/><circle cx="336" cy="308" r="42"/>
+  </g>
+
+  <!-- Seeds -->
+  <g>
+    <circle cx="166" cy="196" r="17" fill="url(#ivory)"/><circle cx="190" cy="216" r="17" fill="url(#green)"/>
+    <circle cx="250" cy="200" r="17" fill="url(#gold)"/>
+    <circle cx="326" cy="194" r="17" fill="url(#green)"/><circle cx="348" cy="214" r="17" fill="url(#ivory)"/>
+    <circle cx="176" cy="308" r="17" fill="url(#gold)"/>
+    <circle cx="246" cy="298" r="17" fill="url(#green)"/><circle cx="268" cy="318" r="17" fill="url(#ivory)"/>
+    <circle cx="336" cy="308" r="17" fill="url(#gold)"/>
+  </g>
+</svg>

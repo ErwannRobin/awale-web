@@ -1,7 +1,7 @@
 // Runs the negamax search off the main thread so the UI never blocks.
 // One stateful AwaleAI per game (self-tuning depth), plus a fixed
 // strongest-level instance for hints.
-import { AwaleAI } from './ai';
+import { AwaleAI } from './ai.ts';
 
 interface NewGameMsg { type: 'newGame'; level: number }
 interface BestMoveMsg {
