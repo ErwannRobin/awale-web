@@ -29,8 +29,10 @@ export default tseslint.config(
   },
 
   // Node-side: tests, build scripts, config. No DOM, console is the output.
+  // `server/` sits here too: the Worker is not the DOM, and its Cloudflare
+  // globals come from its own tsconfig rather than from ESLint.
   {
-    files: ['test/**/*.ts', 'scripts/**/*.ts', '*.config.{js,ts}', 'e2e/**/*.ts'],
+    files: ['test/**/*.ts', 'scripts/**/*.ts', '*.config.{js,ts}', 'e2e/**/*.ts', 'server/**/*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: { globals: { ...globals.node } },
     rules: {

@@ -22,10 +22,22 @@ export default defineConfig({
     // The portrait board is a different layout, so it gets its own run.
     { name: 'phone', use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 }, isMobile: false } },
   ],
-  webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --host 127.0.0.1',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // Two servers: the game, and the match server the online tests talk to.
+  // `VITE_ONLINE_URL` is what switches online play on — a build without it has
+  // no online menu at all, which is the shape CI's other jobs build.
+  webServer: [
+    {
+      command: 'npm run dev:server',
+      url: 'http://127.0.0.1:8787/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: 'npm run build && npm run preview -- --port 4173 --host 127.0.0.1',
+      url: 'http://127.0.0.1:4173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: { VITE_ONLINE_URL: 'ws://127.0.0.1:8787' },
+    },
+  ],
 });

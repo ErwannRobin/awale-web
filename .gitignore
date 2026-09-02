@@ -6,3 +6,6 @@ dist
 tsconfig.tsbuildinfo
 playwright-report
 test-results
+
+# wrangler's local state (workerd, DO storage, build cache)
+.wrangler

@@ -9,13 +9,16 @@ import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
 import { maybeRequestReview } from '../lib/review.ts';
+import type { OnlineHandle } from '../lib/useOnlineSession.ts';
 
 /** Long enough for the win banner and its chime to land before the OS sheet. */
 const REVIEW_DELAY_MS = 1500;
 
 interface Props {
-  mode: 'ai' | 'local';
+  mode: 'ai' | 'local' | 'online';
   level: number;
+  /** Present only in online mode: the live match this board belongs to. */
+  online?: OnlineHandle;
   setup?: GameSetup;      // custom start position (challenges)
   goal?: string;          // challenge goal text (shown instead of rotating tips)
   title?: string;         // e.g. "Challenge 3"
@@ -63,12 +66,15 @@ function PlayerCard({
 
 export default function Game({
   mode, level, setup, goal, title, oppName: oppOverride, resume, persist, rated,
-  onExit, onLearn, onSettings, onToast, onStatsChange,
+  online, onExit, onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
+  const isOnline = mode === 'online';
   const [tip, setTip] = useState(0);
   const youAvatar = useMemo(() => loadProfile().avatar, []);
-  const isChallenge = !!setup;
+  // An online game arrives with a `setup` too — the seat and the opening
+  // position come from the server — so "has a setup" is not the question.
+  const isChallenge = !!setup && mode !== 'online';
   const [ratingDelta, setRatingDelta] = useState<{ before: number; after: number } | null>(null);
 
   const levelName = useCallback((i: number) => t(`level.${i + 1}.name` as StringKey), [t]);
@@ -118,9 +124,23 @@ export default function Game({
     }
   }, [rated, level, setup, onStatsChange]);
 
-  const { state, play, hint, undo, newGame, humanPlayer } = useGame({
+  const {
+    state, play, hint, undo, newGame, humanPlayer,
+    applyRemoteMove, resetTo, endWith,
+  } = useGame({
     mode, level, setup, resume, persist, onFinish, narrator,
+    remote: online?.remote,
   });
+
+  // Hand the board to the match, so a move the server confirms can be played.
+  // Unbinding on the way out matters: a confirmed move arriving after this
+  // screen is gone must not reach a board that no longer exists.
+  const bind = online?.bind;
+  useEffect(() => {
+    if (!bind) return;
+    bind({ applyRemoteMove, resetTo, endWith });
+    return () => bind(null);
+  }, [bind, applyRemoteMove, resetTo, endWith]);
 
   useEffect(() => {
     if (goal) return; // challenges show a fixed goal, not rotating tips
@@ -133,37 +153,64 @@ export default function Game({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const viewpoint: 0 | 1 = mode === 'ai' ? humanPlayer : state.turn;
+  const viewpoint: 0 | 1 = mode === 'local' ? state.turn : humanPlayer;
   viewpointRef.current = viewpoint;
   const opp = (1 - viewpoint) as 0 | 1;
 
-  const youName = mode === 'ai'
-    ? t('common.you')
-    : t(viewpoint === 0 ? 'game.south' : 'game.north');
+  const opponentSlot = online?.view.snapshot?.players[1 - viewpoint] ?? null;
+
+  const youName = mode === 'local'
+    ? t(viewpoint === 0 ? 'game.south' : 'game.north')
+    : t('common.you');
   const oppName = oppOverride
-    ?? (mode === 'ai' ? levelName(level) : t(viewpoint === 0 ? 'game.north' : 'game.south'));
+    ?? (isOnline ? (opponentSlot?.name || t('online.opponent'))
+      : mode === 'ai' ? levelName(level)
+        : t(viewpoint === 0 ? 'game.north' : 'game.south'));
 
   const interactive =
-    state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint);
+    state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint)
+    // Online, a board you cannot reach the server from is a board you cannot
+    // move on. Better a disabled pit than a tap that silently goes nowhere.
+    && (!isOnline || online?.view.connection === 'online');
 
   const status = useMemo(() => {
     if (state.phase === 'over') return null;
-    if (state.phase === 'thinking') return { pill: t('game.thinking'), line: t('game.choosing', { name: oppName }) };
+    if (state.phase === 'thinking') {
+      // Online, "thinking" means your own move is in the post.
+      return isOnline
+        ? { pill: t('online.sending'), line: t('online.sendingSub') }
+        : { pill: t('game.thinking'), line: t('game.choosing', { name: oppName }) };
+    }
     if (state.phase === 'animating') return { pill: t('game.sowing'), line: t('game.seedsMoving') };
-    if (mode === 'ai') {
+    if (mode !== 'local') {
       return state.turn === viewpoint
         ? { pill: t('game.yourTurn'), line: t('game.selectPit') }
         : { pill: t('game.oppTurn', { name: oppName }), line: t('game.waiting') };
     }
     return { pill: t('game.oppTurn', { name: youName }), line: t('game.selectPit') };
-  }, [state.phase, state.turn, viewpoint, mode, oppName, youName, t]);
+  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, youName, t]);
 
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
     if (isChallenge) return humanWon ? t('game.challengeDone') : t('game.challengeFailed');
-    if (mode === 'ai') return humanWon ? t('game.youWin') : t('game.oppWins', { name: oppName });
-    return t('game.sideWins', { name: t(state.winner === 0 ? 'game.south' : 'game.north') });
+    if (mode === 'local') {
+      return t('game.sideWins', { name: t(state.winner === 0 ? 'game.south' : 'game.north') });
+    }
+    return humanWon ? t('game.youWin') : t('game.oppWins', { name: oppName });
+  };
+
+  // Online endings the board cannot show on its own deserve a word of why.
+  const overReason = online?.view.snapshot?.reason ?? null;
+  const overNote = (): string | null => {
+    if (!isOnline) return null;
+    if (overReason === 'resign') {
+      return humanWon ? t('online.oppResigned') : t('online.youResigned');
+    }
+    if (overReason === 'abandoned') {
+      return humanWon ? t('online.oppLeftForGood') : t('online.youTimedOut');
+    }
+    return null;
   };
 
   const restart = () => {
@@ -171,6 +218,31 @@ export default function Game({
     setRatingDelta(null);
     newGame();
   };
+
+  // Resigning is one tap too easy to do by accident mid-thought, so it asks
+  // once. The question withdraws itself rather than sitting there as a trap.
+  const [confirmResign, setConfirmResign] = useState(false);
+  const resignTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(resignTimer.current), []);
+  const askResign = () => {
+    playTap(); hapticTap();
+    if (confirmResign) {
+      clearTimeout(resignTimer.current);
+      setConfirmResign(false);
+      online?.resign();
+      return;
+    }
+    setConfirmResign(true);
+    resignTimer.current = setTimeout(() => setConfirmResign(false), 4000);
+  };
+
+  const connection = online?.view.connection ?? 'online';
+  const opponentGone = isOnline && opponentSlot !== null && !opponentSlot.online;
+  const banner = !isOnline ? null
+    : connection === 'offline' ? t('online.reconnecting')
+      : connection === 'connecting' ? t('online.connecting')
+        : opponentGone ? t('online.oppOffline', { name: oppName })
+          : null;
 
   return (
     <div className="screen game">
@@ -187,6 +259,8 @@ export default function Game({
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {state.announcement}
       </div>
+
+      {banner && <div className="net-banner" role="status">{banner}</div>}
 
       <div className="players">
         <PlayerCard
@@ -232,9 +306,21 @@ export default function Game({
           </div>
         )}
         <div className="game-controls">
-          <button className="ctrl" onClick={restart}>
-            ↻ {isChallenge ? t('game.restart') : t('game.newGame')}
-          </button>
+          {isOnline ? (
+            // No restart, no hint, no undo: none of the three mean anything
+            // when a second person is sitting on the other side of the board.
+            <button
+              className={`ctrl ${confirmResign ? 'ctrl-warn' : ''}`}
+              onClick={askResign}
+              disabled={state.phase === 'over'}
+            >
+              🏳 {confirmResign ? t('online.resignConfirm') : t('online.resign')}
+            </button>
+          ) : (
+            <button className="ctrl" onClick={restart}>
+              ↻ {isChallenge ? t('game.restart') : t('game.newGame')}
+            </button>
+          )}
           {mode === 'ai' && (
             <button className="ctrl" onClick={() => void hint()} disabled={!interactive}>
               💡 {t('game.hint')}
@@ -270,11 +356,29 @@ export default function Game({
               </p>
             )}
             {isChallenge && humanWon && <p className="over-note">{t('game.nextUnlocked')}</p>}
-            <button className="pill pill-green" onClick={restart}>
-              <span className="pill-body">
-                <span className="pill-title">{isChallenge ? t('game.tryAgain') : t('game.playAgain')}</span>
-              </span>
-            </button>
+            {overNote() && <p className="over-note">{overNote()}</p>}
+            {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (
+              <p className="over-note">{t('online.rematchOffered', { name: oppName })}</p>
+            )}
+            {isOnline ? (
+              <button
+                className="pill pill-green"
+                onClick={() => { playTap(); hapticTap(); online?.rematch(); }}
+                disabled={online?.view.rematchSent || connection !== 'online'}
+              >
+                <span className="pill-body">
+                  <span className="pill-title">
+                    {online?.view.rematchSent ? t('online.rematchWaiting') : t('online.rematch')}
+                  </span>
+                </span>
+              </button>
+            ) : (
+              <button className="pill pill-green" onClick={restart}>
+                <span className="pill-body">
+                  <span className="pill-title">{isChallenge ? t('game.tryAgain') : t('game.playAgain')}</span>
+                </span>
+              </button>
+            )}
             <button className="pill" onClick={onExit}>
               <span className="pill-body">
                 <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
