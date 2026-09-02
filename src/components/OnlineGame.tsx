@@ -5,6 +5,7 @@ import type { StringKey } from '../i18n/index.ts';
 import { useOnlineSession } from '../lib/useOnlineSession.ts';
 import { playerToken, shareLink } from '../lib/onlineConfig.ts';
 import { loadProfile } from '../lib/profile.ts';
+import { loadSession } from '../lib/auth.ts';
 import type { GameSetup } from '../lib/useGame.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
@@ -27,9 +28,18 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
   const t = useT();
   const profile = useMemo(loadProfile, []);
   const token = useMemo(playerToken, []);
+  // Signed in, the account is who you are at the table: its name is the one the
+  // opponent sees, and its token is what proves the seat. Signed out, nothing
+  // here changes — the anonymous browser token still holds the seat.
+  const account = useMemo(loadSession, []);
   const [copied, setCopied] = useState(false);
 
-  const online = useOnlineSession({ room, name: profile.name, token });
+  const online = useOnlineSession({
+    room,
+    name: account?.user.name || profile.name,
+    token,
+    auth: account?.token,
+  });
   const { snapshot, seat, connection, error } = online.view;
 
   // The board is built once, from the position at the moment both players are

@@ -353,6 +353,7 @@ button { font-family: inherit; touch-action: manipulation; }
 
 .menu-actions { display: flex; flex-direction: column; gap: 12px; max-width: 460px; width: 100%; margin: 0 auto; }
 
+a.pill { text-decoration: none; color: inherit; }
 .pill {
   display: flex; align-items: center; gap: 14px;
   padding: 14px 20px;
@@ -630,7 +631,8 @@ button { font-family: inherit; touch-action: manipulation; }
 .over-score { display: flex; justify-content: center; align-items: baseline; gap: 12px; font-size: 1.1rem; color: var(--gold-soft); margin-bottom: 8px; }
 .over-score strong { font-size: 1.7rem; color: var(--ivory); }
 .over-dash { color: var(--ivory-50); }
-.over-card .pill { justify-content: center; }
+.over-card a.pill { text-decoration: none; color: inherit; }
+.pill { justify-content: center; }
 .over-card .pill-body { align-items: center; }
 
 .learn-body { max-width: 620px; margin: 0 auto; padding: 20px 0 40px; }
@@ -995,6 +997,22 @@ button { font-family: inherit; touch-action: manipulation; }
 }
 .wait-line { margin: 0; color: var(--ivory); font-size: 0.95rem; }
 .wait-hint { margin: 0; color: var(--ivory-70); font-size: 0.82rem; max-width: 32ch; }
+
+/* Sign-in reuses the waiting card wholesale — it is the same idea, and the
+   same shape: a panel that says what is happening while nothing yet has. */
+
+/* The QR keeps its own black on white whatever the theme is doing. A scanner
+   wants contrast and the expected polarity, not the game's palette. */
+.qr {
+  width: 190px; height: 190px; display: block;
+  border-radius: 8px; background: #fff;
+}
+
+.account-line {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%;
+}
+.account-name { color: var(--gold); font-weight: 700; }
 
 .wait-dots { display: flex; gap: 6px; }
 .wait-dots span {

@@ -27,17 +27,25 @@ run_worker_first = true
 tag = "v1"
 new_sqlite_classes = ["Room", "Lobby"]
 
-# A hand-run `wrangler deploy` moved the live Worker to v2. Every tag the
-# published script has ever been at must appear here, even when it did
-# nothing: wrangler compares the script's tag against this list, and a tag it
-# cannot find means "this script has had no migrations", so it replays from v1
-# and Cloudflare rejects re-creating a Room class that already holds rooms
-# (error 10074). Recording the tag is what tells wrangler there is nothing
-# left to apply. The classes below are the whole of the schema, so nothing is
-# pending — do not delete this entry to tidy up, and add the next tag rather
-# than editing this one.
+# Sign-in, at tag v2 because that is what the live Worker actually applied: a
+# hand-run `wrangler deploy` of this branch created the Identity class there
+# before the branch was merged.
+#
+# Two rules follow from that, and both have already cost a broken deploy.
+#
+# Every tag the published script has ever been at must appear in this file,
+# even one that did nothing. Wrangler compares the script's tag against this
+# list, and a tag it cannot find reads as "this script has had no migrations at
+# all" — so it replays from v1, tries to create a Room class that already holds
+# rooms, and Cloudflare refuses (error 10074).
+#
+# And this entry must stay v2 rather than being renumbered to sit after some
+# later tag. The live script is already at v2 with Identity created; moving the
+# class to a v3 would make wrangler try to create it a second time, which fails
+# the same way. Add the next tag, never edit this one.
 [[migrations]]
 tag = "v2"
+new_sqlite_classes = ["Identity"]
 
 [[durable_objects.bindings]]
 name = "ROOM"
@@ -47,11 +55,29 @@ class_name = "Room"
 name = "LOBBY"
 class_name = "Lobby"
 
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "Identity"
+
 [vars]
 # Origins allowed to call /queue from a *different* site. The game itself is
 # served from this Worker, so same-origin requests need nothing here; this is
 # only for a separately hosted copy of the front end.
 ALLOWED_ORIGINS = ""
+
+# Where a player lands after answering on WhatsApp, and the origin phone-verif
+# is told to call back. Leave empty to use the origin the request came from,
+# which is right when the game is served by this Worker; set it when the front
+# end is hosted somewhere else.
+PUBLIC_APP_URL = "https://awale-web.vercel.app"
+
+# PHONE_VERIF_API_KEY is a secret, not a var:
+#
+#   cd server && npx wrangler secret put PHONE_VERIF_API_KEY
+#
+# Without it the /auth routes answer 503 and the game runs exactly as it did
+# before, anonymously. AUTH_SESSION_SECRET is an optional second secret; when
+# it is absent, session tokens are signed with a key derived from the API key.
 
 [observability]
 enabled = true

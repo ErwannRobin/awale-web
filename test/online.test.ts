@@ -391,6 +391,24 @@ check('a malformed message is rejected rather than guessed at', () => {
   );
 });
 
+check('a hello carries a session token when there is one, and nothing when there is not', () => {
+  const hello = (extra: string) =>
+    parseClientMsg(`{"t":"hello","v":${PROTOCOL_VERSION},"token":"${TOKEN_A}","name":"Ama"${extra}}`);
+
+  // Signed out is the default, and it must not put an `auth` key on the wire.
+  assert.equal('auth' in (hello('') as object), false);
+
+  assert.deepEqual(hello(',"auth":"v1.abc.def"'), {
+    t: 'hello', v: PROTOCOL_VERSION, token: TOKEN_A, name: 'Ama', auth: 'v1.abc.def',
+  });
+
+  // Nothing here can check a signature, so the only judgement it makes is
+  // "short enough to be worth showing the verifier".
+  assert.equal('auth' in (hello(',"auth":""') as object), false);
+  assert.equal('auth' in (hello(',"auth":123') as object), false);
+  assert.equal('auth' in (hello(`,"auth":"${'x'.repeat(1025)}"`) as object), false);
+});
+
 check('a server message survives a round trip', () => {
   const room = seatedRoom();
   const encoded = JSON.stringify({ t: 'welcome', seat: 0, snapshot: snapshot(room) });
