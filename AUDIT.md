@@ -186,9 +186,19 @@ seeds on the board.
 Both are now real positions, found by searching for ones the verifier can *prove*
 the player wins while not every first move does:
 
-- **8** (level 2) — nineteen seeds behind, the opponent two from victory,
+- **8** (level 2) — nineteen seeds behind, the opponent two from victory;
   2 of 5 first moves survive.
-- **12** (level 3) — ten seeds left, six behind, against the strongest engine.
+- **12** (level 3) — one seed behind, eleven left on the board, against the
+  strongest engine; exactly 1 of 4 first moves wins.
+
+**A trap worth recording.** "How many first moves win" is *not* stable under
+search budget. A `true` verdict is a proof, so a bigger budget only ever finds
+MORE winning moves — a position that looks like a sharp 1-of-5 puzzle at 120k
+nodes can be a flat 5-of-5 at 400k. The first candidate for challenge 12 was
+exactly that, and the first draft of challenge 8's goal text ("exactly one first
+move survives") was wrong for the same reason. Every discrimination claim in the
+challenge copy is now checked at two budgets and only kept if it does not move.
+The asymmetry between the two verdicts is documented in `scripts/challenges.ts`.
 
 ---
 
@@ -245,8 +255,8 @@ Short list now, and honest about why.
 2. **Challenge 4 is unverified.** Its position leaves 36 seeds on the player's
    row, so the solver cannot exhaust the tree within a sane budget. The verifier
    reports it as *inconclusive* — a warning, not a failure — because a "no win
-   found" under a node cap is not proof of unwinnability. The other eleven are
-   proved solvable.
+   found" under a node cap is not proof of unwinnability (see the asymmetry note
+   in `scripts/challenges.ts`). The other eleven are proved solvable.
 3. **The rating is local and self-referential.** It measures you against four
    fixed AI levels on one device. That is what the Stats screen says.
 4. **The `LICENSE` is a guess.** MIT, copyright Erwann Robin. The README

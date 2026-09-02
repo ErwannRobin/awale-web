@@ -113,6 +113,21 @@ export function solve(pos: Position, opts: SolveOptions = {}): SolveReport {
     return mv;
   };
 
+  // SOUNDNESS, and why the two verdicts are not symmetric:
+  //
+  //   `true`  is always a proof. A winning line was actually walked to a
+  //           terminal position, so no budget can invalidate it. This is why
+  //           more budget only ever finds MORE winning first moves for the same
+  //           position — a smaller run reporting 2 of 4 and a larger one
+  //           reporting 4 of 4 is expected, not a contradiction.
+  //
+  //   `false` is only meaningful when `exhausted` stayed false. Hitting the
+  //           budget returns false and memoises it, so a poisoned entry can be
+  //           reused elsewhere in the same run. That can only UNDER-report wins,
+  //           never invent them — and because `exhausted` latches on and is
+  //           never reset, any run that cached a budget-driven false reports
+  //           `exhausted: true`. So "not solvable AND not exhausted" is the only
+  //           negative anyone may trust, which is exactly what the caller checks.
   function humanWins(pits: number[], scores: number[], turn: 0 | 1, ply: number): boolean {
     if (nodes++ > nodeBudget || ply > maxPly) { exhausted = true; return false; }
 

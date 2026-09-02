@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
+import { useSettings } from '../lib/useSettings.ts';
 import { loadStats, type GameRecord } from '../lib/stats.ts';
 
 interface Props { onBack: () => void }
@@ -37,7 +38,7 @@ function RecordRow({ r, rank, locale }: { r: GameRecord; rank?: number; locale: 
 export default function Records({ onBack }: Props) {
   const t = useT();
   const stats = useMemo(() => loadStats(), []);
-  const locale = t('common.you') === 'Vous' ? 'fr' : 'en';
+  const { language: locale } = useSettings();
 
   // "Best" = biggest winning margin, then the strongest level beaten.
   const best = useMemo(

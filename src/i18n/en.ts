@@ -122,11 +122,11 @@ export const en = {
   'challenge.5': 'You are eight seeds behind with almost nothing left. Give none of it away.',
   'challenge.6': 'Two huge pits face each other. Take your time — patience is the whole puzzle.',
   'challenge.7': 'Two seeds behind, four pits between you. You will have to give something up to win.',
-  'challenge.8': 'Nineteen seeds behind, and they need only two more. Exactly one first move survives.',
+  'challenge.8': 'Nineteen seeds behind, and they need only two more. Just two first moves survive.',
   'challenge.9': 'One pit holds fourteen seeds. It looks lost — it is not.',
   'challenge.10': "The obvious move loses. Don't trust your instinct.",
   'challenge.11': 'One seed from the win, and a pit of fourteen in the way. Count carefully.',
-  'challenge.12': 'The last test. Ten seeds on the board, six behind, and the strongest opponent in the game.',
+  'challenge.12': 'The last test: one seed behind, eleven left on the board, the strongest engine in the game — and exactly one first move wins.',
 
   // ---- tutorial --------------------------------------------------------
   'tutorial.brand': 'TUTORIAL',

@@ -123,11 +123,11 @@ export const fr: Record<keyof typeof en, string> = {
   'challenge.5': 'Huit graines de retard et presque plus rien. N’en cédez pas une seule.',
   'challenge.6': 'Deux trous énormes se font face. Prenez votre temps — la patience est tout le problème.',
   'challenge.7': 'Deux graines de retard, quatre trous entre vous. Il faudra sacrifier pour gagner.',
-  'challenge.8': 'Dix-neuf graines de retard, et il ne lui en manque que deux. Un seul premier coup survit.',
+  'challenge.8': 'Dix-neuf graines de retard, et il ne lui en manque que deux. Deux premiers coups seulement survivent.',
   'challenge.9': 'Un trou contient quatorze graines. La position semble perdue — elle ne l’est pas.',
   'challenge.10': 'Le coup évident perd. Ne suivez pas votre instinct.',
   'challenge.11': 'Une graine de la victoire, et un trou de quatorze en travers. Comptez bien.',
-  'challenge.12': 'La dernière épreuve. Dix graines sur le plateau, six de retard, et l’adversaire le plus fort du jeu.',
+  'challenge.12': 'La dernière épreuve : une graine de retard, onze sur le plateau, le moteur le plus fort du jeu — et un seul premier coup gagne.',
 
   // ---- tutorial --------------------------------------------------------
   'tutorial.brand': 'TUTORIEL',
