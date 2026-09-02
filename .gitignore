@@ -4,3 +4,5 @@ dist
 .DS_Store
 
 tsconfig.tsbuildinfo
+playwright-report
+test-results

@@ -1,34 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Board from './Board';
-import { owner, isValid, distribute } from '../lib/engine';
-import { AIClient } from '../lib/aiClient';
-import type { GameState } from '../lib/useGame';
+import Board from './Board.tsx';
+import { owner, isValid, distribute } from '../lib/engine.ts';
+import { AIClient } from '../lib/aiClient.ts';
+import type { GameState } from '../lib/useGame.ts';
+import { useT } from '../i18n/useT.ts';
+import type { StringKey } from '../i18n/index.ts';
+import { getSettings, SPEED_FACTOR } from '../lib/settings.ts';
+import { playSow, playCapture, playTap } from '../lib/sound.ts';
+import { hapticCapture, hapticTap } from '../lib/haptics.ts';
 
 const SOW_MS = 220;
 const CAP_MS = 260;
 const DEMO_DELAY = 1000;
 
-// Human is North (player 1); demo moves are played by South (player 0).
+// The learner is North (player 1). Demo moves are played by South so the
+// learner always sees a move from the other side before being asked for one.
 type Step =
-  | { kind: 'message'; text: string; board?: number[] }
-  | { kind: 'demo'; text: string; pit: number; board?: number[] }
-  | { kind: 'interact'; text: string; board?: number[] }
-  | { kind: 'freePlay'; text: string; board?: number[] };
+  | { kind: 'message'; key: StringKey; board?: number[] }
+  | { kind: 'demo'; key: StringKey; pit: number; board?: number[] }
+  | { kind: 'interact'; key: StringKey; board?: number[] }
+  | { kind: 'freePlay'; key: StringKey; board?: number[] };
 
 const STEPS: Step[] = [
-  { kind: 'message', text: '1: The goal of the game is to collect more seeds than the opponent.', board: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] },
-  { kind: 'message', text: '2: To start, choose one of your pits and sow its seeds one by one counterclockwise.' },
-  { kind: 'demo', text: 'For example:', pit: 5 },
-  { kind: 'interact', text: 'Your turn: tap one of your highlighted pits to sow it!' },
-  { kind: 'message', text: 'Well done! 3: If the last sown pit holds 2 or 3 seeds on the opponent\'s side, you capture them.', board: [2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] },
-  { kind: 'message', text: '4: You also capture the preceding consecutive pits if they hold 2 or 3 seeds.' },
-  { kind: 'demo', text: 'For example:', pit: 2, board: [0, 1, 6, 6, 6, 6, 0, 1, 2, 7, 7, 6] },
-  { kind: 'message', text: '5: A pit holding 12+ seeds (a "house") skips its origin pit when sown.' },
-  { kind: 'demo', text: 'For example:', pit: 4, board: [5, 5, 5, 5, 15, 0, 0, 0, 0, 4, 6, 3] },
-  { kind: 'message', text: '6: By courtesy, you cannot starve your opponent by capturing all their seeds.' },
-  { kind: 'message', text: '7: And you must feed a starving opponent when you can.' },
-  { kind: 'freePlay', text: 'Your turn now: try to capture some seeds!', board: [3, 1, 2, 1, 5, 5, 4, 4, 4, 4, 4, 4] },
-  { kind: 'message', text: 'End of the tutorial. Try the challenges to sharpen your strategy!' },
+  { kind: 'message', key: 'tutorial.step1', board: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] },
+  { kind: 'message', key: 'tutorial.step2' },
+  { kind: 'demo', key: 'tutorial.step3', pit: 5 },
+  { kind: 'interact', key: 'tutorial.step4' },
+  { kind: 'message', key: 'tutorial.step5', board: [2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] },
+  { kind: 'message', key: 'tutorial.step6' },
+  { kind: 'demo', key: 'tutorial.step7', pit: 2, board: [0, 1, 6, 6, 6, 6, 0, 1, 2, 7, 7, 6] },
+  { kind: 'message', key: 'tutorial.step8' },
+  { kind: 'demo', key: 'tutorial.step9', pit: 4, board: [5, 5, 5, 5, 15, 0, 0, 0, 0, 4, 6, 3] },
+  { kind: 'message', key: 'tutorial.step10' },
+  { kind: 'message', key: 'tutorial.step11' },
+  { kind: 'freePlay', key: 'tutorial.step12', board: [3, 1, 2, 1, 5, 5, 4, 4, 4, 4, 4, 4] },
+  { kind: 'message', key: 'tutorial.step13' },
 ];
 
 type Awaiting = 'next' | 'move' | 'demo' | 'busy';
@@ -45,6 +51,7 @@ const legalNorth = (p: number[]) => {
 };
 
 export default function Tutorial({ onExit, onChallenges }: Props) {
+  const t = useT();
   const clientRef = useRef<AIClient | null>(null);
   if (clientRef.current === null) { clientRef.current = new AIClient(); clientRef.current.newGame(0); }
 
@@ -55,14 +62,16 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
   const [step, setStep] = useState(0);
   const [awaiting, setAwaiting] = useState<Awaiting>('next');
   const [banner, setBanner] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState('');
 
   const pitsRef = useRef<number[]>(STEPS[0].board!.slice());
   const scoresRef = useRef<number[]>([0, 0]);
-  const timers = useRef<number[]>([]);
-  const at = (ms: number, fn: () => void) => { timers.current.push(window.setTimeout(fn, ms)); };
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
 
-  // Shared seed-by-seed animation (mirrors the main game).
+  // Shared seed-by-seed animation (mirrors the main game, including the
+  // animation-speed setting).
   const animate = useCallback((pit: number, onDone?: (running: boolean) => void) => {
     const mover = owner(pit);
     const pre = [...pitsRef.current];
@@ -72,20 +81,27 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
     const sown = [...pre]; sown[pit] = 0; for (const i of res.sowed) sown[i]++;
     pitsRef.current = work; scoresRef.current = sc;
 
+    const factor = SPEED_FACTOR[getSettings().speed];
+    const sowMs = SOW_MS * factor;
+    const capMs = CAP_MS * factor;
+
     setAwaiting('busy');
     setActivePit(pit); setCapturing([]);
     const disp = [...pre]; disp[pit] = 0; setPits([...disp]);
 
-    res.sowed.forEach((idx, k) => at(SOW_MS * (k + 1), () => {
+    res.sowed.forEach((idx, k) => at(sowMs * (k + 1), () => {
       disp[idx]++; setActivePit(idx); setPits([...disp]);
+      if (factor > 0) playSow(k);
     }));
-    const afterSow = SOW_MS * (res.sowed.length + 1);
-    res.captured.forEach((cap, k) => at(afterSow + CAP_MS * k, () => {
+    const afterSow = sowMs * (res.sowed.length + 1);
+    res.captured.forEach((cap, k) => at(afterSow + capMs * k, () => {
       setCapturing(res.captured.slice(0, k + 1));
       disp[cap] = 0; setPits([...disp]);
       setScores(prev => { const ns = [...prev]; ns[mover] += sown[cap]; return ns; });
     }));
-    const end = afterSow + CAP_MS * res.captured.length + 240;
+    if (res.captured.length > 0) at(afterSow, () => { playCapture(res.captured.length); hapticCapture(); });
+
+    const end = afterSow + capMs * res.captured.length + 240 * factor;
     at(end, () => {
       setActivePit(null); setCapturing([]);
       setPits([...pitsRef.current]); setScores([...scoresRef.current]);
@@ -94,7 +110,7 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
   }, []);
 
   // South (AI) reply during free play.
-  const southReply = useCallback((afterHumanScore: number) => {
+  const southReply = useCallback(() => {
     setAwaiting('busy');
     clientRef.current!.bestMove('game', pitsRef.current, scoresRef.current, 0).then(move => {
       at(400, () => {
@@ -106,7 +122,6 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
         });
       });
     });
-    void afterHumanScore;
   }, [animate]);
 
   // Enter a step: load its board, then set up interaction / demo.
@@ -121,6 +136,7 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
       setScores([0, 0]);
     }
     setActivePit(null); setCapturing([]);
+    setAnnouncement(t(s.key));
 
     if (s.kind === 'message') setAwaiting('next');
     else if (s.kind === 'interact') setAwaiting('move');
@@ -147,17 +163,18 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
       const before = scoresRef.current[1];
       animate(pit, running => {
         if (scoresRef.current[1] > before) {
-          setBanner('Well played — you captured seeds! 🎉');
+          setBanner(t('tutorial.captured'));
           setAwaiting('next');
           return;
         }
         if (!running) { setAwaiting('next'); return; }
-        southReply(before);
+        southReply();
       });
     }
   };
 
   const next = () => {
+    playTap(); hapticTap();
     if (step >= STEPS.length - 1) { onExit(); return; }
     setStep(i => i + 1);
   };
@@ -169,28 +186,31 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
     winner: null,
     legal: interactive ? legalNorth(pits) : [],
     hintPit: null, activePit, capturing, canUndo: false, lastCaptured: null,
+    announcement: '',
   };
 
   const footer = (() => {
-    if (awaiting === 'demo') return 'Watch how the computer sows…';
-    if (awaiting === 'busy') return 'Seeds are on the move…';
-    if (awaiting === 'move') return s.kind === 'freePlay'
-      ? 'Your turn — capture some seeds!'
-      : 'Your turn — tap a highlighted pit.';
+    if (awaiting === 'demo') return t('tutorial.watch');
+    if (awaiting === 'busy') return t('tutorial.moving');
+    if (awaiting === 'move') {
+      return s.kind === 'freePlay' ? t('tutorial.yourTurnCapture') : t('tutorial.yourTurnTap');
+    }
     return null;
   })();
 
   return (
     <div className="screen game tutorial">
       <header className="game-top">
-        <button className="round-btn" onClick={onExit} aria-label="Back">←</button>
-        <div className="brand">◇ TUTORIAL ◇</div>
+        <button className="round-btn" onClick={onExit} aria-label={t('common.back')}>←</button>
+        <div className="brand">◇ {t('tutorial.brand')} ◇</div>
         <div className="tut-progress">{step + 1} / {STEPS.length}</div>
       </header>
 
+      <div className="sr-only" role="status" aria-live="polite">{banner ?? announcement}</div>
+
       <div className="tut-card">
         <span className="tip-orn" aria-hidden>✦</span>
-        <div className="tut-text">{banner ?? s.text}</div>
+        <div className="tut-text">{banner ?? t(s.key)}</div>
       </div>
 
       <Board state={boardState} viewpoint={1} interactive={interactive} onPlay={handlePlay} />
@@ -198,13 +218,17 @@ export default function Tutorial({ onExit, onChallenges }: Props) {
       <div className="tut-footer">
         {footer && <div className="tut-hint">{footer}</div>}
         <div className="game-controls">
-          {(awaiting === 'next') && (
+          {awaiting === 'next' && (
             <button className="pill pill-green tut-next" onClick={next}>
-              <span className="pill-body"><span className="pill-title">{step >= STEPS.length - 1 ? 'FINISH' : 'NEXT'}</span></span>
+              <span className="pill-body">
+                <span className="pill-title">
+                  {step >= STEPS.length - 1 ? t('tutorial.finish') : t('tutorial.next')}
+                </span>
+              </span>
             </button>
           )}
           {step >= STEPS.length - 1 && awaiting === 'next' && (
-            <button className="ctrl" onClick={onChallenges}>Go to Challenges →</button>
+            <button className="ctrl" onClick={onChallenges}>{t('tutorial.toChallenges')}</button>
           )}
         </div>
       </div>
