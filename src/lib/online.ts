@@ -39,6 +39,14 @@ export interface SessionOptions {
   factory: TransportFactory;
   /** Proves which seat is yours across a reconnect. Persisted by the caller. */
   token: string;
+  /**
+   * A signed session token, when the player is signed in.
+   *
+   * The server verifies it and seats the account behind it, which is what makes
+   * a seat survive a new device — and what stops someone who learned `token`
+   * from taking it. Absent means an anonymous seat, exactly as before.
+   */
+  auth?: string;
   name: string;
   callbacks: SessionCallbacks;
 }
@@ -125,6 +133,7 @@ export class OnlineSession {
         v: PROTOCOL_VERSION,
         token: this.opts.token,
         name: this.opts.name,
+        ...(this.opts.auth ? { auth: this.opts.auth } : {}),
       });
       // Stay "connecting" until the welcome lands: an open socket that has not
       // been seated yet is not a game.

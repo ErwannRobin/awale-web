@@ -1,0 +1,127 @@
+// The only thing this game stores about a person.
+//
+// One Durable Object class, two key spaces, because they want the same
+// guarantee and neither is big enough to deserve its own class:
+//
+//   sess:<session_id>  a sign-in still in flight
+//   user:<user_id>     an account: a display name and when it was last seen
+//
+// `idFromName` gives exactly one instance per key worldwide, which is what
+// makes a webhook and a poll about the same sign-in agree without a lock.
+import {
+  cleanDisplayName, isStale, newVerification, settle,
+  type VerificationRecord, type VerificationStatus,
+} from '../../src/lib/authCore.ts';
+
+const RECORD_KEY = 'record';
+const USER_KEY = 'user';
+
+export interface UserRecord {
+  userId: string;
+  name: string;
+  createdAt: number;
+  lastSeenAt: number;
+}
+
+/** What `/auth/status` needs to answer the browser. */
+export interface VerificationView {
+  status: VerificationStatus;
+  userId: string | null;
+  isNewUser: boolean;
+}
+
+interface SettlePayload {
+  status: VerificationStatus;
+  userId?: string | null;
+  isNewUser?: boolean;
+}
+
+export class Identity implements DurableObject {
+  private readonly state: DurableObjectState;
+
+  constructor(state: DurableObjectState, _env: unknown) {
+    this.state = state;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const now = Date.now();
+
+    switch (url.pathname) {
+      // --- a sign-in in flight ---------------------------------------------
+      case '/session/open': {
+        const sessionId = url.searchParams.get('id') ?? '';
+        const record = newVerification(sessionId, now);
+        await this.state.storage.put(RECORD_KEY, record);
+        return Response.json(view(record));
+      }
+
+      case '/session/read': {
+        const record = await this.record();
+        if (!record) return Response.json(null);
+        // An abandoned sign-in is reported as expired rather than swept on a
+        // timer: nobody is waiting on it, so there is nothing to wake up for.
+        if (isStale(record, now)) {
+          const done = settle(record, { status: 'expired' }, now);
+          await this.state.storage.put(RECORD_KEY, done);
+          return Response.json(view(done));
+        }
+        return Response.json(view(record));
+      }
+
+      case '/session/settle': {
+        const payload = await request.json() as SettlePayload;
+        const record = (await this.record()) ?? newVerification(
+          url.searchParams.get('id') ?? '', now,
+        );
+        const next = settle(record, payload, now);
+        await this.state.storage.put(RECORD_KEY, next);
+        return Response.json(view(next));
+      }
+
+      // --- an account -------------------------------------------------------
+      case '/user/seen': {
+        const body = await request.json() as { userId: string; name?: string };
+        const existing = await this.state.storage.get<UserRecord>(USER_KEY);
+        const named = cleanDisplayName(body.name, existing?.name ?? '');
+        const record: UserRecord = {
+          userId: body.userId,
+          name: named,
+          createdAt: existing?.createdAt ?? now,
+          lastSeenAt: now,
+        };
+        await this.state.storage.put(USER_KEY, record);
+        return Response.json(record);
+      }
+
+      case '/user/read': {
+        const record = await this.state.storage.get<UserRecord>(USER_KEY);
+        return Response.json(record ?? null);
+      }
+
+      case '/user/rename': {
+        const body = await request.json() as { name: string };
+        const existing = await this.state.storage.get<UserRecord>(USER_KEY);
+        if (!existing) return new Response('no such user', { status: 404 });
+        const record: UserRecord = {
+          ...existing,
+          name: cleanDisplayName(body.name, existing.name),
+          lastSeenAt: now,
+        };
+        await this.state.storage.put(USER_KEY, record);
+        return Response.json(record);
+      }
+
+      default:
+        return new Response('not found', { status: 404 });
+    }
+  }
+
+  private async record(): Promise<VerificationRecord | null> {
+    return (await this.state.storage.get<VerificationRecord>(RECORD_KEY)) ?? null;
+  }
+}
+
+function view(record: VerificationRecord): VerificationView {
+  return { status: record.status, userId: record.userId, isNewUser: record.isNewUser };
+}

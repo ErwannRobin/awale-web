@@ -34,6 +34,8 @@ export interface OnlineOptions {
   room: string;
   name: string;
   token: string;
+  /** A signed session token when signed in; absent when playing anonymously. */
+  auth?: string;
   /** Injectable for tests; defaults to a real WebSocket. */
   factory?: TransportFactory;
 }
@@ -47,7 +49,9 @@ const startingView: OnlineView = {
   rematchSent: false,
 };
 
-export function useOnlineSession({ room, name, token, factory }: OnlineOptions): OnlineHandle {
+export function useOnlineSession(
+  { room, name, token, auth, factory }: OnlineOptions,
+): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
   const sessionRef = useRef<OnlineSession | null>(null);
   const bridgeRef = useRef<GameBridge | null>(null);
@@ -62,6 +66,7 @@ export function useOnlineSession({ room, name, token, factory }: OnlineOptions):
     const session = new OnlineSession({
       factory: make,
       token,
+      auth,
       name: nameRef.current,
       callbacks: {
         change: next => setView(next),
@@ -105,7 +110,7 @@ export function useOnlineSession({ room, name, token, factory }: OnlineOptions):
       bridgeRef.current = null;
       setView(startingView);
     };
-  }, [room, token, factory]);
+  }, [room, token, auth, factory]);
 
   const remote = useMemo(() => ({
     sendMove: (pit: number) => sessionRef.current?.sendMove(pit),

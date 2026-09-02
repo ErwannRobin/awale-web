@@ -27,6 +27,12 @@ run_worker_first = true
 tag = "v1"
 new_sqlite_classes = ["Room", "Lobby"]
 
+# Sign-in. One object per verification session, one per account — see
+# `src/identity.ts` for why both live in the same class.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Identity"]
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
@@ -35,11 +41,29 @@ class_name = "Room"
 name = "LOBBY"
 class_name = "Lobby"
 
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "Identity"
+
 [vars]
 # Origins allowed to call /queue from a *different* site. The game itself is
 # served from this Worker, so same-origin requests need nothing here; this is
 # only for a separately hosted copy of the front end.
 ALLOWED_ORIGINS = ""
+
+# Where a player lands after answering on WhatsApp, and the origin phone-verif
+# is told to call back. Leave empty to use the origin the request came from,
+# which is right when the game is served by this Worker; set it when the front
+# end is hosted somewhere else.
+PUBLIC_APP_URL = "https://awale-web.vercel.app"
+
+# PHONE_VERIF_API_KEY is a secret, not a var:
+#
+#   cd server && npx wrangler secret put PHONE_VERIF_API_KEY
+#
+# Without it the /auth routes answer 503 and the game runs exactly as it did
+# before, anonymously. AUTH_SESSION_SECRET is an optional second secret; when
+# it is absent, session tokens are signed with a key derived from the API key.
 
 [observability]
 enabled = true

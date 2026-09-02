@@ -3,6 +3,7 @@
 //
 //   GET  /room/:code   WebSocket upgrade into that room's Durable Object
 //   POST /queue        quick match: a code to sit in, or one to walk into
+//   POST /auth/*       signing in with a phone number, via phone-verif.com
 //   GET  /health       is anybody home
 //   everything else    the game itself, from the ASSETS binding
 //
@@ -11,17 +12,21 @@
 // build-time URL, and no way for a deploy to leave a new site talking to an
 // old server.
 //
-// There are no accounts, no database and nothing to log in to. A room code is
-// the whole of the authorisation model: know it and you can take a seat, which
-// is exactly the security a game you share by link needs, and no more.
+// A room code is still the whole of the authorisation model for a room: know
+// it and you can take a seat, which is the security a game you share by link
+// needs. Signing in adds an identity on top of that rather than replacing it —
+// a signed-in player's seat is proved by a token nobody else can forge, and
+// everyone else plays exactly as before, anonymously.
 import { normaliseRoomCode } from '../../src/lib/protocol.ts';
+import { handleAuth, type AuthEnv } from './auth.ts';
 import type { QueueReply } from './lobby.ts';
 import type { RoomProbe } from './room.ts';
 
 export { Room } from './room.ts';
 export { Lobby } from './lobby.ts';
+export { Identity } from './identity.ts';
 
-export interface Env {
+export interface Env extends AuthEnv {
   ROOM: DurableObjectNamespace;
   LOBBY: DurableObjectNamespace;
   /** The built web app. Present in a deploy; absent under `wrangler dev` if
@@ -99,6 +104,10 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors });
     }
+
+    // Sign-in, before the room routes: `/auth/*` is never a room code.
+    const auth = await handleAuth(request, env, cors);
+    if (auth) return auth;
 
     if (url.pathname === '/health') {
       return new Response('ok', { headers: { ...cors, 'content-type': 'text/plain' } });

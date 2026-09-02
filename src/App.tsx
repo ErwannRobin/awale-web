@@ -7,12 +7,14 @@ import { CHALLENGES, challengeGoalKey } from './lib/challenges.ts';
 import Game from './components/Game.tsx';
 import Online from './components/Online.tsx';
 import OnlineGame from './components/OnlineGame.tsx';
+import SignIn from './components/SignIn.tsx';
 import SettingsScreen from './components/Settings.tsx';
 import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
 import type { GameSetup } from './lib/useGame.ts';
 import { loadCompleted, saveCompleted } from './lib/progress.ts';
 import { loadProfile } from './lib/profile.ts';
+import { clearSession, loadSession, refreshSession, type Session } from './lib/auth.ts';
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
@@ -31,6 +33,7 @@ type Screen =
   | { name: 'records' }
   | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number; resume: SavedGame | null }
   | { name: 'online' }
+  | { name: 'signIn' }
   | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
   // Help and Settings are reachable mid-game, so they carry the screen to
@@ -52,6 +55,9 @@ export default function App() {
   });
   const [completed, setCompleted] = useState<number[]>(() => loadCompleted());
   const [profile, setProfile] = useState(loadProfile);
+  // Read from storage so a returning player is signed in before the first
+  // paint, then confirmed against the server — see the effect below.
+  const [account, setAccount] = useState<Session | null>(loadSession);
   const [stats, setStats] = useState(loadStats);
   const [saved, setSaved] = useState<SavedGame | null>(() => loadSavedGame());
   const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
@@ -72,6 +78,17 @@ export default function App() {
   }, []);
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  // A stored token may have been signed with a key that has since rotated. The
+  // server is the only thing that can tell, so ask it once at startup and drop
+  // the session if it says no.
+  useEffect(() => {
+    const stored = loadSession();
+    if (!stored) return;
+    let live = true;
+    void refreshSession(stored).then(next => { if (live) setAccount(next); });
+    return () => { live = false; };
+  }, []);
 
   const refreshStats = useCallback(() => setStats(loadStats()), []);
   const refreshSaved = useCallback(() => setSaved(loadSavedGame()), []);
@@ -146,6 +163,9 @@ export default function App() {
       case 'menu': void exitApp(); return;
       case 'game': leaveGame(); return;
       case 'onlineGame': leaveOnline(); return;
+      // Sign-in is reached from the online screen, so back goes there and not
+      // all the way out to the menu.
+      case 'signIn': setScreen({ name: 'online' }); return;
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
       case 'challenge': setScreen({ name: 'challenges' }); return;
@@ -178,6 +198,27 @@ export default function App() {
         <Online
           onStart={room => setScreen({ name: 'onlineGame', room })}
           onBack={() => setScreen({ name: 'menu' })}
+          onToast={showToast}
+          account={account}
+          onSignIn={() => setScreen({ name: 'signIn' })}
+          onSignOut={() => {
+            clearSession();
+            setAccount(null);
+            showToast(t('signIn.signedOut'));
+          }}
+        />
+      )}
+
+      {screen.name === 'signIn' && (
+        <SignIn
+          onSignedIn={(session, isNew) => {
+            setAccount(session);
+            setScreen({ name: 'online' });
+            showToast(isNew || !session.user.name
+              ? t('signIn.welcome')
+              : t('signIn.welcomeBack', { name: session.user.name }));
+          }}
+          onBack={() => setScreen({ name: 'online' })}
           onToast={showToast}
         />
       )}

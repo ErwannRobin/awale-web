@@ -17,6 +17,7 @@ import {
   type ServerMsg,
 } from '../../src/lib/protocol.ts';
 import type { Seat } from '../../src/lib/rules.ts';
+import { claimsFromToken, type AuthEnv } from './auth.ts';
 
 const STATE_KEY = 'room';
 
@@ -40,8 +41,13 @@ export class Room implements DurableObject {
 
   private readonly state: DurableObjectState;
 
-  constructor(state: DurableObjectState, _env: unknown) {
+  // Kept for one reason: verifying the session token on `hello`. The rules
+  // themselves still know nothing about accounts.
+  private readonly env: AuthEnv;
+
+  constructor(state: DurableObjectState, env: AuthEnv) {
     this.state = state;
+    this.env = env;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -91,13 +97,20 @@ export class Room implements DurableObject {
         ws.close(1002, 'protocol version');
         return;
       }
-      const result = join(room, msg.token, msg.name, now);
+      // A signed token outranks whatever the browser said about itself. It is
+      // verified here rather than trusted from the page, because the page is
+      // the one thing in this exchange an attacker controls.
+      const claims = msg.auth ? await claimsFromToken(this.env, msg.auth) : null;
+      const token = claims ? `u:${claims.sub}` : msg.token;
+      const name = claims?.name || msg.name;
+
+      const result = join(room, token, name, now);
       if (result.error) {
         this.sendTo(ws, { t: 'err', code: result.error });
         ws.close(1000, result.error);
         return;
       }
-      ws.serializeAttachment({ token: msg.token, seat: result.seat } satisfies SocketTag);
+      ws.serializeAttachment({ token, seat: result.seat } satisfies SocketTag);
       await this.commit(result.state);
       this.dispatch(result.effects);
       await this.scheduleSweep();

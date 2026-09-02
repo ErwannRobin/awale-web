@@ -42,8 +42,15 @@ export interface RoomSnapshot {
 }
 
 export type ClientMsg =
-  /** First message on every connection, new or reconnecting. */
-  | { t: 'hello'; v: number; token: string; name: string }
+  /**
+   * First message on every connection, new or reconnecting.
+   *
+   * `auth` is a signed session token from `/auth/*`, and is optional: online
+   * play works signed out exactly as it always has. When it is present and
+   * valid the server uses the account behind it as the seat identity, so the
+   * seat cannot be taken by someone who learned the anonymous `token`.
+   */
+  | { t: 'hello'; v: number; token: string; name: string; auth?: string }
   | { t: 'move'; pit: number; ply: number }
   | { t: 'resign' }
   | { t: 'rematch' }
@@ -134,10 +141,16 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     return null;
   }
   switch (o.t) {
-    case 'hello':
+    case 'hello': {
       if (typeof o.v !== 'number' || typeof o.token !== 'string') return null;
       if (o.token.length < 8 || o.token.length > 64) return null;
-      return { t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, '') };
+      // Capped rather than parsed: this file cannot verify a signature, so the
+      // most it can say is "short enough to be worth showing the verifier".
+      const auth = typeof o.auth === 'string' && o.auth.length > 0 && o.auth.length <= 1024
+        ? { auth: o.auth }
+        : {};
+      return { t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, ''), ...auth };
+    }
     case 'move':
       if (typeof o.pit !== 'number' || !Number.isInteger(o.pit)) return null;
       if (typeof o.ply !== 'number' || !Number.isInteger(o.ply)) return null;

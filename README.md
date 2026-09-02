@@ -172,10 +172,62 @@ apart on what a move means.
 
 ### What it is not
 
-No accounts, no ratings, no stored history, no clock, and no ladder. A room code
-is the whole authorisation model: anyone holding it can take a free seat, which
-is right for a game shared by link and is not more than that. The trade-offs are
-written down in [`server/README.md`](server/README.md).
+No ratings, no stored history, no clock, and no ladder. A room code is still the
+whole authorisation model for a room: anyone holding it can take a free seat,
+which is right for a game shared by link and is not more than that. The
+trade-offs are written down in [`server/README.md`](server/README.md).
+
+## Signing in
+
+Optional, and it buys one thing: an identity that is not this browser. Signed
+in, your display name and your seat follow you to another device, and a seat is
+proved by a token nobody else can forge. Signed out, everything works exactly as
+it did before there were accounts — which is also what happens when no API key
+is deployed.
+
+Identity comes from [phone-verif.com](https://phone-verif.com/integration-guide):
+the player answers a pre-written WhatsApp message, and the service returns a
+stable `user_id` for that number, registering it the first time it sees it
+(`flow=login`). The game never sees the phone number and never stores one.
+
+```
+POST /auth/start    begin a sign-in; returns the WhatsApp link and the embed URL
+GET  /auth/status   has it happened yet; returns our own signed session token
+POST /auth/webhook  phone-verif saying it has; HMAC-SHA256 verified before it is read
+GET  /auth/me       who this token is
+POST /auth/name     change the display name
+```
+
+**The API key never leaves the Worker.** The browser starts a sign-in, is shown
+the WhatsApp step, and then asks *us* whether it worked; we ask phone-verif. The
+embedded frame also posts a `verification_complete` message to the page, and
+that is treated as a hint to ask again sooner — never as proof, because anything
+the page can send, an attacker can send too. The only thing that seats a player
+is a token signed with a key the browser has never seen.
+
+Session tokens are HMAC-SHA256 over a small JSON payload, valid for 30 days. The
+signing key is derived from the API key with HKDF, so there is one secret to
+deploy rather than two — and rotating the API key signs everybody out, which is
+what a rotation is for. Set `AUTH_SESSION_SECRET` instead when sessions should
+outlive a rotation.
+
+### Turning it on
+
+```bash
+cd server && npx wrangler secret put PHONE_VERIF_API_KEY
+```
+
+That is the whole of it when the Worker also serves the game. Hosting the front
+end somewhere else needs one more thing, so that WhatsApp sends players back to
+the right place:
+
+```toml
+# server/wrangler.toml
+PUBLIC_APP_URL = "https://awale-web.vercel.app"
+```
+
+In production, point phone-verif's webhook at `/auth/webhook`; the polling path
+works with or without it, and the two agree in either order.
 
 ## Deploying
 
