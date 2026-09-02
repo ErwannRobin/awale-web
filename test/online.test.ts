@@ -11,7 +11,8 @@
 import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
-  command, createRoom, disconnect, isCoherent, isJoinable, join, snapshot, sweep,
+  IDLE_SWEEP_MS, MIN_ALARM_MS,
+  command, createRoom, disconnect, isCoherent, isJoinable, join, nextAlarmAt, snapshot, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
@@ -273,6 +274,40 @@ check('a finished game is not swept again', () => {
   const later = sweep(room, 2100 + ABANDON_MS * 3);
   assert.equal(later.effects.length, 0);
   assert.equal(later.state.winner, 1);
+});
+
+// ---------------------------------------------------------------------------
+console.log('room: alarm scheduling');
+
+// These four guard a real incident: an alarm scheduled at a timestamp already
+// in the past fires immediately, and the handler that reschedules it computes
+// the same past timestamp again. One abandoned room span millions of alarms
+// and storage writes in minutes.
+
+check('a room with nobody missing wakes up only for the tidy-up pass', () => {
+  const now = 5000;
+  assert.equal(nextAlarmAt(seatedRoom(), now), now + IDLE_SWEEP_MS);
+});
+
+check('a dropped player sets the alarm at the end of their grace period', () => {
+  const room = disconnect(seatedRoom(), TOKEN_B, 2000).state;
+  assert.equal(nextAlarmAt(room, 2500), 2000 + ABANDON_MS);
+});
+
+check('an alarm is never scheduled in the past', () => {
+  const room = disconnect(seatedRoom(), TOKEN_B, 2000).state;
+  const late = 2000 + ABANDON_MS * 10;   // the sweep ran late, or the DO slept
+  assert.equal(nextAlarmAt(room, late), late + MIN_ALARM_MS);
+});
+
+check('the alarm stops chasing a deadline once the game is over', () => {
+  // The loop that was: status 'over', a player still flagged offline, and a
+  // deadline permanently behind us.
+  let room = disconnect(seatedRoom(), TOKEN_B, 2000).state;
+  room = sweep(room, 2000 + ABANDON_MS + 1).state;
+  assert.equal(room.status, 'over');
+  const now = 2000 + ABANDON_MS * 4;
+  assert.equal(nextAlarmAt(room, now), now + IDLE_SWEEP_MS);
 });
 
 // ---------------------------------------------------------------------------
