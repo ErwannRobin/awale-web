@@ -9,7 +9,7 @@
 // `idFromName` gives exactly one instance per key worldwide, which is what
 // makes a webhook and a poll about the same sign-in agree without a lock.
 import {
-  cleanDisplayName, isStale, newVerification, settle,
+  cleanDisplayName, isStale, markPolled, newVerification, settle, shouldPollUpstream,
   type VerificationRecord, type VerificationStatus,
 } from '../../src/lib/authCore.ts';
 
@@ -28,6 +28,14 @@ export interface VerificationView {
   status: VerificationStatus;
   userId: string | null;
   isNewUser: boolean;
+  /**
+   * Whether the caller should ask phone-verif, having been given the turn.
+   *
+   * Answered here rather than by the router because this object is the only
+   * thing that sees every poll for this session — several tabs, or a retry
+   * storm, still produce one upstream call per window.
+   */
+  shouldPoll: boolean;
 }
 
 interface SettlePayload {
@@ -53,7 +61,7 @@ export class Identity implements DurableObject {
         const sessionId = url.searchParams.get('id') ?? '';
         const record = newVerification(sessionId, now);
         await this.state.storage.put(RECORD_KEY, record);
-        return Response.json(view(record));
+        return Response.json(view(record, false));
       }
 
       case '/session/read': {
@@ -64,9 +72,13 @@ export class Identity implements DurableObject {
         if (isStale(record, now)) {
           const done = settle(record, { status: 'expired' }, now);
           await this.state.storage.put(RECORD_KEY, done);
-          return Response.json(view(done));
+          return Response.json(view(done, false));
         }
-        return Response.json(view(record));
+        // The turn is claimed here, before the call rather than after it, so a
+        // slow or failing upstream cannot let a second caller through behind it.
+        const mine = shouldPollUpstream(record, now);
+        if (mine) await this.state.storage.put(RECORD_KEY, markPolled(record, now));
+        return Response.json(view(record, mine));
       }
 
       case '/session/settle': {
@@ -76,7 +88,7 @@ export class Identity implements DurableObject {
         );
         const next = settle(record, payload, now);
         await this.state.storage.put(RECORD_KEY, next);
-        return Response.json(view(next));
+        return Response.json(view(next, false));
       }
 
       // --- an account -------------------------------------------------------
@@ -122,6 +134,11 @@ export class Identity implements DurableObject {
   }
 }
 
-function view(record: VerificationRecord): VerificationView {
-  return { status: record.status, userId: record.userId, isNewUser: record.isNewUser };
+function view(record: VerificationRecord, shouldPoll: boolean): VerificationView {
+  return {
+    status: record.status,
+    userId: record.userId,
+    isNewUser: record.isNewUser,
+    shouldPoll,
+  };
 }

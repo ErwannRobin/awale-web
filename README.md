@@ -234,6 +234,21 @@ PUBLIC_APP_URL = "https://awale-web.vercel.app"
 In production, point phone-verif's webhook at `/auth/webhook`; the polling path
 works with or without it, and the two agree in either order.
 
+`PHONE_VERIF_API_BASE` overrides the API address, for a sandbox or for a stub
+under test.
+
+### How often we ask
+
+The browser polls `/auth/status` while it waits, backing off from two seconds to
+twelve and giving up after ten minutes. The Worker does **not** pass those polls
+on: the session's Durable Object hands out a turn at most every three seconds,
+and every poll in between is answered from the record it already holds.
+
+That matters because a rate-limited 429 and a sign-in that has not happened yet
+look identical from the browser. Without the throttle, a screen left open turns
+into a request every two seconds, earns a rate limit, and then waits forever on
+an answer that is never coming.
+
 ## Deploying
 
 A push to the default branch ships the game.

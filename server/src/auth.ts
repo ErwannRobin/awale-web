@@ -19,7 +19,7 @@ import {
 } from '../../src/lib/authCore.ts';
 import type { UserRecord, VerificationView } from './identity.ts';
 
-const API_BASE = 'https://api.phone-verif.com';
+const DEFAULT_API_BASE = 'https://api.phone-verif.com';
 
 export interface AuthEnv {
   IDENTITY: DurableObjectNamespace;
@@ -28,6 +28,8 @@ export interface AuthEnv {
   AUTH_SESSION_SECRET?: string;
   /** Where a player lands after WhatsApp. Defaults to the requesting origin. */
   PUBLIC_APP_URL?: string;
+  /** Overrides the phone-verif base URL. For a sandbox, or a stub under test. */
+  PHONE_VERIF_API_BASE?: string;
 }
 
 /**
@@ -58,7 +60,8 @@ async function callApi(
 ): Promise<Record<string, unknown>> {
   const key = env.PHONE_VERIF_API_KEY;
   if (!key) throw new AuthError(503, 'sign-in is not configured');
-  const response = await fetch(`${API_BASE}${path}`, {
+  const base = (env.PHONE_VERIF_API_BASE || DEFAULT_API_BASE).replace(/\/+$/, '');
+  const response = await fetch(`${base}${path}`, {
     ...init,
     headers: { 'content-type': 'application/json', 'X-API-Key': key, ...(init.headers ?? {}) },
   });
@@ -264,7 +267,10 @@ async function status(
   let view = await post<VerificationView | null>(target, '/session/read');
   if (!view) return Response.json({ status: 'expired' } satisfies StatusReply, { headers: cors });
 
-  if (view.status === 'pending') {
+  // Only when the store says it is our turn. Between turns the browser is
+  // answered from the record, which is what keeps a two-second poll loop from
+  // becoming a two-second call to phone-verif.
+  if (view.status === 'pending' && view.shouldPoll) {
     const upstream = await pollUpstream(env, sessionId);
     if (upstream) {
       view = await post<VerificationView>(
@@ -291,30 +297,58 @@ async function status(
   return Response.json(reply, { headers: cors });
 }
 
+/** Spellings of "it worked" worth accepting, so a wording change is not an outage. */
+const VERIFIED = new Set(['verified', 'success', 'succeeded', 'completed', 'confirmed']);
+const FINISHED = new Set(['expired', 'failed', 'cancelled', 'canceled', 'rejected']);
+
 async function pollUpstream(
   env: AuthEnv, sessionId: string,
 ): Promise<{ status: VerificationView['status']; userId?: string | null; isNewUser?: boolean } | null> {
   let body: Record<string, unknown>;
   try {
     body = await callApi(
-      env, `/check-verification-status?session_id=${encodeURIComponent(sessionId)}`,
+      // The flow is repeated here: the session was started as a login, and the
+      // status of a login is a `user_id`, not a phone number.
+      env,
+      `/check-verification-status?session_id=${encodeURIComponent(sessionId)}&flow=login`,
       { method: 'GET' },
     );
-  } catch {
-    // Upstream trouble is not the player's session going wrong. Stay pending
-    // and let the next poll try again.
+  } catch (error) {
+    // Upstream trouble is not the player's session going wrong, so the answer
+    // stays pending and the next turn tries again. Logged because a run of
+    // these is the difference between "they are still typing" and "we are being
+    // rate limited", and from the outside those look identical.
+    console.warn('phone-verif poll failed', (error as Error).message);
     return null;
   }
+
+  // The guide shows the fields under `session` in one example and at the top
+  // level in another, so look in both rather than picking a side.
   const session = (body.session ?? body) as Record<string, unknown>;
-  const raw = typeof session.status === 'string' ? session.status : 'pending';
-  if (raw === 'verified') {
+  const raw = (str(session, 'status') ?? str(body, 'status') ?? 'pending').toLowerCase();
+
+  if (VERIFIED.has(raw)) {
+    const userId = str(session, 'user_id') ?? str(body, 'user_id')
+      ?? str(session, 'userId') ?? str(body, 'userId');
+    if (!userId) {
+      // Verified, but not attributable to anyone. Failing is worse than waiting
+      // for a player, so it stays pending — but the shape is logged (keys only,
+      // never values: this response can carry a phone number) so the mismatch
+      // is findable in `wrangler tail` instead of looking like a hung sign-in.
+      console.error(
+        'phone-verif verified a session without a user id; keys were',
+        Object.keys(session).join(','), '/', Object.keys(body).join(','),
+      );
+      return null;
+    }
     return {
       status: 'verified',
-      userId: str(session, 'user_id'),
-      isNewUser: session.is_new_user === true,
+      userId,
+      isNewUser: session.is_new_user === true || body.is_new_user === true,
     };
   }
-  if (raw === 'expired' || raw === 'failed') return { status: raw };
+
+  if (FINISHED.has(raw)) return { status: raw === 'expired' ? 'expired' : 'failed' };
   return null;
 }
 

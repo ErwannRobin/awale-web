@@ -20,6 +20,18 @@ export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** A verification session is only worth polling for so long. */
 export const VERIFICATION_TTL_MS = 15 * 60 * 1000;
 
+/**
+ * The shortest gap between two questions to phone-verif about the same session.
+ *
+ * The browser polls on its own schedule and there may be more than one tab, but
+ * the number of times we ask *them* has to stay small: the guide's own advice is
+ * webhooks in production and polling "on user actions", and a rate-limited 429
+ * looks exactly like a sign-in that never finishes. So the upstream call is
+ * throttled here, per session, and every poll in between is answered from the
+ * record we already hold.
+ */
+export const UPSTREAM_MIN_GAP_MS = 3000;
+
 export interface SessionClaims {
   /** phone-verif's stable `user_id`. The only identity this game has. */
   sub: string;
@@ -219,10 +231,35 @@ export interface VerificationRecord {
   createdAt: number;
   /** Set when phone-verif answers; used only for the expiry sweep. */
   settledAt: number | null;
+  /** When we last asked phone-verif about this session. See UPSTREAM_MIN_GAP_MS. */
+  polledAt: number;
 }
 
 export function newVerification(sessionId: string, now = Date.now()): VerificationRecord {
-  return { sessionId, status: 'pending', userId: null, isNewUser: false, createdAt: now, settledAt: null };
+  return {
+    sessionId,
+    status: 'pending',
+    userId: null,
+    isNewUser: false,
+    createdAt: now,
+    settledAt: null,
+    polledAt: 0,
+  };
+}
+
+/** Is it our turn to ask phone-verif, or should this poll be answered from store? */
+export function shouldPollUpstream(record: VerificationRecord, now = Date.now()): boolean {
+  if (record.status !== 'pending') return false;
+  if (isStale(record, now)) return false;
+  // Never asked is its own case, not "asked at the epoch": the gap is a
+  // duration, and comparing it against a timestamp that was never set only
+  // happens to work because real clocks are large numbers.
+  if (record.polledAt === 0) return true;
+  return now - record.polledAt >= UPSTREAM_MIN_GAP_MS;
+}
+
+export function markPolled(record: VerificationRecord, now = Date.now()): VerificationRecord {
+  return { ...record, polledAt: now };
 }
 
 /** A pending sign-in nobody finished stops being worth polling. */

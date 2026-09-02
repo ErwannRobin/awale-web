@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import {
   saveSession, startSignIn, waitForSignIn,
   type Session, type StartedSignIn,
 } from '../lib/auth.ts';
+import { encodeQr } from '../lib/qr.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
+import { isNative } from '../lib/platform.ts';
 
 interface Props {
   onSignedIn: (session: Session, isNew: boolean) => void;
@@ -34,6 +36,15 @@ export default function SignIn({ onSignedIn, onBack, onToast }: Props) {
   const [started, setStarted] = useState<StartedSignIn | null>(null);
   const [copied, setCopied] = useState(false);
   const nudge = useRef<(() => void) | null>(null);
+
+  // Drawn here, from the link we were given — no request, no credit, and it
+  // still works with the network down. Pointless on the device that would have
+  // to scan it, so phones get the button and nothing else.
+  const showQr = !isNative();
+  const qr = useMemo(
+    () => (showQr && started?.whatsappUrl ? encodeQr(started.whatsappUrl) : null),
+    [showQr, started?.whatsappUrl],
+  );
 
   const tap = () => { playTap(); hapticTap(); };
   const back = useCallback(() => { tap(); onBack(); }, [onBack]);
@@ -145,6 +156,23 @@ export default function SignIn({ onSignedIn, onBack, onToast }: Props) {
                 <span className="pill-sub">{t('signIn.openWhatsAppSub')}</span>
               </span>
             </a>
+            {qr && (
+              <>
+                <p className="wait-hint">{t('signIn.qrHint')}</p>
+                <svg
+                  className="qr"
+                  viewBox={`0 0 ${qr.size} ${qr.size}`}
+                  role="img"
+                  aria-label={t('signIn.qrHint')}
+                  shapeRendering="crispEdges"
+                >
+                  {/* The quiet zone is part of the code, so it is painted
+                      rather than left to whatever is behind the card. */}
+                  <rect width={qr.size} height={qr.size} fill="#fff" />
+                  <path d={qr.path} fill="#000" />
+                </svg>
+              </>
+            )}
             <p className="wait-line">{t('signIn.waiting')}</p>
             <div className="wait-dots" aria-hidden><span /><span /><span /></div>
             {/* For signing in on a phone while reading this on a desktop. */}

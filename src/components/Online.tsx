@@ -144,7 +144,7 @@ export default function Online({
           it. What it buys is a name and a seat that follow you to another
           device, which only matters once you are playing strangers. */}
       {authEnabled() && !joining && (
-        <div className="menu-cards">
+        <div className="menu-actions">
           {account ? (
             <div className="info-card info-card-static">
               <span className="info-icon">✅</span>

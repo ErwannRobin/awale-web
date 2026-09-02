@@ -295,6 +295,7 @@ export const fr: Record<keyof typeof en, string> = {
   'signIn.openWhatsAppSub': 'Le message est déjà écrit',
   'signIn.copyLink': 'Copier le lien',
   'signIn.copyFailed': 'Impossible de copier le lien.',
+  'signIn.qrHint': 'Ou scannez ceci avec votre téléphone :',
   'signIn.expired': 'La connexion a pris trop de temps. Réessayez.',
   'signIn.failed': 'Cela n’a pas fonctionné. Réessayez.',
   'signIn.unavailable': 'La connexion est indisponible pour le moment.',

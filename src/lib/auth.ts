@@ -167,20 +167,31 @@ export async function refreshSession(session: Session): Promise<Session | null> 
  * comes back to the tab, which is the moment they are most likely to have just
  * finished — it only changes *when* we ask our own server, never the answer.
  */
+/** First gap between polls, and the ceiling the backoff climbs to. */
+const FIRST_GAP_MS = 2000;
+const MAX_GAP_MS = 12000;
+/** Give up before the server's own 15-minute expiry, so the reason is the real one. */
+const DEADLINE_MS = 10 * 60 * 1000;
+
 export async function waitForSignIn(opts: {
   sessionId: string;
   signal: AbortSignal;
-  intervalMs?: number;
   onStatus?: (status: SignInStatus) => void;
   /** Handed a function that cuts the current wait short. See `nudge` above. */
   onReady?: (nudge: () => void) => void;
 }): Promise<StatusReply> {
-  const interval = opts.intervalMs ?? 2500;
   let wake: (() => void) | null = null;
   opts.onReady?.(() => wake?.());
 
+  // Backing off matters: a fixed two-second poll is a request every two seconds
+  // for as long as somebody leaves the screen open, and the far end answers a
+  // flood with a rate limit that is indistinguishable from "not yet".
+  let interval = FIRST_GAP_MS;
+  const deadline = Date.now() + DEADLINE_MS;
+
   for (;;) {
     if (opts.signal.aborted) throw new DOMException('aborted', 'AbortError');
+    if (Date.now() > deadline) return { status: 'expired' };
     const reply = await checkSignIn(opts.sessionId, opts.signal);
     opts.onStatus?.(reply.status);
     if (reply.status !== 'pending') return reply;
@@ -200,5 +211,6 @@ export async function waitForSignIn(opts: {
       opts.signal.addEventListener('abort', onAbort, { once: true });
       wake = done;
     });
+    interval = Math.min(Math.round(interval * 1.5), MAX_GAP_MS);
   }
 }

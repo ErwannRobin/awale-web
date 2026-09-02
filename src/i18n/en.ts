@@ -294,6 +294,7 @@ export const en = {
   'signIn.openWhatsAppSub': 'The message is already written',
   'signIn.copyLink': 'Copy the link',
   'signIn.copyFailed': 'Could not copy the link.',
+  'signIn.qrHint': 'Or scan this with your phone:',
   'signIn.expired': 'That sign-in took too long. Try again.',
   'signIn.failed': 'That did not work. Try again.',
   'signIn.unavailable': 'Sign-in is unavailable right now.',

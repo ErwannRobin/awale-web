@@ -9,10 +9,11 @@
 // own answers. What is here is every decision the game makes about them.
 import assert from 'node:assert/strict';
 import {
-  SESSION_TTL_MS, VERIFICATION_TTL_MS,
-  base64UrlDecode, base64UrlEncode, claimsFor, cleanDisplayName, isStale, mintToken,
-  newVerification, peekClaims, readToken, settle, signingKey, verifyWebhook,
+  SESSION_TTL_MS, UPSTREAM_MIN_GAP_MS, VERIFICATION_TTL_MS,
+  base64UrlDecode, base64UrlEncode, claimsFor, cleanDisplayName, isStale, markPolled, mintToken,
+  newVerification, peekClaims, readToken, settle, shouldPollUpstream, signingKey, verifyWebhook,
 } from '../src/lib/authCore.ts';
+import { QUIET_ZONE, encodeQr } from '../src/lib/qr.ts';
 
 let passed = 0;
 const failures: string[] = [];
@@ -231,6 +232,77 @@ await check('a sign-in nobody finished goes stale, and a finished one never does
 
   const verified = settle(pending, { status: 'verified', userId: 'u1' }, 2000);
   assert.equal(isStale(verified, 1000 + VERIFICATION_TTL_MS + 1), false);
+});
+
+console.log('');
+console.log('asking phone-verif no more often than we have to');
+
+await check('the first poll goes upstream', () => {
+  assert.equal(shouldPollUpstream(newVerification('s1', 1000), 1000), true);
+});
+
+await check('polls inside the window are answered from the record', () => {
+  const record = markPolled(newVerification('s1', 1000), 1000);
+  // A browser polling every two seconds, or three tabs polling at once, must
+  // not become three calls to a service that answers a flood with a 429.
+  assert.equal(shouldPollUpstream(record, 1000 + UPSTREAM_MIN_GAP_MS - 1), false);
+  assert.equal(shouldPollUpstream(record, 1000 + UPSTREAM_MIN_GAP_MS), true);
+});
+
+await check('a settled or stale session is never polled again', () => {
+  const verified = settle(newVerification('s1', 1000), { status: 'verified', userId: 'u1' }, 2000);
+  assert.equal(shouldPollUpstream(verified, 1e12), false);
+
+  const abandoned = newVerification('s2', 1000);
+  assert.equal(shouldPollUpstream(abandoned, 1000 + VERIFICATION_TTL_MS + 1), false);
+});
+
+await check('settling keeps the poll clock, so a webhook cannot reopen the tap', () => {
+  const polled = markPolled(newVerification('s1', 1000), 1500);
+  const next = settle(polled, { status: 'pending' }, 1600);
+  assert.equal(next.polledAt, 1500);
+});
+
+console.log('');
+console.log('QR codes');
+
+await check('a link encodes to a square grid with its quiet zone', () => {
+  const link = 'https://wa.me/1234567890?text=Verification%20token%3A%20%5Bi2vzxv%5D';
+  const qr = encodeQr(link);
+  // Versions are 21, 25, 29 … modules, always odd, plus the border either side.
+  const modules = qr.size - QUIET_ZONE * 2;
+  assert.equal(modules >= 21, true);
+  assert.equal((modules - 21) % 4, 0, 'a real QR version');
+  assert.equal(qr.path.length > 0, true);
+});
+
+await check('the same text always draws the same code', () => {
+  assert.equal(encodeQr('https://wa.me/1').path, encodeQr('https://wa.me/1').path);
+  assert.notEqual(encodeQr('https://wa.me/1').path, encodeQr('https://wa.me/2').path);
+});
+
+await check('a longer link grows the code rather than losing the end of it', () => {
+  const short = encodeQr('https://wa.me/1');
+  const long = encodeQr('https://wa.me/1?text=' + 'x'.repeat(300));
+  assert.equal(long.size > short.size, true);
+});
+
+await check('the finder patterns are where a scanner looks for them', () => {
+  // Top-left finder: a 7x7 ring. If this is right the grid is oriented and
+  // offset correctly, which is the part a hand-written path can get wrong.
+  const qr = encodeQr('https://wa.me/1234567890');
+  const dark = new Set<string>();
+  for (const [, x, y] of qr.path.matchAll(/M(\d+) (\d+)h1v1h-1z/g)) dark.add(`${x},${y}`);
+
+  const q = QUIET_ZONE;
+  for (let i = 0; i < 7; i++) {
+    assert.equal(dark.has(`${q + i},${q}`), true, `top edge at ${i}`);
+    assert.equal(dark.has(`${q},${q + i}`), true, `left edge at ${i}`);
+  }
+  // The ring's white gap, one module in from the edge.
+  assert.equal(dark.has(`${q + 1},${q + 1}`), false);
+  // And the solid 3x3 core.
+  assert.equal(dark.has(`${q + 3},${q + 3}`), true);
 });
 
 console.log('');
