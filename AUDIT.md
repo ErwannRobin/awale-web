@@ -221,29 +221,58 @@ comment, so the verifier and the game agree.
 
 ---
 
-## 4. Native mobile
+## 4. Native mobile — shipped
 
-The rules, search and game state machine are free of DOM dependencies. The four
-places that were not are now behind seams:
+The rules, search and game state machine are free of DOM dependencies. The
+places that were not are behind seams:
 
 | Concern | Before | Now |
 | --- | --- | --- |
 | Layout direction | CSS media query | `lib/layout.ts` — pure, tested |
-| Screen shape | CSS media query | `lib/useOrientation.ts` — the one browser-specific file, RN replacement in its doc comment |
-| Persistence | `localStorage` calls | `lib/storage.ts` — swappable `KeyValueStore`, Capacitor Preferences example in the file |
+| Screen shape | CSS media query | `lib/useOrientation.ts` — the one browser-specific file |
+| Persistence | `localStorage` calls | `lib/storage.ts` — swappable `KeyValueStore` |
 | Background search | `new Worker(...)`, no fallback | `lib/aiClient.ts` — inline search where workers do not exist |
-| Sound / haptics | — | `lib/sound.ts`, `lib/haptics.ts`, each a four-function surface with the native swap documented |
+| Sound / haptics | — | `lib/sound.ts`, `lib/haptics.ts` |
 | Timers | `window.setTimeout` | plain `setTimeout` |
 
-Plus app-shell CSS (safe-area insets, `100dvh`, no rubber-band scroll, no tap
-highlight, no double-tap zoom, `@media (hover: none)` guards,
-`prefers-reduced-motion`), a PWA manifest with icons, and `capacitor.config.ts`.
+Capacitor was the recommendation, and it is now the build. `ios/` and
+`android/` are in the repo; `lib/platform.ts` answers "are we native?" and
+every plugin sits behind a dynamic `import()` in a native-only branch, so a
+browser build never loads a byte of native code.
 
-Recommendation: **Capacitor** (days). React Native only if a store listing needs
-performance a WebView cannot give — `src/lib/` would transfer unchanged, but
-`src/components/` is a real rewrite.
+What the shell adds on top of the PWA:
 
----
+- **Persistence** moves to Preferences (UserDefaults / SharedPreferences).
+  WKWebView storage is evictable — iOS can clear it under disk pressure — and
+  losing a rating and twelve unlocked challenges to a disk cleanup is not a
+  bug a player would forgive. `initNative()` hydrates every key into a Map
+  before the first render, because the store interface is synchronous and
+  screens read progress while rendering.
+- **Offline** stops needing the service worker: the shell already has every
+  asset on disk, so `registerServiceWorker()` returns early rather than
+  installing a second copy of the game.
+- **Haptics** become real on iOS. The web Vibration API does not exist in
+  Safari, so `hapticWin()` was a no-op on iPhone; it is now a Taptic
+  notification.
+- **Reminders** — one local notification, off until the player turns it on,
+  re-armed for three days out whenever the app is opened, closed or a game is
+  left. Local, not push: remote push needs FCM, APNs and a server to send
+  from, which is the same thing online play needs and this repo does not have.
+- **The review prompt** — the system rating sheet after a win, never a loss,
+  gated to at most three asks, 90 days apart, after three wins. No "Rate us"
+  button: on iOS that promises a form the OS may silently refuse to show.
+- **The Android back button** means one screen back. Left alone it closes the
+  app from anywhere, mid-game included — which store reviewers do flag.
+
+Two things worth knowing about the generated projects. `SCHEDULE_EXACT_ALARM`
+is merged in by the notifications plugin and is **removed** again in the app
+manifest: Play restricts it to alarm and calendar apps, and a three-day nudge
+does not need alarm precision. And `ios/App/App/PrivacyInfo.xcprivacy` is
+written but not yet a member of the App target — Xcode adopts no file it did
+not create itself, so that is one drag in the project navigator.
+
+`test/native.test.ts` pins the two pieces that are pure: when the reminder
+fires, and when the review gate opens.
 
 ## 5. What is still missing
 
@@ -267,6 +296,11 @@ Short list now, and honest about why.
    nothing leaves the device. The error boundary logs to the console.
 6. **Sound is synthesised, not sampled.** It reads as a game, not as a recording
    of a real board. Real samples would sound better at the cost of bundle size.
+7. **Store artwork.** Both native projects still carry the default Capacitor
+   icon and splash. `npx @capacitor/assets generate` builds every size from one
+   1024×1024 source; nobody has drawn that source yet.
+8. **Remote push.** Only local notifications are wired up. Remote push is not a
+   missing plugin, it is a missing server — see item 1.
 
 ---
 
@@ -275,7 +309,7 @@ Short list now, and honest about why.
 ```
 npm run lint               # ESLint 9 — clean
 npm run build              # tsc -b + vite build — clean
-npm test                   # 135 assertions across 5 suites + 30 self-play games
+npm test                   # 142 assertions across 6 suites + 30 self-play games
 npm run verify:challenges   # 12 positions: 0 failures, 1 inconclusive (see §5.2)
 npm run test:e2e           # 9 tests × 2 viewports (desktop + phone)
 ```

@@ -8,6 +8,10 @@ import type { SavedGame } from '../lib/saveGame.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
+import { maybeRequestReview } from '../lib/review.ts';
+
+/** Long enough for the win banner and its chime to land before the OS sheet. */
+const REVIEW_DELAY_MS = 1500;
 
 interface Props {
   mode: 'ai' | 'local';
@@ -90,6 +94,12 @@ export default function Game({
     };
   }, [t, mode]);
 
+  // The store rating sheet, asked for after a win and never after a loss.
+  // Delayed so the win lands first, and cancelled if the player leaves before
+  // then. See lib/review.ts for the rules on top of the OS throttle.
+  const reviewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(reviewTimer.current), []);
+
   // Rated free play folds the result into the local record and rating.
   const onFinish = useCallback((winner: Winner, scores: number[]) => {
     if (!rated) return;
@@ -102,6 +112,10 @@ export default function Game({
     saveStats(next);
     setRatingDelta({ before: before.rating, after: next.rating });
     onStatsChange?.();
+
+    if (outcome === 'win') {
+      reviewTimer.current = setTimeout(() => { void maybeRequestReview(next.wins); }, REVIEW_DELAY_MS);
+    }
   }, [rated, level, setup, onStatsChange]);
 
   const { state, play, hint, undo, newGame, humanPlayer } = useGame({

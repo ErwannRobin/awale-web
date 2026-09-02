@@ -178,6 +178,10 @@ export const fr: Record<keyof typeof en, string> = {
   'settings.countsHelp': 'La petite pastille chiffrée sur chaque trou.',
   'settings.leftHanded': 'Disposition gaucher',
   'settings.leftHandedHelp': 'Déplace votre grenier de l’autre côté. Le sens du semis ne change jamais.',
+  'settings.sectionNotify': 'Rappels',
+  'settings.reminders': 'Rappels de jeu',
+  'settings.remindersHelp': "Un rappel si vous n'avez pas joué depuis quelques jours. Programmé sur cet appareil — rien n'est envoyé depuis un serveur.",
+  'settings.remindersDenied': "Les notifications sont désactivées pour Awalé dans les réglages du système.",
   'settings.language': 'Langue',
   'settings.resetStats': 'Réinitialiser statistiques et classement',
   'settings.resetProgress': 'Réinitialiser la progression des défis',
@@ -232,6 +236,12 @@ export const fr: Record<keyof typeof en, string> = {
   'rank.strategist': 'Stratège',
   'rank.elder': 'Ancien',
   'rank.master': 'Maître',
+
+  // ---- notifications ---------------------------------------------------
+  'notify.reminderTitle': 'Le plateau vous attend',
+  'notify.reminderBody': "Vos graines n'ont pas bougé depuis quelques jours. Une petite partie ?",
+  'notify.channelName': 'Rappels de jeu',
+  'notify.channelDescription': 'Un rappel occasionnel pour revenir au plateau.',
 
   // ---- errors ----------------------------------------------------------
   'error.title': 'Quelque chose a cassé',

@@ -1,9 +1,12 @@
 // Service-worker registration.
 //
-// PORTING NOTE: a Capacitor build already ships its assets on-device, so the
-// worker is redundant there — harmless, but you can skip the call in main.tsx
-// when running inside the native shell.
+// The native shell ships every asset inside the app bundle and loads them off
+// disk, so the worker has nothing left to cache there — it is skipped rather
+// than left to install a second, redundant copy of the game.
+import { isNative } from './platform.ts';
+
 export function registerServiceWorker(): void {
+  if (isNative()) return;
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(err => {

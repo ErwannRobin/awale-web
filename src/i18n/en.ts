@@ -177,6 +177,10 @@ export const en = {
   'settings.countsHelp': 'The little number badge on each pit.',
   'settings.leftHanded': 'Left-handed layout',
   'settings.leftHandedHelp': 'Moves your store to the other side. The sowing direction never changes.',
+  'settings.sectionNotify': 'Reminders',
+  'settings.reminders': 'Play reminders',
+  'settings.remindersHelp': 'One nudge if you have not played for a few days. Scheduled on this device — nothing is sent from a server.',
+  'settings.remindersDenied': 'Notifications are switched off for Awalé in your system settings.',
   'settings.language': 'Language',
   'settings.resetStats': 'Reset stats and rating',
   'settings.resetProgress': 'Reset challenge progress',
@@ -231,6 +235,12 @@ export const en = {
   'rank.strategist': 'Strategist',
   'rank.elder': 'Elder',
   'rank.master': 'Master',
+
+  // ---- notifications ---------------------------------------------------
+  'notify.reminderTitle': 'The board is waiting',
+  'notify.reminderBody': 'Your seeds have not moved in a few days. One quick game?',
+  'notify.channelName': 'Play reminders',
+  'notify.channelDescription': 'An occasional nudge to come back to the board.',
 
   // ---- errors ----------------------------------------------------------
   'error.title': 'Something broke',

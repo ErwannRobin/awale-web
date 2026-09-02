@@ -72,6 +72,11 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/layout.ts` | Pit arrangement + the counterclockwise invariant |
 | `src/lib/useOrientation.ts` | The one browser-specific piece of the layout |
 | `src/lib/storage.ts` | Pluggable key/value persistence |
+| `src/lib/platform.ts` | Web or native shell — the question every seam asks |
+| `src/lib/native.ts` | Native bootstrap: Preferences, status bar, lifecycle |
+| `src/lib/notifications.ts` | The local play reminder |
+| `src/lib/review.ts` | When to ask for a store rating |
+| `src/lib/useBackButton.ts` | Android's back button |
 | `src/lib/progress.ts` | Challenge unlock progress |
 | `src/lib/settings.ts` | User settings + change subscription |
 | `src/lib/stats.ts` | Elo rating, streaks, per-level tallies, ranks |
@@ -103,30 +108,91 @@ direction; that bug shipped once. Never set `flex-direction` on `.board`,
 
 ## Native mobile app
 
-The game logic is deliberately platform-free: `src/lib/` has no DOM
-dependencies except `useOrientation.ts`, persistence goes through a swappable
-`KeyValueStore`, and the AI runs inline when Web Workers are unavailable.
+The game logic is platform-free: `src/lib/` has no DOM dependencies except
+`useOrientation.ts`, persistence goes through a swappable `KeyValueStore`, and
+the AI runs inline when Web Workers are unavailable.
 
 **Progressive web app** — works today. `public/manifest.webmanifest` plus icons
 make the built site installable from the browser ("Add to Home Screen"), and
-`public/sw.js` caches the app shell and every hashed asset, so the game runs with
-no network at all. An e2e test proves it: load, go offline, reload, play.
+`public/sw.js` caches the app shell and every hashed asset, so the game runs
+with no network at all. An e2e test proves it: load, go offline, reload, play.
 
-**Capacitor (iOS + Android)** — `capacitor.config.ts` is already in the repo:
+**Capacitor (iOS + Android)** — the `ios/` and `android/` projects are in the
+repo, and `src/lib/native.ts` is the runtime half.
 
 ```bash
-npm i @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android
-npm run build
-npx cap add ios && npx cap add android
-npx cap sync
-npx cap open ios      # or: npx cap open android
+npm install
+npm run build && npx cap sync   # rebuild the web app and copy it into both shells
+npx cap open android            # Android Studio
+npx cap open ios                # Xcode, on a Mac
 ```
 
-The app-shell CSS (safe-area insets, `100dvh`, no rubber-band scroll, no tap
-highlight, no double-tap zoom, touch-only hover rules) is already in place, so
-the WebView build should not read as a web page in a frame.
+`npx cap run android -l --external` gives live reload against the Vite dev
+server while the app runs on a device.
+
+### What the shell adds
+
+| Concern | On the web | In the shell |
+| --- | --- | --- |
+| Offline | service worker caches the app shell | every asset ships in the bundle; the worker is skipped |
+| Persistence | `localStorage`, which iOS may evict | Preferences (UserDefaults / SharedPreferences) |
+| Haptics | Vibration API — Android only | `@capacitor/haptics`, real on both platforms |
+| Reminders | — | one local notification, off by default |
+| Store rating | — | the in-app review sheet after a win |
+| Back button | — | one screen back, and only the menu exits |
+| Status bar | `theme-color` | styled to the board's own dark |
+
+`lib/platform.ts` answers "are we native?"; every plugin is behind a dynamic
+`import()` in a native-only branch, so a browser build never loads native code.
+
+### Reminders, not push
+
+The reminder is a **local** notification: scheduled on the device, delivered by
+the device, working with the network off. Real remote push would need FCM,
+APNs, *and a server to send from* — the same thing missing for online play.
+
+- Off by default. Turning the setting on is what triggers the OS permission
+  prompt; a refusal leaves the toggle off rather than lying about it.
+- Exactly one is ever pending, re-armed whenever the app is opened, closed or
+  a game is left, so it always means "you have not played in three days".
+- Scheduled inexactly, and `SCHEDULE_EXACT_ALARM` is removed from the merged
+  Android manifest — Play restricts that permission to alarm and calendar apps.
+
+### The review prompt
+
+`lib/review.ts` asks for the system rating sheet after a **win** — never a
+loss — once the player has won at least three games, at most three times ever
+and at least 90 days apart. The stores throttle it further on top of that and
+never report whether anything was shown.
+
+There is deliberately no "Rate us" button: on iOS a button that promises a
+rating form and then silently does nothing (because the OS throttled it) is a
+review rejection. A store deep link is the right control there, and it needs an
+App Store id this project does not have yet.
+
+### Before submitting to a store
+
+Code-side work that is done is listed above. These are the parts that need an
+account, a Mac, or a decision:
+
+1. **Icons and splash screens.** Both projects still carry the default
+   Capacitor artwork. `npx @capacitor/assets generate` builds every size from a
+   1024×1024 source; `public/icon.svg` is the design to start from.
+2. **`ios/App/App/PrivacyInfo.xcprivacy`** is written but not yet a member of
+   the App target — Xcode does not adopt a file it did not create. Drag it into
+   the App group and tick the target. It declares no tracking, no collected
+   data, and UserDefaults under reason CA92.1.
+3. **Bundle id and signing.** `com.awale.game` is a placeholder; a real Apple
+   team and a Play upload key are needed.
+4. **Store listings** — screenshots, an age rating, and a privacy policy URL.
+   The policy is short here: nothing leaves the device.
+5. **Guideline 4.2 ("minimum functionality")** rejects thin web wrappers. The
+   defence is real — a full offline game, native haptics, no browser chrome —
+   but it is worth knowing before the first submission.
+6. **The licence.** `engine.ts` and `ai.ts` are a port of a long-standing C
+   implementation. If that original carries its own licence it governs a
+   published binary too. See `AUDIT.md` §5.4.
 
 **React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
 rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it
-needs (`useWindowDimensions` instead of `matchMedia`) in its doc comment, and
-`storage.ts` carries the `@capacitor/preferences` / `AsyncStorage` example.
+needs (`useWindowDimensions` instead of `matchMedia`) in its doc comment.

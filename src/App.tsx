@@ -14,6 +14,9 @@ import { loadProfile } from './lib/profile.ts';
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
+import { useBackButton } from './lib/useBackButton.ts';
+import { exitApp } from './lib/native.ts';
+import { refreshReminder } from './lib/notifications.ts';
 import { useT } from './i18n/useT.ts';
 
 type Screen =
@@ -79,6 +82,8 @@ export default function App() {
     refreshSaved();
     refreshStats();
     setScreen({ name: 'menu' });
+    // Just played, so any "you have not played in a while" reminder moves out.
+    void refreshReminder('left a game');
   };
 
   // Build the setup for the active challenge (memoised so its identity is stable).
@@ -108,6 +113,23 @@ export default function App() {
     }
     setScreen(target);
   };
+
+  /**
+   * Android's back button. It has to mean "one screen back", not "quit" —
+   * quitting out of a game in progress is exactly what store reviewers flag.
+   * Only the menu exits, and only on Android; iOS has no such button and
+   * forbids a programmatic exit anyway.
+   */
+  useBackButton(() => {
+    switch (screen.name) {
+      case 'menu': void exitApp(); return;
+      case 'game': leaveGame(); return;
+      case 'learn':
+      case 'settings': goBackTo(screen.back)(); return;
+      case 'challenge': setScreen({ name: 'challenges' }); return;
+      default: setScreen({ name: 'menu' });
+    }
+  });
 
   return (
     <div className="app">
