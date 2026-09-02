@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App Store privacy manifest.
+
+  Nothing leaves the device: no accounts, no analytics, no crash reporting and
+  no network calls at all — so both the collected-data and tracking-domain
+  lists are empty and NSPrivacyTracking is false.
+
+  UserDefaults is a "required reason" API. It is used by @capacitor/preferences
+  to hold this player's own settings, rating, stats and saved game, which is
+  exactly reason CA92.1 ("access info from the app itself").
+
+  NOTE: this file must be a member of the App target. Xcode does not adopt it
+  automatically — see the README's App Store checklist.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

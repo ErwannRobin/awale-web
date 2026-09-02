@@ -1,12 +1,9 @@
 /// <reference types="node" />
-// Native shell configuration. This file is inert until the Capacitor packages
-// are installed — see the "Native mobile app" section of the README:
+// Native shell configuration — read by the Capacitor CLI, never by the app.
+// See the "Native mobile app" section of the README for the build commands.
 //
-//   npm i @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android
-//   npm run build && npx cap add ios && npx cap add android && npx cap sync
-//
-// Nothing in src/ imports it; it exists so the native port is a checkout away
-// rather than a redesign.
+// `src/lib/native.ts` is the runtime half: it swaps persistence to Preferences,
+// styles the status bar and arms the reminders.
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
@@ -28,6 +25,11 @@ const config: CapacitorConfig = {
       backgroundColor: '#150c06',
       showSpinner: false,
       launchAutoHide: true,
+    },
+    LocalNotifications: {
+      // Tint for the small status-bar icon on Android. The icon itself is the
+      // app icon until a dedicated monochrome `ic_stat_*` drawable is added.
+      iconColor: '#d4a845',
     },
   },
 };

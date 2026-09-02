@@ -9,6 +9,7 @@ import { clearSavedGame } from '../lib/saveGame.ts';
 import { loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey } from '../lib/profile.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
+import { enableReminders, disableReminders, remindersSupported } from '../lib/notifications.ts';
 
 interface Props {
   onBack: () => void;
@@ -73,11 +74,32 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
   const s = useSettings();
   const [profile, setProfile] = useState(loadProfile);
 
+  // Reminders are a native-shell feature; in a browser the row is absent
+  // rather than present and dead.
+  const canRemind = remindersSupported();
+
   // Every control makes a sound, so unlock the audio context on the first one.
   const feedback = () => { primeAudio(); playTap(); hapticTap(); };
   const set = <K extends keyof typeof s>(key: K, value: (typeof s)[K]) => {
     updateSettings({ [key]: value } as Partial<typeof s>);
     feedback();
+  };
+
+  /**
+   * Turning reminders on is what asks the OS for notification permission —
+   * never on first launch. A refusal leaves the setting off, so the toggle
+   * always tells the truth about whether a reminder can arrive.
+   */
+  const toggleReminders = async (on: boolean) => {
+    feedback();
+    if (!on) {
+      updateSettings({ reminders: false });
+      await disableReminders();
+      return;
+    }
+    const granted = await enableReminders();
+    updateSettings({ reminders: granted });
+    if (!granted) onToast(t('settings.remindersDenied'));
   };
 
   const commitProfile = (next: typeof profile) => {
@@ -186,6 +208,19 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
             <Toggle on={s.leftHanded} label={t('settings.leftHanded')} onChange={v => set('leftHanded', v)} />
           </Row>
         </section>
+
+        {canRemind && (
+          <section className="set-section" aria-label={t('settings.sectionNotify')}>
+            <h3 className="set-head">{t('settings.sectionNotify')}</h3>
+            <Row label={t('settings.reminders')} help={t('settings.remindersHelp')}>
+              <Toggle
+                on={s.reminders}
+                label={t('settings.reminders')}
+                onChange={v => { void toggleReminders(v); }}
+              />
+            </Row>
+          </section>
+        )}
 
         <section className="set-section" aria-label={t('settings.language')}>
           <h3 className="set-head">{t('settings.language')}</h3>

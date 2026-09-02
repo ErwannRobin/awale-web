@@ -20,6 +20,12 @@ export interface Settings {
   leftHanded: boolean;
   showCounts: boolean;
   language: Language;
+  /**
+   * Local "come back and play" reminders. Native shell only, and off until the
+   * player turns it on — that toggle is what triggers the OS permission
+   * prompt. See lib/notifications.ts.
+   */
+  reminders: boolean;
 }
 
 /** Animation tempo multiplier. `instant` skips the sowing animation entirely. */
@@ -50,6 +56,7 @@ export function defaultSettings(): Settings {
     leftHanded: false,
     showCounts: true,
     language: detectLanguage(),
+    reminders: false,
   };
 }
 
@@ -71,6 +78,7 @@ function coerce(raw: unknown): Settings {
     leftHanded: bool(o.leftHanded, d.leftHanded),
     showCounts: bool(o.showCounts, d.showCounts),
     language: o.language === 'fr' || o.language === 'en' ? o.language : d.language,
+    reminders: bool(o.reminders, d.reminders),
   };
 }
 
@@ -86,6 +94,17 @@ export function getSettings(): Settings {
     cache = defaultSettings();
   }
   return cache;
+}
+
+/**
+ * Drop the memoised copy so the next read comes from the store.
+ *
+ * The native shell swaps `localStorage` for Preferences during startup; if
+ * anything read settings before that swap, the cached copy is from the wrong
+ * backend. See lib/native.ts.
+ */
+export function invalidateSettingsCache(): void {
+  cache = null;
 }
 
 export function updateSettings(patch: Partial<Settings>): Settings {
