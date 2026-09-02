@@ -8,8 +8,7 @@
 // plumbing: sockets in, sockets out, state to storage, an alarm for the player
 // who walked away.
 import {
-  ABANDON_MS,
-  command, createRoom, disconnect, isExpired, isJoinable, join, seatOf, sweep,
+  command, createRoom, disconnect, isExpired, isJoinable, join, nextAlarmAt, seatOf, sweep,
   type Effect, type RoomState,
 } from '../../src/lib/roomCore.ts';
 import {
@@ -135,6 +134,7 @@ export class Room implements DurableObject {
     const now = Date.now();
 
     if (isExpired(room, now)) {
+      await this.state.storage.deleteAlarm();
       await this.state.storage.deleteAll();
       this.cached = null;
       for (const ws of this.state.getWebSockets()) {
@@ -161,6 +161,10 @@ export class Room implements DurableObject {
   }
 
   private async commit(next: RoomState): Promise<void> {
+    // The pure core returns the state object it was given when nothing happened
+    // — a ping, a refused move, a sweep with nothing to sweep. Writing it back
+    // would be a storage operation that changes no byte.
+    if (next === this.cached) return;
     this.cached = next;
     await this.state.storage.put(STATE_KEY, next);
   }
@@ -211,16 +215,15 @@ export class Room implements DurableObject {
   /**
    * One alarm, always the next thing that could need doing. Cloudflare keeps a
    * single alarm per object, so this overwrites rather than accumulates.
+   *
+   * `nextAlarmAt` is what keeps that alarm in the future. Handing the runtime a
+   * timestamp that has already passed makes it fire at once, and this method
+   * would then compute the same past timestamp again: an object spinning at
+   * storage speed until the room finally expires.
    */
   private async scheduleSweep(): Promise<void> {
     const room = this.cached;
     if (!room) return;
-    const offline = room.players
-      .map(p => p?.offlineSince ?? null)
-      .filter((t): t is number => t !== null);
-    const next = offline.length > 0
-      ? Math.min(...offline) + ABANDON_MS
-      : Date.now() + 10 * 60_000;   // otherwise just a tidy-up pass
-    await this.state.storage.setAlarm(next);
+    await this.state.storage.setAlarm(nextAlarmAt(room, Date.now()));
   }
 }
