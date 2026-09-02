@@ -9,6 +9,9 @@ of the oware / mancala family.
   your rating.
 - **Play vs AI** — four difficulty levels (Novice → Master), backed by a negamax
   search that runs in a Web Worker so the board never blocks.
+- **Play online** — a real opponent, by invite link or quick match. Needs the
+  match server in [`server/`](server/); a build without it has no online play
+  and says so by simply not offering it.
 - **Two players** — pass-and-play on one device; the board flips so the player to
   move always sits nearest the viewer.
 - **Continue** — an in-progress game survives a refresh, a closed tab, or a
@@ -32,9 +35,10 @@ of the oware / mancala family.
 - **Offline** — a service worker caches the whole game; it is installable from
   the browser.
 
-There is **no online play**. That needs a server this build does not have, so the
-menu does not pretend otherwise: the trophy screen is *Records — your best
-games*, not a global leaderboard.
+There is **no leaderboard**. Online games are unrated: your rating measures you
+against the four AI levels on this device, and a stranger cannot move it. A
+global ladder needs accounts and a database, which this server deliberately does
+not have — so the trophy screen is *Records — your best games*.
 
 ## Rules
 
@@ -53,8 +57,9 @@ npm install
 npm run dev                # dev server, exposed on the LAN so a phone can load it
 npm run build              # typecheck + production build
 npm run lint               # ESLint
-npm test                   # engine, layout, AI, state and self-play suites
-npm run test:e2e           # Playwright, desktop + phone viewports
+npm test                   # engine, layout, AI, state, online and self-play suites
+npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
+                           # dev match server, and plays a game in two browsers)
 npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
 ```
 
@@ -70,6 +75,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/aiClient.ts` | Worker wrapper, with an inline fallback where workers don't exist |
 | `src/lib/useGame.ts` | Game state machine + seed-by-seed animation |
 | `src/lib/layout.ts` | Pit arrangement + the counterclockwise invariant |
+| `src/lib/rules.ts` | One move start to finish — shared by the board and the server |
 | `src/lib/useOrientation.ts` | The one browser-specific piece of the layout |
 | `src/lib/storage.ts` | Pluggable key/value persistence |
 | `src/lib/platform.ts` | Web or native shell — the question every seam asks |
@@ -78,6 +84,13 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/review.ts` | When to ask for a store rating |
 | `src/lib/useBackButton.ts` | Android's back button |
 | `src/lib/progress.ts` | Challenge unlock progress |
+| `src/lib/protocol.ts` | The wire format, and every message validated on arrival |
+| `src/lib/roomCore.ts` | A match as pure functions — the server's rules |
+| `src/lib/transport.ts` | The two-way string pipe an online session talks through |
+| `src/lib/wsTransport.ts` | The browser WebSocket, and its reconnect backoff |
+| `src/lib/online.ts` | One seat in one room: the client conversation |
+| `src/lib/useOnlineSession.ts` | Where the match meets the board |
+| `src/lib/onlineConfig.ts` | Server URL, seat token, invite links |
 | `src/lib/settings.ts` | User settings + change subscription |
 | `src/lib/stats.ts` | Elo rating, streaks, per-level tallies, ranks |
 | `src/lib/profile.ts` | Display name and avatar |
@@ -88,6 +101,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/i18n/` | English and French tables, typed so a gap is a build error |
 | `src/content/challenges.json` | The 12 fixed challenge positions |
 | `src/components/` | Every screen |
+| `server/` | The Cloudflare Worker — see [`server/README.md`](server/README.md) |
 | `scripts/verify-challenges.ts` | Proves each puzzle conserves seeds and is winnable |
 
 The engine and AI are a faithful port of a long-standing C implementation; their
@@ -105,6 +119,84 @@ asserted by `test/layout.test.ts` — for both viewpoints and both orientations.
 A layout that rotates the board *and mirrors it* silently reverses the sowing
 direction; that bug shipped once. Never set `flex-direction` on `.board`,
 `.pit-grid` or `.pit-row` from CSS — `Board.tsx` sets it from the layout module.
+
+## Online play
+
+Two people, one board, over a WebSocket. **One** Cloudflare Worker in
+[`server/`](server/) serves both the game and the rooms — one Durable Object per
+room. Same origin, so the browser finds the match server without being told
+where it is, and a deploy cannot leave a new front end talking to an old server.
+
+```bash
+npm run dev:server                                 # the match server, on :8787
+VITE_ONLINE_URL=ws://127.0.0.1:8787 npm run dev    # the game, pointed at it
+```
+
+Online play is **off unless `VITE_ONLINE_URL` is set at build time**. Without it
+the menu entry never appears, nothing in the online stack is reachable, and the
+rest of the game is untouched — which is how CI builds it. A deploy sets it to
+the literal `same-origin`.
+
+### How a game happens
+
+- **Invite a friend** gives you a five-character room code and a link. The room
+  comes into being when the first player connects to it; there is no "create"
+  request to fail.
+- **Quick match** asks the lobby for a code — either a fresh one to wait in, or
+  one someone else is already waiting in.
+- A `?join=CODE` link opens straight into that room rather than the menu.
+
+### The server is the judge
+
+Both players run the same engine, so a client *could* referee itself. It does
+not. Every move is replayed on the server, which decides whether it was legal,
+whether it was your turn, and whether it was a real move or a duplicate that
+crossed the opponent's reply. A move is confirmed with a fingerprint of the
+position it produced; if a client's own board does not match, it asks for the
+position back instead of playing on from a board only it can see.
+
+The rules live in [`src/lib/rules.ts`](src/lib/rules.ts) and
+[`src/lib/roomCore.ts`](src/lib/roomCore.ts) — pure, platform-free, and imported
+by the browser, the Worker and the tests alike, so the two sides cannot drift
+apart on what a move means.
+
+### The things that go wrong
+
+- **A dropped connection** reconnects with backoff and walks back into its own
+  seat: the board is rebuilt from the server's position, not restarted.
+- **A player who does not come back** loses the game after 90 seconds. Somebody
+  has to tell the person still watching the board.
+- **Resigning** asks once, because it is one tap from ending the game.
+- **A rematch** needs both players, and the other side opens — moving first is a
+  real edge in awalé.
+
+### What it is not
+
+No accounts, no ratings, no stored history, no clock, and no ladder. A room code
+is the whole authorisation model: anyone holding it can take a free seat, which
+is right for a game shared by link and is not more than that. The trade-offs are
+written down in [`server/README.md`](server/README.md).
+
+## Deploying
+
+A push to the default branch ships the game.
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs the checks,
+builds the app, deploys the Worker with `dist/` attached, and then asks
+`/health` whether what it just shipped answers. One deploy, because the game and
+the match server are one Worker — there is no window in which the two halves
+disagree.
+
+Set two repository secrets and it runs itself:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → **Edit Cloudflare Workers** |
+| `CLOUDFLARE_ACCOUNT_ID` | Workers & Pages overview, right-hand column |
+
+Optionally add a repository *variable* `SITE_URL` pointing at the deployed
+address: it enables the post-deploy health check and links each run to the live
+game. The first deploy can also be done by hand — see
+[`server/README.md`](server/README.md).
 
 ## Native mobile app
 
@@ -192,6 +284,15 @@ account, a Mac, or a decision:
 6. **The licence.** `engine.ts` and `ai.ts` are a port of a long-standing C
    implementation. If that original carries its own licence it governs a
    published binary too. See `AUDIT.md` §5.4.
+
+Online play needs no native work beyond one setting: the shell already has a
+WebSocket and the whole stack sits in `src/lib/`, but a native build cannot use
+`VITE_ONLINE_URL=same-origin` — it loads from `capacitor:`, so there is no
+origin to borrow. Build the shell with the deployed URL instead:
+
+```bash
+VITE_ONLINE_URL=wss://awale.<your-subdomain>.workers.dev npm run build && npx cap sync
+```
 
 **React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
 rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it

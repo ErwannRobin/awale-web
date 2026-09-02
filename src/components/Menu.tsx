@@ -7,6 +7,7 @@ import type { SavedGame } from '../lib/saveGame.ts';
 import { primeAudio, playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { CHALLENGES } from '../lib/challenges.ts';
+import { onlineEnabled } from '../lib/onlineConfig.ts';
 
 interface Props {
   profile: Profile;
@@ -17,6 +18,7 @@ interface Props {
   onPlayLocal: () => void;
   onQuickMatch: (level: number) => void;
   onContinue: () => void;
+  onOnline: () => void;
   onTutorial: () => void;
   onChallenges: () => void;
   onSettings: () => void;
@@ -30,7 +32,7 @@ function Diamond() {
 
 export default function Menu({
   profile, stats, completed, saved,
-  onPlayAI, onPlayLocal, onQuickMatch, onContinue,
+  onPlayAI, onPlayLocal, onQuickMatch, onContinue, onOnline,
   onTutorial, onChallenges, onSettings, onStats, onRecords,
 }: Props) {
   const t = useT();
@@ -88,6 +90,17 @@ export default function Menu({
               <span className="pill-sub">{t('menu.quickMatchSub', { level: levelName(quickLevel) })}</span>
             </span>
           </button>
+          {/* Built with no server configured, this build has no online play,
+              and a menu entry that leads to an error is worse than no entry. */}
+          {onlineEnabled() && (
+            <button className="pill" onClick={go(onOnline)}>
+              <span className="pill-icon">🌍</span>
+              <span className="pill-body">
+                <span className="pill-title">{t('menu.online')}</span>
+                <span className="pill-sub">{t('menu.onlineSub')}</span>
+              </span>
+            </button>
+          )}
           <button className="pill" onClick={go(onPlayLocal)}>
             <span className="pill-icon">👥</span>
             <span className="pill-body">

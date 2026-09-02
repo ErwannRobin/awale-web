@@ -278,9 +278,8 @@ fires, and when the review gate opens.
 
 Short list now, and honest about why.
 
-1. **Online multiplayer.** Not built, and not buildable in this repo: it needs a
-   server for matchmaking, move relay and accounts. Everything else on the
-   original list is client-side and is done. The menu no longer promises it.
+1. ~~**Online multiplayer.**~~ Built — see §7. What is still missing from it is
+   a ladder, and that is the part that genuinely needs accounts and a database.
 2. **Challenge 4 is unverified.** Its position leaves 36 seeds on the player's
    row, so the solver cannot exhaust the tree within a sane budget. The verifier
    reports it as *inconclusive* — a warning, not a failure — because a "no win
@@ -299,19 +298,134 @@ Short list now, and honest about why.
 7. **Store artwork.** Both native projects still carry the default Capacitor
    icon and splash. `npx @capacitor/assets generate` builds every size from one
    1024×1024 source; nobody has drawn that source yet.
-8. **Remote push.** Only local notifications are wired up. Remote push is not a
-   missing plugin, it is a missing server — see item 1.
+8. **Remote push.** Only local notifications are wired up. There is a server
+   now, but a push server is a different thing: FCM credentials, APNs keys, and
+   a store of device tokens that would be the first personal data this project
+   has ever kept. "Your opponent moved" is the notification that would justify
+   it, and it is not built.
 
 ---
+
+---
+
+## 7. Online play
+
+Built after the audit above, against the Cloudflare recommendation in §5.1.
+
+### The choice
+
+WebRTC with PeerJS was considered first and rejected. The usual reason to reach
+for it — "no server" — is not true: PeerJS needs a signalling server, and a
+share of connections (commonly quoted as 10–20%, worse behind mobile carrier
+NAT) need a TURN relay, which is a bandwidth-billed server of its own. Awalé
+sends one integer a few times a minute, so WebRTC's actual advantages — latency
+and offloaded bandwidth — are worth nothing here, while its costs are real.
+
+A WebSocket relay is the same client work and gives what P2P cannot: it connects
+everywhere, it can match strangers, and it can referee. A Durable Object makes
+it small — Cloudflare guarantees one instance per room name worldwide and runs
+its handlers one at a time, so routing and locking both disappear.
+
+### The shape
+
+```
+browser                         Cloudflare
+  useGame ── board                 Worker ── /room/:code ── Room (Durable Object)
+  online.ts ── one seat              │                        └── roomCore
+  wsTransport ── one socket ─────────┘        /queue ──────── Lobby
+```
+
+`src/lib/rules.ts` and `src/lib/roomCore.ts` are pure and platform-free, and are
+imported by the browser, the Worker, the Node dev server and the tests alike.
+That is the point: **the client and the server cannot disagree about what a move
+does**, because there is only one implementation of it.
+
+Extracting `rules.ts` also fixed a latent duplication in the client. `useGame`
+used to carry its own copy of two end-of-game rules (the 25-seed majority and
+the blocked-player payout) alongside `engine.ts`'s. They now live in one place.
+The blocked-player disagreement recorded in §3 survives on purpose — the server
+follows the rule the game has always shown players, with a comment saying so —
+but it is now one rule in one file rather than the same rule written twice.
+
+### The server decides
+
+Both sides run the same engine, so the client *could* referee itself. It does
+not. Every move is replayed on the server: legality, turn, and whether the
+message is a real move or a duplicate that crossed the opponent's reply (`ply`).
+Each confirmation carries an FNV-1a fingerprint of the position it produced; a
+client whose own board disagrees asks for the position back rather than playing
+on from a board only it can see.
+
+The board waits for that confirmation rather than moving optimistically. One
+round trip is shorter than the first seed's hop, and it buys a single source of
+truth with no rollback code anywhere.
+
+### What is tested
+
+- `test/online.test.ts` — 29 assertions. Seating, reconnection, turn order,
+  illegal and out-of-board moves, double taps, late duplicates, resignation,
+  the walkout timer, rematches, and a full greedy game with seeds conserved at
+  every ply. Then two real `OnlineSession`s over in-memory pipes playing whole
+  games through the actual protocol, plus a deliberately corrupted fingerprint
+  to prove drift is noticed and repaired.
+- `e2e/online.spec.ts` — two browsers, a real WebSocket to the dev match server,
+  a room code travelling by link, the turn passing both ways, and a third
+  player turned away from a full room.
+- The Worker itself typechecks against `@cloudflare/workers-types` in CI, and
+  was run under `wrangler dev` (workerd): two clients seated, moves relayed with
+  matching fingerprints, an out-of-turn move refused, a third player refused,
+  and a resignation broadcast to both.
+
+One bug the browser test found that no unit test would have: `Game.tsx` decided
+"is this a challenge?" by asking whether a `setup` was present. An online game
+brings one too — the seat and opening position come from the server — so an
+online win announced itself as *"Challenge complete!"*.
+
+### Deployment
+
+The game had no deployment at all before this: CI tested it and nothing
+published it, so nobody could play it. That is now one Worker and one workflow.
+
+`[assets]` with `run_worker_first` puts the router ahead of the static files, so
+`/room/:code` reaches a room rather than being served the index page, and
+everything else falls through to `env.ASSETS`. Serving both from one origin is
+what lets `VITE_ONLINE_URL=same-origin` work: the client derives the socket
+address from `location.origin`, so there is no URL to configure, no CORS, and no
+way to ship a front end pointing at yesterday's server. A native build cannot do
+this — `capacitor:` has no origin to borrow — and gets an explicit URL instead.
+
+Two bugs found by running it rather than reading it:
+
+- The first `/queue` handler forwarded the player's own `Request` to the lobby
+  twice, to retry after a stale code. A `Request` body cannot be read twice, and
+  the runtime said so. The lobby wants nothing from that request but the verb.
+- The quick-match weakness documented in the first draft turned out to be easy
+  to hit rather than theoretical — a stray `curl` was enough to strand a real
+  pair of browsers in separate rooms. A handed-out code is now checked against
+  its room (`isJoinable`, shared by both servers and covered by five assertions)
+  before it is trusted, and a dead one is discarded rather than passed on.
+
+### What is deliberately not there
+
+No accounts, no ratings, no stored history, no clock, no ladder. A room code is
+the whole authorisation model: anyone holding it can take a free seat, which is
+the right security for a game shared by link and is not more than that.
+
+Two known rough edges, both written down in `server/README.md`: a quick-match
+code can outlive the player who asked for it, leaving the next player alone in
+an empty room for up to two minutes; and there is no reconnect *notification*,
+so a player whose opponent drops sees a banner rather than a countdown.
 
 ## 6. Verification
 
 ```
 npm run lint               # ESLint 9 — clean
 npm run build              # tsc -b + vite build — clean
-npm test                   # 142 assertions across 6 suites + 30 self-play games
-npm run verify:challenges   # 12 positions: 0 failures, 1 inconclusive (see §5.2)
-npm run test:e2e           # 9 tests × 2 viewports (desktop + phone)
+npm test                   # 176 assertions across 7 suites + 30 self-play games
+npm run verify:challenges  # 12 positions: 0 failures, 1 inconclusive (see §5.2)
+npm run test:e2e           # 12 tests × 2 viewports (desktop + phone)
+cd server && npm run typecheck   # the Worker, against @cloudflare/workers-types
+cd server && npm run dev         # the real Worker under workerd, game included
 ```
 
 Board geometry, themes and the new screens were also checked by hand in a real

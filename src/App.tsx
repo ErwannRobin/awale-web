@@ -5,6 +5,8 @@ import Tutorial from './components/Tutorial.tsx';
 import Challenges from './components/Challenges.tsx';
 import { CHALLENGES, challengeGoalKey } from './lib/challenges.ts';
 import Game from './components/Game.tsx';
+import Online from './components/Online.tsx';
+import OnlineGame from './components/OnlineGame.tsx';
 import SettingsScreen from './components/Settings.tsx';
 import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
@@ -17,6 +19,8 @@ import { useSettings } from './lib/useSettings.ts';
 import { useBackButton } from './lib/useBackButton.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
+import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
+import { normaliseRoomCode } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
 
 type Screen =
@@ -26,6 +30,8 @@ type Screen =
   | { name: 'stats' }
   | { name: 'records' }
   | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number; resume: SavedGame | null }
+  | { name: 'online' }
+  | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
   // Help and Settings are reachable mid-game, so they carry the screen to
   // return to. Without that, tapping ⚙ during a game would drop the board.
@@ -36,7 +42,14 @@ export default function App() {
   const settings = useSettings();
   const t = useT();
 
-  const [screen, setScreen] = useState<Screen>({ name: 'menu' });
+  // A `?join=CODE` link opens straight into that room. Landing on the menu
+  // first and making the player find the code again would waste the link.
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (!onlineEnabled()) return { name: 'menu' };
+    const code = readJoinCode();
+    const room = code ? normaliseRoomCode(code) : null;
+    return room ? { name: 'onlineGame', room } : { name: 'menu' };
+  });
   const [completed, setCompleted] = useState<number[]>(() => loadCompleted());
   const [profile, setProfile] = useState(loadProfile);
   const [stats, setStats] = useState(loadStats);
@@ -76,6 +89,14 @@ export default function App() {
     // Starting fresh abandons any stored game, so the menu stops offering it.
     if (!resume) { clearSavedGame(); setSaved(null); }
     setScreen({ name: 'game', mode, level, key: ++gameKey.current, resume });
+  };
+
+  const leaveOnline = () => {
+    // Drop the invite from the address bar on the way out, so a refresh does
+    // not walk back into a game that has finished.
+    clearJoinCode();
+    setScreen({ name: 'menu' });
+    void refreshReminder('left a game');
   };
 
   const leaveGame = () => {
@@ -124,6 +145,7 @@ export default function App() {
     switch (screen.name) {
       case 'menu': void exitApp(); return;
       case 'game': leaveGame(); return;
+      case 'onlineGame': leaveOnline(); return;
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
       case 'challenge': setScreen({ name: 'challenges' }); return;
@@ -145,9 +167,29 @@ export default function App() {
           onContinue={() => saved && startGame(saved.mode, saved.level, saved)}
           onTutorial={() => setScreen({ name: 'tutorial' })}
           onChallenges={() => setScreen({ name: 'challenges' })}
+          onOnline={() => setScreen({ name: 'online' })}
           onSettings={() => setScreen({ name: 'settings', back: { name: 'menu' } })}
           onStats={() => setScreen({ name: 'stats' })}
           onRecords={() => setScreen({ name: 'records' })}
+        />
+      )}
+
+      {screen.name === 'online' && (
+        <Online
+          onStart={room => setScreen({ name: 'onlineGame', room })}
+          onBack={() => setScreen({ name: 'menu' })}
+          onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'onlineGame' && (
+        <OnlineGame
+          key={screen.room}
+          room={screen.room}
+          onExit={leaveOnline}
+          onLearn={() => setScreen({ name: 'learn', back: screen })}
+          onSettings={() => setScreen({ name: 'settings', back: screen })}
+          onToast={showToast}
         />
       )}
 

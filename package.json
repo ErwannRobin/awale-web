@@ -8,14 +8,16 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "npm run test:engine && npm run test:layout && npm run test:ai && npm run test:stats && npm run test:native && npm run test:selfplay",
+    "test": "npm run test:engine && npm run test:layout && npm run test:ai && npm run test:stats && npm run test:native && npm run test:online && npm run test:selfplay",
     "test:engine": "node --experimental-strip-types --no-warnings test/engine.test.ts",
     "test:layout": "node --experimental-strip-types --no-warnings test/layout.test.ts",
     "test:ai": "node --experimental-strip-types --no-warnings test/ai.test.ts",
     "test:stats": "node --experimental-strip-types --no-warnings test/stats.test.ts",
     "test:native": "node --experimental-strip-types --no-warnings test/native.test.ts",
+    "test:online": "node --experimental-strip-types --no-warnings test/online.test.ts",
     "test:selfplay": "node --experimental-strip-types --no-warnings test/selfplay.test.ts",
     "test:e2e": "playwright test",
+    "dev:server": "node --experimental-strip-types --no-warnings server/dev-server.ts",
     "verify:challenges": "node --experimental-strip-types --no-warnings scripts/verify-challenges.ts"
   },
   "dependencies": {
@@ -38,6 +40,7 @@
     "@playwright/test": "^1.61.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -46,6 +49,7 @@
     "playwright": "^1.61.1",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.69.0",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "ws": "^8.18.0"
   }
 }

@@ -34,6 +34,23 @@ jobs:
       # this gets its own job rather than slowing the main check.
       - run: npm run verify:challenges
 
+  server:
+    name: Match server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # The Worker is typechecked against the real Cloudflare types; the room
+      # rules it imports are already covered by the unit job.
+      - run: npm run typecheck
+        working-directory: server
+
   e2e:
     name: End-to-end
     runs-on: ubuntu-latest
