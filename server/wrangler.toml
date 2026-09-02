@@ -27,6 +27,18 @@ run_worker_first = true
 tag = "v1"
 new_sqlite_classes = ["Room", "Lobby"]
 
+# A hand-run `wrangler deploy` moved the live Worker to v2. Every tag the
+# published script has ever been at must appear here, even when it did
+# nothing: wrangler compares the script's tag against this list, and a tag it
+# cannot find means "this script has had no migrations", so it replays from v1
+# and Cloudflare rejects re-creating a Room class that already holds rooms
+# (error 10074). Recording the tag is what tells wrangler there is nothing
+# left to apply. The classes below are the whole of the schema, so nothing is
+# pending — do not delete this entry to tidy up, and add the next tag rather
+# than editing this one.
+[[migrations]]
+tag = "v2"
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
