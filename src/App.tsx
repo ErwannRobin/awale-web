@@ -1,34 +1,64 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Menu from './components/Menu';
-import Learn from './components/Learn';
-import Tutorial from './components/Tutorial';
-import Challenges, { CHALLENGES } from './components/Challenges';
-import Game from './components/Game';
-import type { GameSetup } from './lib/useGame';
-import { loadCompleted, saveCompleted } from './lib/progress';
+import Menu from './components/Menu.tsx';
+import Learn from './components/Learn.tsx';
+import Tutorial from './components/Tutorial.tsx';
+import Challenges from './components/Challenges.tsx';
+import { CHALLENGES, challengeGoalKey } from './lib/challenges.ts';
+import Game from './components/Game.tsx';
+import SettingsScreen from './components/Settings.tsx';
+import StatsScreen from './components/Stats.tsx';
+import Records from './components/Records.tsx';
+import type { GameSetup } from './lib/useGame.ts';
+import { loadCompleted, saveCompleted } from './lib/progress.ts';
+import { loadProfile } from './lib/profile.ts';
+import { loadStats } from './lib/stats.ts';
+import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
+import { useSettings } from './lib/useSettings.ts';
+import { useT } from './i18n/useT.ts';
 
 type Screen =
   | { name: 'menu' }
-  | { name: 'learn' }
   | { name: 'tutorial' }
   | { name: 'challenges' }
-  | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number }
-  | { name: 'challenge'; index: number };
+  | { name: 'stats' }
+  | { name: 'records' }
+  | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number; resume: SavedGame | null }
+  | { name: 'challenge'; index: number }
+  // Help and Settings are reachable mid-game, so they carry the screen to
+  // return to. Without that, tapping ⚙ during a game would drop the board.
+  | { name: 'learn'; back: Screen }
+  | { name: 'settings'; back: Screen };
 
 export default function App() {
+  const settings = useSettings();
+  const t = useT();
+
   const [screen, setScreen] = useState<Screen>({ name: 'menu' });
   const [completed, setCompleted] = useState<number[]>(() => loadCompleted());
+  const [profile, setProfile] = useState(loadProfile);
+  const [stats, setStats] = useState(loadStats);
+  const [saved, setSaved] = useState<SavedGame | null>(() => loadSavedGame());
   const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const gameKey = useRef(0);
+
+  // Theme and language are document-level: the theme swaps CSS tokens, and
+  // <html lang> matters for screen readers and hyphenation.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme);
+    document.documentElement.setAttribute('lang', settings.language);
+  }, [settings.theme, settings.language]);
 
   const showToast = useCallback((msg: string) => {
     setToast({ msg, id: Date.now() });
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2400);
   }, []);
 
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const refreshStats = useCallback(() => setStats(loadStats()), []);
+  const refreshSaved = useCallback(() => setSaved(loadSavedGame()), []);
 
   const markComplete = useCallback((index: number) => {
     setCompleted(prev => {
@@ -39,8 +69,17 @@ export default function App() {
     });
   }, []);
 
-  const startGame = (mode: 'ai' | 'local', level = 3) =>
-    setScreen({ name: 'game', mode, level, key: ++gameKey.current });
+  const startGame = (mode: 'ai' | 'local', level = 3, resume: SavedGame | null = null) => {
+    // Starting fresh abandons any stored game, so the menu stops offering it.
+    if (!resume) { clearSavedGame(); setSaved(null); }
+    setScreen({ name: 'game', mode, level, key: ++gameKey.current, resume });
+  };
+
+  const leaveGame = () => {
+    refreshSaved();
+    refreshStats();
+    setScreen({ name: 'menu' });
+  };
 
   // Build the setup for the active challenge (memoised so its identity is stable).
   const challengeIndex = screen.name === 'challenge' ? screen.index : -1;
@@ -48,27 +87,69 @@ export default function App() {
     if (challengeIndex < 0) return null;
     const ch = CHALLENGES[challengeIndex];
     return {
-      pits: ch.situation,
-      scores: [ch.scoreJ1, ch.scoreJ2], // [computer/South, human/North]
+      pits: ch.pits,
+      scores: ch.scores,          // [computer/South, human/North]
       humanPlayer: 1,
       firstPlayer: 1,
       onResult: won => { if (won) markComplete(challengeIndex); },
     };
   }, [challengeIndex, markComplete]);
 
+  /**
+   * Returning to a game re-reads the save slot rather than reusing the stale
+   * `resume` object captured when the game started, so the board comes back
+   * exactly where it was left.
+   */
+  const goBackTo = (target: Screen) => () => {
+    if (target.name === 'game') {
+      const latest = loadSavedGame();
+      setScreen(latest ? { ...target, resume: latest } : { name: 'menu' });
+      return;
+    }
+    setScreen(target);
+  };
+
   return (
     <div className="app">
       {screen.name === 'menu' && (
         <Menu
+          profile={profile}
+          stats={stats}
+          completed={completed}
+          saved={saved}
           onPlayAI={level => startGame('ai', level)}
           onPlayLocal={() => startGame('local')}
+          onQuickMatch={level => startGame('ai', level)}
+          onContinue={() => saved && startGame(saved.mode, saved.level, saved)}
           onTutorial={() => setScreen({ name: 'tutorial' })}
           onChallenges={() => setScreen({ name: 'challenges' })}
-          onToast={showToast}
+          onSettings={() => setScreen({ name: 'settings', back: { name: 'menu' } })}
+          onStats={() => setScreen({ name: 'stats' })}
+          onRecords={() => setScreen({ name: 'records' })}
         />
       )}
 
-      {screen.name === 'learn' && <Learn onBack={() => setScreen({ name: 'menu' })} />}
+      {screen.name === 'learn' && <Learn onBack={goBackTo(screen.back)} />}
+
+      {screen.name === 'settings' && (
+        <SettingsScreen
+          onBack={goBackTo(screen.back)}
+          onToast={showToast}
+          onProfileChange={() => setProfile(loadProfile())}
+          onDataReset={() => {
+            setCompleted(loadCompleted());
+            refreshStats();
+            refreshSaved();
+            setProfile(loadProfile());
+          }}
+        />
+      )}
+
+      {screen.name === 'stats' && (
+        <StatsScreen completed={completed} onBack={() => setScreen({ name: 'menu' })} />
+      )}
+
+      {screen.name === 'records' && <Records onBack={() => setScreen({ name: 'menu' })} />}
 
       {screen.name === 'tutorial' && (
         <Tutorial
@@ -90,9 +171,14 @@ export default function App() {
           key={screen.key}
           mode={screen.mode}
           level={screen.level}
-          onExit={() => setScreen({ name: 'menu' })}
-          onLearn={() => setScreen({ name: 'learn' })}
+          resume={screen.resume}
+          persist
+          rated={screen.mode === 'ai'}
+          onExit={leaveGame}
+          onLearn={() => setScreen({ name: 'learn', back: screen })}
+          onSettings={() => setScreen({ name: 'settings', back: screen })}
           onToast={showToast}
+          onStatsChange={refreshStats}
         />
       )}
 
@@ -102,11 +188,12 @@ export default function App() {
           mode="ai"
           level={CHALLENGES[screen.index].levelIA ?? 1}
           setup={challengeSetup}
-          goal={CHALLENGES[screen.index].goal}
-          title={`Challenge ${screen.index + 1}`}
-          oppName="Computer"
+          goal={t(challengeGoalKey(screen.index))}
+          title={t('challenges.item', { n: screen.index + 1 })}
+          oppName={t('a11y.opponent')}
           onExit={() => setScreen({ name: 'challenges' })}
-          onLearn={() => setScreen({ name: 'learn' })}
+          onLearn={() => setScreen({ name: 'learn', back: screen })}
+          onSettings={() => setScreen({ name: 'settings', back: screen })}
           onToast={showToast}
         />
       )}

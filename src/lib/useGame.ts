@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isValid, distribute } from './engine';
-import { AIClient } from './aiClient';
+import { isValid, distribute, WINNING_SCORE } from './engine.ts';
+import { AIClient } from './aiClient.ts';
+import { getSettings, SPEED_FACTOR } from './settings.ts';
+import { playSow, playCapture, playWin, playLose } from './sound.ts';
+import { hapticCapture, hapticWin, hapticLose } from './haptics.ts';
+import { saveGame, clearSavedGame, type SavedGame } from './saveGame.ts';
 
 export type Phase = 'idle' | 'animating' | 'thinking' | 'over';
 export type Winner = 0 | 1 | 'draw' | null;
 
-const SOW_MS = 220;      // per-seed sowing tick
+const SOW_MS = 220;      // per-seed sowing tick, at normal speed
 const CAP_MS = 260;      // per captured-pit sweep
+const TAIL_MS = 260;     // settle time before the turn passes
 const AI_MIN_MS = 600;   // AI never feels instant
 
 const fresh = () => Array(12).fill(4) as number[];
@@ -23,6 +28,8 @@ export interface GameState {
   capturing: number[];        // pits mid-capture sweep (for styling)
   canUndo: boolean;
   lastCaptured: number | null;
+  /** Screen-reader narration of the most recent event. */
+  announcement: string;
 }
 
 // A custom start position (used by Challenges). Without it the game begins from
@@ -35,16 +42,40 @@ export interface GameSetup {
   onResult?: (humanWon: boolean, scores: number[]) => void;
 }
 
-interface Options { mode: 'ai' | 'local'; level: number; setup?: GameSetup }
+export interface Narrator {
+  moved(player: 0 | 1, pit: number): string;
+  captured(player: 0 | 1, count: number): string;
+  turn(player: 0 | 1): string;
+  over(winner: Winner, scores: number[]): string;
+}
 
-export function useGame({ mode, level, setup }: Options) {
+interface Options {
+  mode: 'ai' | 'local';
+  level: number;
+  setup?: GameSetup;
+  /** Position to resume instead of a fresh board. */
+  resume?: SavedGame | null;
+  /** Free play persists so a refresh does not lose the board; challenges do not. */
+  persist?: boolean;
+  /** Fired once per finished game, for stats. */
+  onFinish?: (winner: Winner, scores: number[]) => void;
+  narrator?: Narrator;
+}
+
+export function useGame({ mode, level, setup, resume, persist, onFinish, narrator }: Options) {
   const clientRef = useRef<AIClient | null>(null);
   if (clientRef.current === null) clientRef.current = new AIClient();
 
   const humanPlayer: 0 | 1 = setup?.humanPlayer ?? 0;
-  const firstPlayer: 0 | 1 = setup?.firstPlayer ?? 0;
-  const startPits = useCallback(() => (setup ? [...setup.pits] : fresh()), [setup]);
-  const startScores = useCallback(() => (setup ? [...setup.scores] : [0, 0]), [setup]);
+  const firstPlayer: 0 | 1 = resume?.turn ?? setup?.firstPlayer ?? 0;
+  const startPits = useCallback(
+    () => (resume ? [...resume.pits] : setup ? [...setup.pits] : fresh()),
+    [setup, resume],
+  );
+  const startScores = useCallback(
+    () => (resume ? [...resume.scores] : setup ? [...setup.scores] : [0, 0]),
+    [setup, resume],
+  );
 
   const [pits, setPits] = useState<number[]>(startPits);
   const [scores, setScores] = useState<number[]>(startScores);
@@ -55,19 +86,24 @@ export function useGame({ mode, level, setup }: Options) {
   const [activePit, setActivePit] = useState<number | null>(null);
   const [capturing, setCapturing] = useState<number[]>([]);
   const [lastCaptured, setLastCaptured] = useState<number | null>(null);
+  const [announcement, setAnnouncement] = useState('');
 
   // Logical truth (kept in refs so async steps read the latest values).
   const pitsRef = useRef<number[]>(startPits());
   const scoresRef = useRef<number[]>(startScores());
   const turnRef = useRef<0 | 1>(firstPlayer);
   const phaseRef = useRef<Phase>('idle');
-  const timers = useRef<number[]>([]);
-  const history = useRef<{ pits: number[]; scores: number[]; turn: 0 | 1 }[]>([]);
-  const [historyLen, setHistoryLen] = useState(0);
+  // Plain setTimeout (not window.setTimeout) so this state machine runs
+  // unchanged under React Native.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const history = useRef<{ pits: number[]; scores: number[]; turn: 0 | 1 }[]>(
+    resume ? resume.history.map(h => ({ ...h })) : [],
+  );
+  const [historyLen, setHistoryLen] = useState(history.current.length);
   const resultFired = useRef(false);
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
-  const at = (ms: number, fn: () => void) => { timers.current.push(window.setTimeout(fn, ms)); };
+  const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
 
   const setPhaseBoth = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
@@ -82,6 +118,19 @@ export function useGame({ mode, level, setup }: Options) {
     [pits, turn, phase, legalFor],
   );
 
+  // Free play is resumable; challenges restart from their fixed position and
+  // the tutorial is scripted, so neither writes a save slot.
+  const persistNow = useCallback(() => {
+    if (!persist) return;
+    saveGame({
+      mode, level,
+      pits: [...pitsRef.current],
+      scores: [...scoresRef.current],
+      turn: turnRef.current,
+      history: history.current.map(h => ({ ...h })),
+    });
+  }, [persist, mode, level]);
+
   // ---- game-over helpers -------------------------------------------------
   const decideWinner = (s: number[]): Winner =>
     s[0] > s[1] ? 0 : s[1] > s[0] ? 1 : 'draw';
@@ -91,11 +140,16 @@ export function useGame({ mode, level, setup }: Options) {
     const w = decideWinner(scoresRef.current);
     setWinner(w);
     setActivePit(null);
+    if (narrator) setAnnouncement(narrator.over(w, [...scoresRef.current]));
+    if (persist) clearSavedGame();
+    if (w === humanPlayer || (mode === 'local' && w !== 'draw')) { playWin(); hapticWin(); }
+    else { playLose(); hapticLose(); }
     if (!resultFired.current) {
       resultFired.current = true;
       setup?.onResult?.(w === humanPlayer, [...scoresRef.current]);
+      onFinish?.(w, [...scoresRef.current]);
     }
-  }, [setup, humanPlayer]);
+  }, [setup, humanPlayer, onFinish, narrator, persist, mode]);
 
   // Blocked player: the side to move has no legal move → each keeps their row.
   const handleBlocked = useCallback((player: 0 | 1) => {
@@ -130,11 +184,18 @@ export function useGame({ mode, level, setup }: Options) {
     pitsRef.current = work;
     scoresRef.current = sc;
 
+    // Animation tempo is a user setting; `instant` collapses every step to 0ms
+    // but keeps the ordering, so the final state is identical either way.
+    const factor = SPEED_FACTOR[getSettings().speed];
+    const sowMs = SOW_MS * factor;
+    const capMs = CAP_MS * factor;
+
     setPhaseBoth('animating');
     setHintPit(null);
     setActivePit(pit);
     setCapturing([]);
     setLastCaptured(null);
+    if (narrator) setAnnouncement(narrator.moved(player, pit));
 
     // 1. origin empties
     const display = [...pre];
@@ -143,19 +204,20 @@ export function useGame({ mode, level, setup }: Options) {
 
     // 2. sow one seed at a time
     result.sowed.forEach((idx, k) => {
-      at(SOW_MS * (k + 1), () => {
+      at(sowMs * (k + 1), () => {
         display[idx]++;
         setActivePit(idx);
         setPits([...display]);
+        if (factor > 0) playSow(k);
       });
     });
 
-    const afterSow = SOW_MS * (result.sowed.length + 1);
+    const afterSow = sowMs * (result.sowed.length + 1);
 
     // 3. sweep captured pits (last-sown first, matching engine order)
     if (result.captured.length > 0) {
       result.captured.forEach((cap, k) => {
-        at(afterSow + CAP_MS * k, () => {
+        at(afterSow + capMs * k, () => {
           setCapturing(result.captured.slice(0, k + 1));
           setLastCaptured(cap);
           display[cap] = 0;
@@ -168,9 +230,17 @@ export function useGame({ mode, level, setup }: Options) {
           });
         });
       });
+      at(afterSow, () => {
+        playCapture(result.captured.length);
+        hapticCapture();
+        if (narrator) {
+          const total = result.captured.reduce((sum, c) => sum + sown[c], 0);
+          setAnnouncement(narrator.captured(player, total));
+        }
+      });
     }
 
-    const afterCaptures = afterSow + CAP_MS * result.captured.length + 260;
+    const afterCaptures = afterSow + capMs * result.captured.length + TAIL_MS * factor;
 
     at(afterCaptures, () => {
       setActivePit(null);
@@ -179,7 +249,7 @@ export function useGame({ mode, level, setup }: Options) {
       setPits([...pitsRef.current]);
       setScores([...scoresRef.current]);
 
-      if (!result.running || scoresRef.current[player] >= 25) {
+      if (!result.running || scoresRef.current[player] >= WINNING_SCORE) {
         finish();
         return;
       }
@@ -192,19 +262,23 @@ export function useGame({ mode, level, setup }: Options) {
         return;
       }
       setPhaseBoth('idle');
+      persistNow();
+      if (narrator) setAnnouncement(narrator.turn(next));
       forwardTo.current(next);
     });
-  }, [finish, handleBlocked, legalFor]);
+  }, [finish, handleBlocked, legalFor, narrator, persistNow]);
 
   // ---- AI turn -----------------------------------------------------------
   const runAI = useCallback((player: 0 | 1) => {
     setPhaseBoth('thinking');
     setActivePit(null);
     const t0 = performance.now();
+    // A user who set `instant` does not want a staged pause either.
+    const minWait = SPEED_FACTOR[getSettings().speed] === 0 ? 0 : AI_MIN_MS;
     clientRef.current!
       .bestMove('game', pitsRef.current, scoresRef.current, player)
       .then(move => {
-        const wait = Math.max(0, AI_MIN_MS - (performance.now() - t0));
+        const wait = Math.max(0, minWait - (performance.now() - t0));
         at(wait, () => {
           if (move == null) { handleBlocked(player); return; }
           animateMove(move);
@@ -265,7 +339,8 @@ export function useGame({ mode, level, setup }: Options) {
     setActivePit(null);
     setCapturing([]);
     setPhaseBoth('idle');
-  }, [mode]);
+    persistNow();
+  }, [mode, persistNow]);
 
   const newGame = useCallback(() => {
     clearTimers();
@@ -273,25 +348,32 @@ export function useGame({ mode, level, setup }: Options) {
     history.current = [];
     setHistoryLen(0);
     resultFired.current = false;
-    pitsRef.current = startPits();
-    scoresRef.current = startScores();
-    turnRef.current = firstPlayer;
-    setPits(startPits());
-    setScores(startScores());
-    setTurn(firstPlayer);
+    // A restart abandons any resumed position — start from the real beginning.
+    const basePits = setup ? [...setup.pits] : fresh();
+    const baseScores = setup ? [...setup.scores] : [0, 0];
+    const first: 0 | 1 = setup?.firstPlayer ?? 0;
+    pitsRef.current = basePits;
+    scoresRef.current = baseScores;
+    turnRef.current = first;
+    setPits([...basePits]);
+    setScores([...baseScores]);
+    setTurn(first);
     setWinner(null);
     setHintPit(null);
     setActivePit(null);
     setCapturing([]);
     setLastCaptured(null);
+    setAnnouncement('');
     setPhaseBoth('idle');
+    persistNow();
     // If the AI moves first from this position, kick it off.
-    if (mode === 'ai' && firstPlayer !== humanPlayer) at(300, () => runAI(firstPlayer));
-  }, [level, startPits, startScores, firstPlayer, mode, humanPlayer, runAI]);
+    if (mode === 'ai' && first !== humanPlayer) at(300, () => runAI(first));
+  }, [level, setup, mode, humanPlayer, runAI, persistNow]);
 
   // Initialise the worker's stateful AI, and kick the AI if it opens.
   useEffect(() => {
     clientRef.current!.newGame(level);
+    persistNow();
     if (mode === 'ai' && firstPlayer !== humanPlayer) at(400, () => runAI(firstPlayer));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -303,6 +385,7 @@ export function useGame({ mode, level, setup }: Options) {
     hintPit, activePit, capturing,
     canUndo: mode === 'ai' && historyLen > 0 && (phase === 'idle' || phase === 'over'),
     lastCaptured,
+    announcement,
   };
 
   return { state, play, hint, undo, newGame, humanPlayer };

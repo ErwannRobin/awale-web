@@ -1,15 +1,6 @@
-import challenges from '../content/challenges.json';
-import { isUnlocked } from '../lib/progress';
-
-export interface Challenge {
-  goal: string;
-  scoreJ1: number;   // computer (South, player 0)
-  scoreJ2: number;   // human (North, player 1)
-  levelIA?: number;  // engine level, default 1
-  situation: number[];
-}
-
-export const CHALLENGES = challenges as Challenge[];
+import { isUnlocked } from '../lib/progress.ts';
+import { useT } from '../i18n/useT.ts';
+import { CHALLENGES, challengeGoalKey } from '../lib/challenges.ts';
 
 interface Props {
   completed: number[];
@@ -18,20 +9,19 @@ interface Props {
 }
 
 export default function Challenges({ completed, onStart, onBack }: Props) {
-  const solved = completed.length;
+  const t = useT();
   return (
     <div className="screen challenges">
       <header className="game-top">
-        <button className="round-btn" onClick={onBack} aria-label="Back">←</button>
-        <div className="brand">◇ CHALLENGES ◇</div>
+        <button className="round-btn" onClick={onBack} aria-label={t('common.back')}>←</button>
+        <div className="brand">◇ {t('challenges.brand')} ◇</div>
         <span style={{ width: 44 }} />
       </header>
 
       <div className="challenges-body">
-        <h2 className="learn-title">Puzzle Challenges</h2>
+        <h2 className="learn-title">{t('challenges.title')}</h2>
         <p className="learn-lead">
-          You play <strong>North</strong> and move first. Beat each fixed position to unlock the
-          next. Solved {solved} / {CHALLENGES.length}.
+          {t('challenges.lead', { solved: completed.length, total: CHALLENGES.length })}
         </p>
 
         <div className="challenge-list">
@@ -48,10 +38,14 @@ export default function Challenges({ completed, onStart, onBack }: Props) {
                 <span className="challenge-num">{done ? '✓' : unlocked ? i + 1 : '🔒'}</span>
                 <span className="challenge-text">
                   <span className="challenge-head">
-                    Challenge {i + 1}
-                    {ch.levelIA != null && <span className="challenge-tag">lvl {ch.levelIA + 1}</span>}
+                    {t('challenges.item', { n: i + 1 })}
+                    {ch.levelIA != null && (
+                      <span className="challenge-tag">{t('challenges.levelTag', { n: ch.levelIA + 1 })}</span>
+                    )}
                   </span>
-                  <span className="challenge-goal">{unlocked ? ch.goal : 'Locked — win the previous challenge to unlock.'}</span>
+                  <span className="challenge-goal">
+                    {unlocked ? t(challengeGoalKey(i)) : t('challenges.locked')}
+                  </span>
                 </span>
               </button>
             );

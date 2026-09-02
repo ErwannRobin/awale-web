@@ -1,15 +1,19 @@
-import Seeds from './Seeds';
-import type { GameState } from '../lib/useGame';
+import Seeds from './Seeds.tsx';
+import type { GameState } from '../lib/useGame.ts';
+import { boardLayout } from '../lib/layout.ts';
+import { useOrientation } from '../lib/useOrientation.ts';
+import { useSettings } from '../lib/useSettings.ts';
+import { useT } from '../i18n/useT.ts';
 
 interface Props {
   state: GameState;
-  viewpoint: 0 | 1;      // which player sits at the bottom row
-  interactive: boolean;  // whether the bottom row can be tapped
+  viewpoint: 0 | 1;      // which player sits nearest the viewer
+  interactive: boolean;  // whether the near row can be tapped
   onPlay: (pit: number) => void;
 }
 
 // End-store seed pile (captured seeds visibly accumulate).
-function Store({ count, side }: { count: number; side: 'left' | 'right' }) {
+function Store({ count, side, label }: { count: number; side: 'near' | 'far'; label: string }) {
   const pile = Math.min(count, 30);
   const dots = [];
   for (let i = 0; i < pile; i++) {
@@ -29,8 +33,8 @@ function Store({ count, side }: { count: number; side: 'left' | 'right' }) {
     );
   }
   return (
-    <div className={`store store-${side}`}>
-      <div className="store-hollow">{dots}</div>
+    <div className={`store store-${side}`} aria-label={label}>
+      <div className="store-hollow" aria-hidden>{dots}</div>
       <div className="store-count">{count}</div>
     </div>
   );
@@ -38,16 +42,18 @@ function Store({ count, side }: { count: number; side: 'left' | 'right' }) {
 
 export default function Board({ state, viewpoint, interactive, onPlay }: Props) {
   const opp = (1 - viewpoint) as 0 | 1;
-  const bottomPits: number[] = [];
-  for (let k = 0; k < 6; k++) bottomPits.push(viewpoint * 6 + k);
-  // Top row rendered right-to-left so sowing reads counterclockwise.
-  const topPits: number[] = [];
-  for (let k = 5; k >= 0; k--) topPits.push(opp * 6 + k);
+  const orientation = useOrientation();
+  const { showCounts, leftHanded } = useSettings();
+  const t = useT();
+
+  // Pit arrangement comes from the pure layout module, which guarantees the
+  // index order 0 → 11 reads counterclockwise on screen in either orientation.
+  const layout = boardLayout(viewpoint, orientation);
 
   const isLegal = (pit: number) =>
     interactive && state.phase === 'idle' && state.legal.includes(pit);
 
-  const renderPit = (pit: number, rowSide: 'top' | 'bottom') => {
+  const renderPit = (pit: number, rowSide: 'far' | 'near') => {
     const legal = isLegal(pit);
     const cls = [
       'pit',
@@ -57,38 +63,57 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
       state.capturing.includes(pit) ? 'pit-capturing' : '',
       state.hintPit === pit ? 'pit-hint' : '',
     ].join(' ');
+    const params = {
+      seat: rowSide === 'near' ? t('a11y.seatYours') : t('a11y.seatOpp'),
+      index: (pit % 6) + 1,
+      count: state.pits[pit],
+    };
     return (
       <button
         key={pit}
+        type="button"
         className={cls}
         disabled={!legal}
         onClick={() => legal && onPlay(pit)}
-        aria-label={`Pit with ${state.pits[pit]} seeds`}
+        aria-label={t(legal ? 'a11y.pitPlayable' : 'a11y.pit', params)}
       >
         <span className="pit-bowl">
           <Seeds pit={pit} count={state.pits[pit]} />
         </span>
-        <span className="pit-count">{state.pits[pit]}</span>
+        {showCounts && <span className="pit-count" aria-hidden>{state.pits[pit]}</span>}
       </button>
     );
   };
 
-  // Left store belongs to the viewpoint player (whose card sits top-left);
-  // right store to the opponent.
+  const nearStore = (
+    <Store key="near" count={state.scores[viewpoint]} side="near"
+           label={t('a11y.yourStore', { count: state.scores[viewpoint] })} />
+  );
+  const farStore = (
+    <Store key="far" count={state.scores[opp]} side="far"
+           label={t('a11y.oppStore', { count: state.scores[opp] })} />
+  );
+
+  // Left-handed swaps only the two stores. It must never reverse the pit rows:
+  // mirroring the ring turns the sowing direction clockwise (see lib/layout.ts).
+  const nearFirst = layout.storesReversed ? leftHanded : !leftHanded;
+  const stores = nearFirst ? [nearStore, farStore] : [farStore, nearStore];
+
   return (
     <div className="board-wrap">
-      <div className="board">
-        <Store count={state.scores[viewpoint]} side="left" />
-        <div className="pit-grid">
-          <div className="pit-row pit-row-top">
-            {topPits.map(p => renderPit(p, 'top'))}
+      <div className="board" style={{ flexDirection: layout.boardDirection }}
+           role="group" aria-label={t('a11y.board')}>
+        {stores[0]}
+        <div className="pit-grid" style={{ flexDirection: layout.gridDirection }}>
+          <div className="pit-row pit-row-far" style={{ flexDirection: layout.rowDirection }}>
+            {layout.far.map(p => renderPit(p, 'far'))}
           </div>
-          <div className="board-midline" />
-          <div className="pit-row pit-row-bottom">
-            {bottomPits.map(p => renderPit(p, 'bottom'))}
+          <div className={`board-midline board-midline-${orientation}`} />
+          <div className="pit-row pit-row-near" style={{ flexDirection: layout.rowDirection }}>
+            {layout.near.map(p => renderPit(p, 'near'))}
           </div>
         </div>
-        <Store count={state.scores[opp]} side="right" />
+        {stores[1]}
       </div>
     </div>
   );

@@ -1,81 +1,127 @@
 import { useState } from 'react';
+import { useT } from '../i18n/useT.ts';
+import type { StringKey } from '../i18n/index.ts';
+import type { Profile } from '../lib/profile.ts';
+import { rankFor, suggestedLevel, type Stats } from '../lib/stats.ts';
+import type { SavedGame } from '../lib/saveGame.ts';
+import { primeAudio, playTap } from '../lib/sound.ts';
+import { hapticTap } from '../lib/haptics.ts';
+import { CHALLENGES } from '../lib/challenges.ts';
 
 interface Props {
+  profile: Profile;
+  stats: Stats;
+  completed: number[];
+  saved: SavedGame | null;
   onPlayAI: (level: number) => void;
   onPlayLocal: () => void;
+  onQuickMatch: (level: number) => void;
+  onContinue: () => void;
   onTutorial: () => void;
   onChallenges: () => void;
-  onToast: (msg: string) => void;
+  onSettings: () => void;
+  onStats: () => void;
+  onRecords: () => void;
 }
-
-const LEVELS = [
-  { n: 1, name: 'Novice', desc: 'Greedy — grabs the biggest capture' },
-  { n: 2, name: 'Skilled', desc: 'Looks a few moves ahead' },
-  { n: 3, name: 'Expert', desc: 'Deeper search, plans captures' },
-  { n: 4, name: 'Master', desc: 'Full-strength search' },
-];
 
 function Diamond() {
   return <span className="diamond" aria-hidden>◇</span>;
 }
 
-export default function Menu({ onPlayAI, onPlayLocal, onTutorial, onChallenges, onToast }: Props) {
+export default function Menu({
+  profile, stats, completed, saved,
+  onPlayAI, onPlayLocal, onQuickMatch, onContinue,
+  onTutorial, onChallenges, onSettings, onStats, onRecords,
+}: Props) {
+  const t = useT();
   const [pickAI, setPickAI] = useState(false);
+  const rank = rankFor(stats.rating);
+  const quickLevel = suggestedLevel(stats.rating);
+  const levelName = (i: number) => t(`level.${i + 1}.name` as StringKey);
+
+  // The menu is the first thing a player touches, so unlock audio here.
+  const tap = () => { primeAudio(); playTap(); hapticTap(); };
+  const go = (fn: () => void) => () => { tap(); fn(); };
 
   return (
     <div className="screen menu">
       <div className="menu-top">
-        <div className="chip chip-avatar">
-          <span className="avatar" aria-hidden />
+        <button className="chip chip-avatar" onClick={go(onSettings)} aria-label={t('profile.title')}>
+          <span className={`avatar avatar-${profile.avatar}`} aria-hidden />
           <span className="chip-body">
-            <span className="chip-name">Player123</span>
-            <span className="chip-rating">★ 1250</span>
+            <span className="chip-name">{profile.name || t('common.player')}</span>
+            <span className="chip-rating">★ {stats.rating} · {t(rank.tier.key as StringKey)}</span>
           </span>
-        </div>
+        </button>
         <div className="menu-top-right">
-          <button className="icon-btn" onClick={() => onToast('Leaderboards — coming soon')} aria-label="Leaderboards">🏆</button>
-          <button className="icon-btn" onClick={() => onToast('Stats — coming soon')} aria-label="Stats">📊</button>
-          <button className="icon-btn" onClick={() => onToast('Settings — coming soon')} aria-label="Settings">⚙️</button>
+          <button className="icon-btn" onClick={go(onRecords)} aria-label={t('menu.records')}>🏆</button>
+          <button className="icon-btn" onClick={go(onStats)} aria-label={t('menu.stats')}>📊</button>
+          <button className="icon-btn" onClick={go(onSettings)} aria-label={t('common.settings')}>⚙️</button>
         </div>
       </div>
 
       <div className="menu-hero">
         <div className="hero-ornament"><Diamond /><span className="rule" /><Diamond /></div>
         <h1 className="title">AWALÉ</h1>
-        <p className="tagline">The strategy. The culture. The legacy.</p>
+        <p className="tagline">{t('menu.tagline')}</p>
       </div>
 
       {!pickAI ? (
         <div className="menu-actions">
-          <button className="pill pill-green" onClick={() => onToast('Quick Match — coming soon')}>
+          {saved && (
+            <button className="pill pill-green" onClick={go(onContinue)}>
+              <span className="pill-icon">▶</span>
+              <span className="pill-body">
+                <span className="pill-title">{t('menu.continue')}</span>
+                <span className="pill-sub">
+                  {t('menu.continueSub', {
+                    opponent: saved.mode === 'local' ? t('menu.twoPlayers') : levelName(saved.level),
+                  })}
+                </span>
+              </span>
+            </button>
+          )}
+          <button className={saved ? 'pill' : 'pill pill-green'} onClick={go(() => onQuickMatch(quickLevel))}>
             <span className="pill-icon">⚔️</span>
-            <span className="pill-body"><span className="pill-title">PLAY NOW</span><span className="pill-sub">Quick Match · coming soon</span></span>
+            <span className="pill-body">
+              <span className="pill-title">{t('menu.quickMatch')}</span>
+              <span className="pill-sub">{t('menu.quickMatchSub', { level: levelName(quickLevel) })}</span>
+            </span>
           </button>
-          <button className="pill" onClick={onPlayLocal}>
+          <button className="pill" onClick={go(onPlayLocal)}>
             <span className="pill-icon">👥</span>
-            <span className="pill-body"><span className="pill-title">TWO PLAYERS</span><span className="pill-sub">Pass &amp; play on this device</span></span>
+            <span className="pill-body">
+              <span className="pill-title">{t('menu.twoPlayers')}</span>
+              <span className="pill-sub">{t('menu.twoPlayersSub')}</span>
+            </span>
           </button>
-          <button className="pill" onClick={() => setPickAI(true)}>
+          <button className="pill" onClick={go(() => setPickAI(true))}>
             <span className="pill-icon">🤖</span>
-            <span className="pill-body"><span className="pill-title">PLAY VS AI</span><span className="pill-sub">Choose difficulty</span></span>
+            <span className="pill-body">
+              <span className="pill-title">{t('menu.vsAI')}</span>
+              <span className="pill-sub">{t('menu.vsAISub')}</span>
+            </span>
           </button>
-          <button className="pill" onClick={onTutorial}>
+          <button className="pill" onClick={go(onTutorial)}>
             <span className="pill-icon">🎓</span>
-            <span className="pill-body"><span className="pill-title">LEARN</span><span className="pill-sub">Interactive tutorial</span></span>
+            <span className="pill-body">
+              <span className="pill-title">{t('menu.learn')}</span>
+              <span className="pill-sub">{t('menu.learnSub')}</span>
+            </span>
           </button>
         </div>
       ) : (
         <div className="menu-actions">
           <div className="level-head">
-            <button className="back-link" onClick={() => setPickAI(false)}>← Back</button>
-            <span>Choose difficulty</span>
+            <button className="back-link" onClick={go(() => setPickAI(false))}>← {t('common.back')}</button>
+            <span>{t('menu.chooseDifficulty')}</span>
           </div>
-          {LEVELS.map(l => (
-            <button key={l.n} className="pill pill-level" onClick={() => onPlayAI(l.n - 1)}>
-              <span className="level-badge">{l.n}</span>
+          {[0, 1, 2, 3].map(i => (
+            <button key={i} className="pill pill-level" onClick={go(() => onPlayAI(i))}>
+              <span className="level-badge">{i + 1}</span>
               <span className="pill-body">
-                <span className="pill-title">{l.name}</span>
-                <span className="pill-sub">{l.desc}</span>
+                <span className="pill-title">{levelName(i)}</span>
+                <span className="pill-sub">{t(`level.${i + 1}.desc` as StringKey)}</span>
               </span>
             </button>
           ))}
@@ -83,17 +129,28 @@ export default function Menu({ onPlayAI, onPlayLocal, onTutorial, onChallenges, 
       )}
 
       <div className="menu-cards">
-        <button className="info-card" onClick={onChallenges}>
+        <button className="info-card" onClick={go(onChallenges)}>
           <span className="info-icon">🧩</span>
-          <span><strong>Challenges</strong><br /><span className="muted">12 puzzles to solve</span></span>
+          <span>
+            <strong>{t('menu.challenges')}</strong><br />
+            <span className="muted">
+              {t('menu.challengesSub', { solved: completed.length, total: CHALLENGES.length })}
+            </span>
+          </span>
         </button>
-        <button className="info-card" onClick={() => onToast('Leaderboard — coming soon')}>
+        <button className="info-card" onClick={go(onRecords)}>
           <span className="info-icon">🏆</span>
-          <span><strong>Leaderboard</strong><br /><span className="muted">Compete for the top</span></span>
+          <span>
+            <strong>{t('menu.records')}</strong><br />
+            <span className="muted">{t('menu.recordsSub')}</span>
+          </span>
         </button>
-        <button className="info-card" onClick={() => onToast('Ranks — coming soon')}>
+        <button className="info-card" onClick={go(onStats)}>
           <span className="info-icon">👑</span>
-          <span><strong>Climb the Ranks</strong><br /><span className="muted">Become the champion</span></span>
+          <span>
+            <strong>{t('menu.ranks')}</strong><br />
+            <span className="muted">{t(rank.tier.key as StringKey)}</span>
+          </span>
         </button>
       </div>
     </div>
