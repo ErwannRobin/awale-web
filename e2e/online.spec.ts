@@ -115,3 +115,40 @@ test('a room that already has two players turns a third away', async ({ browser 
     await three.close();
   }
 });
+
+test('quick match pairs two strangers, even after one walks away', async ({ browser }, testInfo) => {
+  // The matchmaker is one shared queue on the dev server, so two of these
+  // running at once would pair across each other. The board layout is not what
+  // is under test here, so one viewport is the right number.
+  test.skip(testInfo.project.name !== 'desktop', 'one shared queue: run once');
+
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext()));
+  try {
+    const [first, second, third] = await Promise.all(
+      contexts.map((context, i) => freshPlayer(context, `Player ${i + 1}`)),
+    );
+
+    const askForAMatch = async (page: Page) => {
+      await page.goto('/');
+      await page.getByText('PLAY ONLINE').click();
+      await page.getByText('QUICK MATCH').click();
+    };
+
+    // Someone asks for a match, then thinks better of it and closes the tab.
+    // Their code is left in the queue, pointing at a room nobody is sitting in.
+    await askForAMatch(first);
+    await expect(first.locator('.room-code')).toBeVisible({ timeout: 15_000 });
+    await first.close();
+
+    // The next two must still find each other rather than each waiting alone in
+    // a dead room — which is what happens if a stale code is trusted.
+    await askForAMatch(second);
+    await expect(second.locator('.room-code')).toBeVisible({ timeout: 15_000 });
+    await askForAMatch(third);
+
+    await expect(second.locator('.board')).toBeVisible({ timeout: 20_000 });
+    await expect(third.locator('.board')).toBeVisible({ timeout: 20_000 });
+  } finally {
+    await Promise.all(contexts.map(context => context.close()));
+  }
+});

@@ -1,12 +1,27 @@
-# The match server. Deploy with `npx wrangler deploy` from this directory.
+# The whole of Awalé's back end: the game itself, and the rooms people play in.
 #
-# Durable Objects are what make this work: exactly one instance per room name,
-# worldwide, handling one message at a time. A plain Worker cannot hold a game.
-name = "awale-match"
+# One Worker serves both. That is not a saving of a few pounds — it is what
+# makes the two agree. Same origin means the browser can find the match server
+# without being told where it is, there is no CORS to configure, and a deploy
+# cannot leave a new site pointing at an old server.
+#
+# Durable Objects are what make the rooms work: exactly one instance per room
+# name, worldwide, handling one message at a time. A plain Worker cannot hold a
+# game.
+name = "awale"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
-# Rooms are cheap and short-lived, so they use SQLite-backed storage, which is
+# The built web app. `run_worker_first` puts the router in front of everything,
+# so `/room/:code` and `/queue` reach the Worker and are never mistaken for a
+# missing page; the router hands everything else back to ASSETS.
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# Rooms are small and short-lived, so they use SQLite-backed storage, which is
 # the class available on the free plan.
 [[migrations]]
 tag = "v1"
@@ -21,9 +36,9 @@ name = "LOBBY"
 class_name = "Lobby"
 
 [vars]
-# Lock /queue to the site's own origin(s) before going public, e.g.
-# ALLOWED_ORIGINS = "https://awale.example,https://www.awale.example"
-# Unset means any origin may ask for a match.
+# Origins allowed to call /queue from a *different* site. The game itself is
+# served from this Worker, so same-origin requests need nothing here; this is
+# only for a separately hosted copy of the front end.
 ALLOWED_ORIGINS = ""
 
 [observability]

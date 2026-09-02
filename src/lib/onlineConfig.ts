@@ -10,8 +10,27 @@ const TOKEN_KEY = 'awale.online.token.v1';
 
 const RAW_URL: string = (import.meta.env?.VITE_ONLINE_URL as string | undefined)?.trim() ?? '';
 
+/**
+ * `VITE_ONLINE_URL=same-origin` — the deployed shape, where one Cloudflare
+ * Worker serves both the game and the rooms.
+ *
+ * Deriving the address from the page removes the last thing a deploy could get
+ * wrong: a site cannot end up pointing at the wrong server when it *is* the
+ * server. It only works where the page came over http(s), which is true of the
+ * web and false inside the native shell (`capacitor:`/`file:`) — that build
+ * needs a real URL, and gets no online play without one rather than a broken
+ * connection with one.
+ */
+const SAME_ORIGIN = 'same-origin';
+
 /** Configured base URL, or '' when online play is switched off for this build. */
-export const onlineBaseUrl = (): string => RAW_URL.replace(/\/+$/, '');
+export function onlineBaseUrl(): string {
+  if (RAW_URL !== SAME_ORIGIN) return RAW_URL.replace(/\/+$/, '');
+  if (typeof location === 'undefined') return '';
+  return location.protocol === 'http:' || location.protocol === 'https:'
+    ? location.origin
+    : '';
+}
 
 export const onlineEnabled = (): boolean => onlineBaseUrl().length > 0;
 

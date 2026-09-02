@@ -9,7 +9,7 @@
 // who walked away.
 import {
   ABANDON_MS,
-  command, createRoom, disconnect, isExpired, join, seatOf, sweep,
+  command, createRoom, disconnect, isExpired, isJoinable, join, seatOf, sweep,
   type Effect, type RoomState,
 } from '../../src/lib/roomCore.ts';
 import {
@@ -23,6 +23,11 @@ const STATE_KEY = 'room';
 /** `WebSocket.OPEN`, spelled out: the Workers runtime and the DOM disagree on
  *  the name of this constant but not on its value. */
 const OPEN = 1;
+
+/** The matchmaker's one question about a room. */
+export interface RoomProbe {
+  joinable: boolean;
+}
 
 /** What each socket remembers about itself across a hibernation. */
 interface SocketTag {
@@ -40,11 +45,20 @@ export class Room implements DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code') ?? 'ROOM';
+
+    // The matchmaker asking "is anyone still sitting in here?" before it sends
+    // a second player in. Read-only, and it must not bring a room into being.
+    if (url.searchParams.get('probe') === '1') {
+      const room = await this.load(code);
+      return Response.json({ joinable: isJoinable(room) } satisfies RoomProbe);
+    }
+
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return new Response('expected a websocket upgrade', { status: 426 });
     }
 
-    const code = new URL(request.url).searchParams.get('code') ?? 'ROOM';
     await this.load(code);
 
     const pair = new WebSocketPair();
@@ -140,8 +154,9 @@ export class Room implements DurableObject {
   private async load(code?: string): Promise<RoomState> {
     if (this.cached) return this.cached;
     const stored = await this.state.storage.get<RoomState>(STATE_KEY);
+    // Deliberately not written back: a room that is only ever looked at should
+    // leave nothing behind. The first `hello` commits it.
     this.cached = stored ?? createRoom(code ?? 'ROOM', Date.now());
-    if (!stored) await this.state.storage.put(STATE_KEY, this.cached);
     return this.cached;
   }
 

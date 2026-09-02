@@ -12,7 +12,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   ABANDON_MS,
-  command, createRoom, disconnect, isExpired, join, seatOf, sweep,
+  command, createRoom, disconnect, isExpired, isJoinable, join, seatOf, sweep,
   type Effect, type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
@@ -85,8 +85,12 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   if (url.pathname === '/queue' && request.method === 'POST') {
     const now = Date.now();
     let body: { code: string; role: 'created' | 'joined' };
-    if (waiting && now - waiting.at < WAIT_TTL_MS) {
-      body = { code: waiting.code, role: 'joined' };
+    // A waiting code is only worth handing out if somebody is still sitting in
+    // it. See the same check, against the Room object, in `src/index.ts`.
+    const fresh = waiting && now - waiting.at < WAIT_TTL_MS ? waiting : null;
+    const room = fresh ? rooms.get(fresh.code) : undefined;
+    if (fresh && room && isJoinable(room)) {
+      body = { code: fresh.code, role: 'joined' };
       waiting = null;
     } else {
       const code = makeRoomCode();

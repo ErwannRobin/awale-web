@@ -1,14 +1,22 @@
-# The match server
+# The server
 
-A Cloudflare Worker with two Durable Objects. It is the only server this game
-has, and it holds nothing but games in progress: no accounts, no database, no
-history. A room lives for as long as two people are playing in it.
+One Cloudflare Worker serves the whole of Awalé: the game itself, and the rooms
+people play it in. It holds nothing but games in progress — no accounts, no
+database, no history. A room lives for as long as two people are in it.
 
 ```
 GET  /room/:code   WebSocket upgrade into that room
 POST /queue        quick match — a code to sit in, or one to walk into
 GET  /health       is anybody home
+everything else    the built web app, from the ASSETS binding
 ```
+
+**One Worker, not two.** That is not about saving money; it is what makes the
+two halves agree. Same origin means the browser finds the match server without
+being told where it is (`VITE_ONLINE_URL=same-origin`), there is no CORS to
+configure, and a deploy cannot leave a new front end talking to an old server.
+`run_worker_first` puts the router ahead of the static assets, so `/room/:code`
+reaches a room instead of being served the index page.
 
 ## Why Durable Objects
 
@@ -27,7 +35,7 @@ field, and why each socket carries its own identity in `serializeAttachment`.
 
 | File | What it is |
 | --- | --- |
-| `src/index.ts` | The router, and the CORS policy for `/queue` |
+| `src/index.ts` | The router, the matchmaker, and the fall-through to the app |
 | `src/room.ts` | One room: sockets in, sockets out, storage, the walkout alarm |
 | `src/lobby.ts` | Quick match — one waiting code at a time |
 | `dev-server.ts` | The same rooms over `ws`, on a laptop |
@@ -38,32 +46,56 @@ None of them contain a rule of awalé. The rules live in
 browser — so the client and the server cannot disagree about what a move does,
 and `../test/online.test.ts` can play whole matches with no cloud account.
 
-## Running it
+## Deploying
+
+**Automatically.** `.github/workflows/deploy.yml` runs on a push to the default
+branch: it checks, builds the app with `VITE_ONLINE_URL=same-origin`, deploys
+the Worker with `dist/` attached, and then asks `/health` whether the thing it
+just shipped answers. Two repository **secrets** are all it needs:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → **Edit Cloudflare Workers** template |
+| `CLOUDFLARE_ACCOUNT_ID` | Workers & Pages overview, right-hand column |
+
+Optionally set a repository **variable** `SITE_URL` to the deployed address
+(e.g. `https://awale.<your-subdomain>.workers.dev`). It turns on the post-deploy
+health check and makes every run link to the live game.
+
+**By hand**, the first time or to check something:
 
 ```bash
 npm install
-npm run dev        # wrangler dev, on http://127.0.0.1:8787
 npm run typecheck  # tsc against @cloudflare/workers-types
-npm run deploy     # wrangler deploy
+npm run dev        # wrangler dev — the game and the rooms, on :8787
+
+cd .. && VITE_ONLINE_URL=same-origin npm run build   # the app it will serve
+cd server && npm run deploy
 npm run tail       # live logs from the deployed Worker
 ```
 
-The web app needs to be told where the server is, at **build** time:
+`wrangler dev` serves whatever is in `../dist`, so build the app first or you
+will get a polite 404 instead of a game.
+
+### Working on the game without deploying
+
+The web app can point at a separate match server instead:
 
 ```bash
-# from the repository root
-VITE_ONLINE_URL=ws://127.0.0.1:8787 npm run dev
-VITE_ONLINE_URL=wss://awale-match.<your-subdomain>.workers.dev npm run build
+npm run dev:server                                 # from the repository root
+VITE_ONLINE_URL=ws://127.0.0.1:8787 npm run dev    # Vite, with online on
 ```
 
-A build without that variable has no online play at all — no menu entry, no
-screens — which is the shape CI builds, and a perfectly good shape to ship if
-you would rather not run a server.
+A build with **no** `VITE_ONLINE_URL` has no online play at all — no menu entry,
+no screens — which is the shape CI builds, and a perfectly good shape to ship if
+you would rather not run a server. The native shell needs a real URL rather than
+`same-origin`: it loads from `capacitor:`, so there is no origin to borrow.
 
 ### Before making it public
 
-Set `ALLOWED_ORIGINS` in `wrangler.toml` to your own site, so a stranger's page
-cannot use your matchmaker:
+`ALLOWED_ORIGINS` in `wrangler.toml` only matters if you also host the front end
+somewhere else; a same-origin deploy needs nothing. If you do, name the sites
+allowed to use your matchmaker:
 
 ```toml
 ALLOWED_ORIGINS = "https://awale.example,https://www.awale.example"
@@ -99,10 +131,11 @@ Worth knowing before it is public:
   take a free seat. That is the right security for a game you share by link, and
   it is not more than that. Codes are 5 characters from a 31-letter alphabet
   (~28.6M combinations) and a room only exists while it is being played in.
-- **Quick match can leave you waiting alone.** If the player who asked first
-  closes their tab, their code stays in the queue for up to two minutes and the
-  next player joins an empty room. Fixing it properly means the lobby asking each
-  room whether it is still occupied.
+- **Quick match is one queue, and it is first-come.** No skill matching, no
+  regions, no waiting list — the next two people to ask are paired. A code is
+  checked against its room before it is handed out, so someone who asks for a
+  match and then leaves does not strand the next player; but if nobody else is
+  looking for a game, you wait.
 - **Nothing is rated, and nothing is stored.** Results do not go anywhere. A
   ladder would need accounts, which would need a real database and a privacy
   policy that says more than "nothing leaves the device".

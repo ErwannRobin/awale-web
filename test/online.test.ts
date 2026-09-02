@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
-  command, createRoom, disconnect, isCoherent, join, snapshot, sweep,
+  command, createRoom, disconnect, isCoherent, isJoinable, join, snapshot, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
@@ -121,6 +121,35 @@ check('a reconnect is answered with the position, not a new game', () => {
   assert.deepEqual(sent.pits, before.pits);
   assert.equal(sent.ply, 1);
   assert.equal(sent.turn, before.turn);
+});
+
+// ---------------------------------------------------------------------------
+console.log('room: the matchmaker\'s question');
+
+check('an empty room is not somewhere to send a stranger', () => {
+  assert.equal(isJoinable(createRoom('ABCDE', 1000)), false);
+});
+
+check('a room with one player waiting in it is', () => {
+  const room = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  assert.equal(isJoinable(room), true);
+});
+
+check('a room whose only player has walked away is not', () => {
+  // The failure this exists to stop: a quick-match code outliving the player
+  // who asked for it, so the next player waits for someone never coming.
+  let room = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  room = disconnect(room, TOKEN_A, 2000).state;
+  assert.equal(isJoinable(room), false);
+});
+
+check('a room already playing is not', () => {
+  assert.equal(isJoinable(seatedRoom()), false);
+});
+
+check('a finished room is not', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'resign' }, 2000).state;
+  assert.equal(isJoinable(room), false);
 });
 
 // ---------------------------------------------------------------------------

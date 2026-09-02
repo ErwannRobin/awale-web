@@ -125,6 +125,19 @@ export const seatOf = (state: RoomState, token: string): Seat | null => {
 export const isFull = (state: RoomState): boolean =>
   state.players[0] !== null && state.players[1] !== null;
 
+/**
+ * Is one player sitting here, still connected, waiting for a second?
+ *
+ * The matchmaker's question. It is not "is there a free seat": a room whose
+ * only occupant has closed their tab has a free seat and is still the wrong
+ * place to send someone, because nobody there will ever move.
+ */
+export function isJoinable(state: RoomState): boolean {
+  if (state.status !== 'waiting') return false;
+  const seated = state.players.filter(p => p !== null);
+  return seated.length === 1 && seated[0]!.online;
+}
+
 function touch(state: RoomState, now: number): RoomState {
   return { ...state, updatedAt: now };
 }

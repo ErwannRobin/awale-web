@@ -381,6 +381,30 @@ One bug the browser test found that no unit test would have: `Game.tsx` decided
 brings one too — the seat and opening position come from the server — so an
 online win announced itself as *"Challenge complete!"*.
 
+### Deployment
+
+The game had no deployment at all before this: CI tested it and nothing
+published it, so nobody could play it. That is now one Worker and one workflow.
+
+`[assets]` with `run_worker_first` puts the router ahead of the static files, so
+`/room/:code` reaches a room rather than being served the index page, and
+everything else falls through to `env.ASSETS`. Serving both from one origin is
+what lets `VITE_ONLINE_URL=same-origin` work: the client derives the socket
+address from `location.origin`, so there is no URL to configure, no CORS, and no
+way to ship a front end pointing at yesterday's server. A native build cannot do
+this — `capacitor:` has no origin to borrow — and gets an explicit URL instead.
+
+Two bugs found by running it rather than reading it:
+
+- The first `/queue` handler forwarded the player's own `Request` to the lobby
+  twice, to retry after a stale code. A `Request` body cannot be read twice, and
+  the runtime said so. The lobby wants nothing from that request but the verb.
+- The quick-match weakness documented in the first draft turned out to be easy
+  to hit rather than theoretical — a stray `curl` was enough to strand a real
+  pair of browsers in separate rooms. A handed-out code is now checked against
+  its room (`isJoinable`, shared by both servers and covered by five assertions)
+  before it is trusted, and a dead one is discarded rather than passed on.
+
 ### What is deliberately not there
 
 No accounts, no ratings, no stored history, no clock, no ladder. A room code is
@@ -397,10 +421,11 @@ so a player whose opponent drops sees a banner rather than a countdown.
 ```
 npm run lint               # ESLint 9 — clean
 npm run build              # tsc -b + vite build — clean
-npm test                   # 171 assertions across 7 suites + 30 self-play games
+npm test                   # 176 assertions across 7 suites + 30 self-play games
 npm run verify:challenges  # 12 positions: 0 failures, 1 inconclusive (see §5.2)
-npm run test:e2e           # 11 tests × 2 viewports (desktop + phone)
+npm run test:e2e           # 12 tests × 2 viewports (desktop + phone)
 cd server && npm run typecheck   # the Worker, against @cloudflare/workers-types
+cd server && npm run dev         # the real Worker under workerd, game included
 ```
 
 Board geometry, themes and the new screens were also checked by hand in a real

@@ -5,12 +5,11 @@
 // walks into an occupied room. Because a Durable Object handles one request at
 // a time, there is no race here to lose.
 //
-// The known weakness: a player who asks for a quick match and then closes the
-// tab leaves their code waiting, and the next player joins an empty room and
-// waits for someone who is never coming. The TTL below bounds how long that
-// stale code can be handed out; a queue that verified the room was still
-// occupied would need the lobby to talk to each room, which is a bigger change
-// than this feature has earned yet.
+// This object is deliberately ignorant: it knows a code, not whether anyone is
+// still sitting in it. A player who asks for a match and then closes the tab
+// leaves a code behind, so the router checks a handed-out code against the room
+// itself before trusting it (`queue` in index.ts) and comes back here for a
+// fresh one if the room is empty. The TTL below is the second line of defence.
 import { makeRoomCode } from '../../src/lib/protocol.ts';
 
 const WAITING_KEY = 'waiting';

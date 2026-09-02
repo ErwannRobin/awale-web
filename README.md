@@ -122,17 +122,20 @@ direction; that bug shipped once. Never set `flex-direction` on `.board`,
 
 ## Online play
 
-Two people, one board, over a WebSocket. The server is a Cloudflare Worker in
-[`server/`](server/) — one Durable Object per room.
+Two people, one board, over a WebSocket. **One** Cloudflare Worker in
+[`server/`](server/) serves both the game and the rooms — one Durable Object per
+room. Same origin, so the browser finds the match server without being told
+where it is, and a deploy cannot leave a new front end talking to an old server.
 
 ```bash
-cd server && npm install && npm run dev      # the match server, on :8787
-VITE_ONLINE_URL=ws://127.0.0.1:8787 npm run dev   # the game, pointed at it
+npm run dev:server                                 # the match server, on :8787
+VITE_ONLINE_URL=ws://127.0.0.1:8787 npm run dev    # the game, pointed at it
 ```
 
 Online play is **off unless `VITE_ONLINE_URL` is set at build time**. Without it
 the menu entry never appears, nothing in the online stack is reachable, and the
-rest of the game is untouched — which is how CI builds it.
+rest of the game is untouched — which is how CI builds it. A deploy sets it to
+the literal `same-origin`.
 
 ### How a game happens
 
@@ -173,6 +176,27 @@ No accounts, no ratings, no stored history, no clock, and no ladder. A room code
 is the whole authorisation model: anyone holding it can take a free seat, which
 is right for a game shared by link and is not more than that. The trade-offs are
 written down in [`server/README.md`](server/README.md).
+
+## Deploying
+
+A push to the default branch ships the game.
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs the checks,
+builds the app, deploys the Worker with `dist/` attached, and then asks
+`/health` whether what it just shipped answers. One deploy, because the game and
+the match server are one Worker — there is no window in which the two halves
+disagree.
+
+Set two repository secrets and it runs itself:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → **Edit Cloudflare Workers** |
+| `CLOUDFLARE_ACCOUNT_ID` | Workers & Pages overview, right-hand column |
+
+Optionally add a repository *variable* `SITE_URL` pointing at the deployed
+address: it enables the post-deploy health check and links each run to the live
+game. The first deploy can also be done by hand — see
+[`server/README.md`](server/README.md).
 
 ## Native mobile app
 
@@ -261,8 +285,14 @@ account, a Mac, or a decision:
    implementation. If that original carries its own licence it governs a
    published binary too. See `AUDIT.md` §5.4.
 
-Online play needs no native work: the shell already has a WebSocket, and the
-whole stack sits in `src/lib/`.
+Online play needs no native work beyond one setting: the shell already has a
+WebSocket and the whole stack sits in `src/lib/`, but a native build cannot use
+`VITE_ONLINE_URL=same-origin` — it loads from `capacitor:`, so there is no
+origin to borrow. Build the shell with the deployed URL instead:
+
+```bash
+VITE_ONLINE_URL=wss://awale.<your-subdomain>.workers.dev npm run build && npx cap sync
+```
 
 **React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
 rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it

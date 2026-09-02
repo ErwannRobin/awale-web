@@ -1,0 +1,92 @@
+# Ship the game.
+#
+# One Worker serves both the site and the rooms, so this is one deploy, not two,
+# and there is no moment where a new front end is talking to an old server.
+#
+# It runs only after the checks pass. A green build is not optional here: the
+# thing being deployed is the thing people are in the middle of playing.
+name: Deploy
+
+on:
+  push:
+    branches: [main, claude/awale-web-game-cve349]
+  # Deploying by hand, e.g. to roll forward after fixing something in the
+  # Cloudflare dashboard.
+  workflow_dispatch:
+
+concurrency:
+  # Never let two deploys race. A newer push supersedes an older one still
+  # waiting, but a deploy already in flight is allowed to finish.
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+
+  deploy:
+    name: Cloudflare
+    needs: verify
+    runs-on: ubuntu-latest
+    # Set the environment URL once, in the repository settings, and every
+    # deploy links to the live game from its own run page.
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `same-origin` tells the game to find the match server at its own
+      # address. It is the whole of the production configuration — see
+      # src/lib/onlineConfig.ts for why that is deliberate.
+      - name: Build the web app
+        run: npm run build
+        env:
+          VITE_ONLINE_URL: same-origin
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: server
+
+      # Uploads `dist/` alongside the Worker; wrangler.toml points at it.
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+
+      # A deploy that returns a 500 to the first player is worse than no
+      # deploy, and this is the cheapest possible way to find out.
+      - name: Check it answers
+        if: ${{ vars.SITE_URL != '' }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if [ "$(curl -sS -o /dev/null -w '%{http_code}' "${SITE_URL%/}/health")" = "200" ]; then
+              echo "the match server is up"
+              exit 0
+            fi
+            echo "attempt $attempt: not ready yet"
+            sleep 5
+          done
+          echo "::error::${SITE_URL%/}/health did not answer after the deploy"
+          exit 1
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
