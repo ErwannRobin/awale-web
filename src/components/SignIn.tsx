@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import {
-  VERIFY_ORIGIN, saveSession, startSignIn, waitForSignIn,
+  saveSession, startSignIn, waitForSignIn,
   type Session, type StartedSignIn,
 } from '../lib/auth.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
-import { isNative } from '../lib/platform.ts';
 
 interface Props {
   onSignedIn: (session: Session, isNew: boolean) => void;
@@ -19,25 +18,24 @@ type Phase = 'starting' | 'waiting' | 'done';
 /**
  * Signing in with a phone number, by way of WhatsApp.
  *
- * Two routes to the same place, because one of them is not always available:
- * a browser gets phone-verif's page in a frame, and a native WebView — where a
- * third-party frame is blocked as often as not — gets a button that opens
- * WhatsApp itself. Both end with the same question asked of our own server: is
- * this session verified yet?
+ * This screen is the game's own, all the way down: nothing of phone-verif's is
+ * embedded or loaded here. The Worker starts the verification with its API key,
+ * hands back a `wa.me` link with the message already written, and this screen
+ * shows it. The player opens WhatsApp, sends the message, comes back — and the
+ * only question this page ever asks is put to our own server, which is the one
+ * holding the key and the only thing that can answer it.
  *
- * The frame's `postMessage` is a *hint*, never proof. It means "ask again now"
- * and nothing more; the answer that counts comes from the Worker, which asked
- * phone-verif with a key this page has never seen.
+ * So there is nothing here for a page-level attacker to say. The screen cannot
+ * declare a sign-in successful; it can only keep asking until the server does.
  */
 export default function SignIn({ onSignedIn, onBack, onToast }: Props) {
   const t = useT();
   const [phase, setPhase] = useState<Phase>('starting');
   const [started, setStarted] = useState<StartedSignIn | null>(null);
+  const [copied, setCopied] = useState(false);
   const nudge = useRef<(() => void) | null>(null);
 
   const tap = () => { playTap(); hapticTap(); };
-  const embedded = !isNative();
-
   const back = useCallback(() => { tap(); onBack(); }, [onBack]);
 
   useEffect(() => {
@@ -89,17 +87,30 @@ export default function SignIn({ onSignedIn, onBack, onToast }: Props) {
     return () => { cancelled = true; nudge.current = null; controller.abort(); };
   }, [onBack, onSignedIn, onToast, t]);
 
-  // The frame saying it is done. Origin-checked, and believed only far enough
-  // to skip the rest of the polling interval.
+  // Coming back to the tab is the moment a player is most likely to have just
+  // sent the message, so ask again immediately instead of sitting out the rest
+  // of the interval. It changes when we ask, never the answer.
   useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.origin !== VERIFY_ORIGIN) return;
-      const data = event.data as { type?: unknown } | null;
-      if (data?.type === 'verification_complete') nudge.current?.();
+    const wake = () => { if (!document.hidden) nudge.current?.(); };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
   }, []);
+
+  const copyLink = async () => {
+    if (!started?.whatsappUrl) return;
+    tap();
+    try {
+      await navigator.clipboard.writeText(started.whatsappUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      onToast(t('signIn.copyFailed'));
+    }
+  };
 
   return (
     <div className="screen menu">
@@ -117,44 +128,37 @@ export default function SignIn({ onSignedIn, onBack, onToast }: Props) {
         <p className="tagline">{t('signIn.tagline')}</p>
       </div>
 
-      {phase === 'waiting' && started && embedded ? (
-        <div className="verify-frame-wrap">
-          <iframe
-            className="verify-frame"
-            src={started.embedUrl}
-            title={t('signIn.title')}
-            // No `allow-same-origin`: the frame has nothing to read from this
-            // page, and the only thing it sends is the message handled above.
-            sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="origin"
-          />
-        </div>
-      ) : (
-        <div className="wait-card">
-          <p className="wait-line">
-            {phase === 'starting' ? t('signIn.starting') : t('signIn.waiting')}
-          </p>
-          <div className="wait-dots" aria-hidden><span /><span /><span /></div>
-          {phase === 'waiting' && started?.whatsappUrl && (
-            <>
-              <p className="wait-hint">{t('signIn.whatsappHint')}</p>
-              <a
-                className="pill pill-green"
-                href={started.whatsappUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                onClick={tap}
-              >
-                <span className="pill-icon">💬</span>
-                <span className="pill-body">
-                  <span className="pill-title">{t('signIn.openWhatsApp')}</span>
-                  <span className="pill-sub">{t('signIn.openWhatsAppSub')}</span>
-                </span>
-              </a>
-            </>
-          )}
-        </div>
-      )}
+      <div className="wait-card">
+        {phase === 'waiting' && started?.whatsappUrl ? (
+          <>
+            <p className="wait-hint">{t('signIn.whatsappHint')}</p>
+            <a
+              className="pill pill-green"
+              href={started.whatsappUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={tap}
+            >
+              <span className="pill-icon">💬</span>
+              <span className="pill-body">
+                <span className="pill-title">{t('signIn.openWhatsApp')}</span>
+                <span className="pill-sub">{t('signIn.openWhatsAppSub')}</span>
+              </span>
+            </a>
+            <p className="wait-line">{t('signIn.waiting')}</p>
+            <div className="wait-dots" aria-hidden><span /><span /><span /></div>
+            {/* For signing in on a phone while reading this on a desktop. */}
+            <button className="ctrl" onClick={() => void copyLink()}>
+              {copied ? `✓ ${t('online.copied')}` : `🔗 ${t('signIn.copyLink')}`}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="wait-line">{t('signIn.starting')}</p>
+            <div className="wait-dots" aria-hidden><span /><span /><span /></div>
+          </>
+        )}
+      </div>
 
       <div className="menu-cards">
         <div className="info-card info-card-static">

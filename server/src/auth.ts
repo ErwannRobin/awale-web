@@ -3,9 +3,12 @@
 // The shape of this is decided by one rule: **the API key never leaves the
 // Worker**, and neither does the decision about who somebody is. The browser
 // starts a sign-in, is handed a WhatsApp link, and then asks *us* whether it
-// worked; we ask phone-verif. The page also receives a `postMessage` from the
-// embedded phone-verif frame saying "done" — that is a hint to poll sooner and
-// nothing more, because anything the page can send, an attacker can send too.
+// worked; we ask phone-verif.
+//
+// Nothing of phone-verif's is embedded in the page. The player sees the game's
+// own screen, opens WhatsApp from it, and comes back; every call to the service
+// is made from here. The browser is told a link and a session id, and is never
+// in a position to decide the outcome of its own sign-in.
 //
 // Flow is `login`: phone-verif returns a stable `user_id` for a number and
 // registers one the first time it sees it, which is exactly an account.
@@ -18,9 +21,6 @@ import type { UserRecord, VerificationView } from './identity.ts';
 
 const API_BASE = 'https://api.phone-verif.com';
 
-/** Where the phone-verif frame is embedded from; also the postMessage origin. */
-export const VERIFY_ORIGIN = 'https://phone-verif.com';
-
 export interface AuthEnv {
   IDENTITY: DurableObjectNamespace;
   PHONE_VERIF_API_KEY?: string;
@@ -30,14 +30,18 @@ export interface AuthEnv {
   PUBLIC_APP_URL?: string;
 }
 
-/** The browser's half of a started sign-in. No API key, no webhook secret. */
+/**
+ * The browser's half of a started sign-in.
+ *
+ * Deliberately the least it can be: a session id to poll on and a link to open.
+ * No API key, no webhook secret, and not phone-verif's `validation_token`
+ * either — nothing here is needed once the WhatsApp message is sent, so there
+ * is no reason for the page to hold it.
+ */
 interface StartReply {
   sessionId: string;
-  /** phone-verif's `validation_token`, which the embed URL needs. */
-  token: string;
-  embedUrl: string;
+  /** `wa.me/...`, with the verification message already written. */
   whatsappUrl: string | null;
-  qrCodeUrl: string | null;
   expiresAt: number | null;
 }
 
@@ -224,8 +228,9 @@ async function start(
   });
 
   const session = body.session as Record<string, unknown> | undefined;
-  const token = str(session, 'validation_token');
-  if (!token) throw new AuthError(502, 'phone-verif did not return a token');
+  if (!str(session, 'validation_token')) {
+    throw new AuthError(502, 'phone-verif did not start a session');
+  }
 
   await post(stub(env, `sess:${sessionId}`), `/session/open?id=${encodeURIComponent(sessionId)}`);
 
@@ -233,14 +238,9 @@ async function start(
   const validity = session?.validity_timestamp;
   const reply: StartReply = {
     sessionId,
-    token,
-    // The embed hides phone-verif's own header and footer, so the sign-in looks
-    // like part of the game rather than a redirect to somebody else's site.
-    embedUrl: `${VERIFY_ORIGIN}/verify?session_id=${encodeURIComponent(sessionId)}`
-      + `&embedded=true&token=${encodeURIComponent(token)}`,
-    // The way out when the frame is blocked, which is every native WebView.
+    // `direct_link` is the wa.me address with the message pre-filled;
+    // `deeplink` is the shortened form of the same thing.
     whatsappUrl: str(whatsapp, 'direct_link') ?? str(whatsapp, 'deeplink'),
-    qrCodeUrl: str(whatsapp, 'qr_code_url'),
     expiresAt: typeof validity === 'number' ? validity * 1000 : null,
   };
   return Response.json(reply, { headers: cors });

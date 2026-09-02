@@ -190,6 +190,11 @@ the player answers a pre-written WhatsApp message, and the service returns a
 stable `user_id` for that number, registering it the first time it sees it
 (`flow=login`). The game never sees the phone number and never stores one.
 
+**Nothing of phone-verif's runs in the page.** There is no embed, no frame and
+no script of theirs; the sign-in screen is the game's own. The Worker calls the
+API with the key, hands the browser a `wa.me` link and a session id, and the
+browser opens the one and polls on the other.
+
 ```
 POST /auth/start    begin a sign-in; returns the WhatsApp link and the embed URL
 GET  /auth/status   has it happened yet; returns our own signed session token
@@ -198,12 +203,12 @@ GET  /auth/me       who this token is
 POST /auth/name     change the display name
 ```
 
-**The API key never leaves the Worker.** The browser starts a sign-in, is shown
-the WhatsApp step, and then asks *us* whether it worked; we ask phone-verif. The
-embedded frame also posts a `verification_complete` message to the page, and
-that is treated as a hint to ask again sooner — never as proof, because anything
-the page can send, an attacker can send too. The only thing that seats a player
-is a token signed with a key the browser has never seen.
+**The API key never leaves the Worker**, and neither does the decision about who
+somebody is. The browser starts a sign-in, is shown the WhatsApp step, and then
+asks *us* whether it worked; we ask phone-verif. The page is never in a position
+to declare its own sign-in successful — the most it can do is keep asking — and
+the only thing that seats a player is a token signed with a key it has never
+seen.
 
 Session tokens are HMAC-SHA256 over a small JSON payload, valid for 30 days. The
 signing key is derived from the API key with HKDF, so there is one secret to

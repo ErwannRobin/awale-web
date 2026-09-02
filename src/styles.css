@@ -931,17 +931,8 @@ button { font-family: inherit; touch-action: manipulation; }
 .wait-line { margin: 0; color: var(--ivory); font-size: 0.95rem; }
 .wait-hint { margin: 0; color: var(--ivory-70); font-size: 0.82rem; max-width: 32ch; }
 
-/* Sign-in. The frame is phone-verif's page, so the only thing this styles is
-   the hole it sits in: a panel the same shape as the waiting card. */
-.verify-frame-wrap {
-  margin: 0 auto; max-width: 420px; width: 100%;
-  border-radius: 18px; overflow: hidden;
-  background: var(--panel); border: 1px solid var(--panel-line);
-  box-shadow: var(--shadow);
-}
-.verify-frame { display: block; width: 100%; height: 560px; border: 0; }
-@media (max-height: 720px) { .verify-frame { height: 440px; } }
-
+/* Sign-in reuses the waiting card wholesale — it is the same idea, and the
+   same shape: a panel that says what is happening while nothing yet has. */
 .account-line {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   width: 100%;

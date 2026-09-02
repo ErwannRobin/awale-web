@@ -5,6 +5,10 @@
 // step, and then asks the Worker — repeatedly, patiently — whether it worked.
 // The answer comes back as a signed token it stores and sends on to a room.
 //
+// Nothing of phone-verif's is embedded or loaded here. The only thing this file
+// knows about them is a `wa.me` link the Worker handed it, and even that it
+// only opens.
+//
 // Signed out is a supported, complete state: everything except the account name
 // works exactly as it did before there were accounts.
 import { getStore } from './storage.ts';
@@ -12,9 +16,6 @@ import { onlineBaseUrl } from './onlineConfig.ts';
 import { peekClaims } from './authCore.ts';
 
 const KEY = 'awale.auth.v1';
-
-/** The origin the embedded verification frame posts from. Checked on every message. */
-export const VERIFY_ORIGIN = 'https://phone-verif.com';
 
 export interface Account {
   id: string;
@@ -28,10 +29,8 @@ export interface Session {
 
 export interface StartedSignIn {
   sessionId: string;
-  token: string;
-  embedUrl: string;
+  /** `wa.me/...`, with the verification message already written. */
   whatsappUrl: string | null;
-  qrCodeUrl: string | null;
   expiresAt: number | null;
 }
 
@@ -164,9 +163,9 @@ export async function refreshSession(session: Session): Promise<Session | null> 
 /**
  * Polls until the sign-in settles.
  *
- * `nudge` exists because the embedded frame tells the page when it is done.
- * That message is never believed on its own — it only shortens the wait before
- * the next question to our own server, which is the one that decides.
+ * `nudge` cuts the current wait short. The screen fires it when the player
+ * comes back to the tab, which is the moment they are most likely to have just
+ * finished — it only changes *when* we ask our own server, never the answer.
  */
 export async function waitForSignIn(opts: {
   sessionId: string;
