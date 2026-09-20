@@ -275,6 +275,7 @@ export default function App() {
         <Tutorial
           onExit={() => setScreen({ name: 'menu' })}
           onChallenges={() => setScreen({ name: 'challenges' })}
+          onPlay={level => startGame('ai', level)}
         />
       )}
 
