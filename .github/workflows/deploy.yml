@@ -9,7 +9,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main, claude/awale-web-game-cve349]
+    branches: [main]
   # Deploying by hand, e.g. to roll forward after fixing something in the
   # Cloudflare dashboard.
   workflow_dispatch:

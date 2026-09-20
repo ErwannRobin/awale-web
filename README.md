@@ -270,6 +270,33 @@ address: it enables the post-deploy health check and links each run to the live
 game. The first deploy can also be done by hand — see
 [`server/README.md`](server/README.md).
 
+### The Vercel mirror
+
+The game is also published at <https://awale-web.vercel.app> by Vercel's own Git
+integration — a push deploys it, with no workflow of ours involved. That copy is
+the front end only: there is no Worker runtime behind it, so
+[`vercel.json`](vercel.json) points the build at the deployed Worker rather than
+at its own origin.
+
+```json
+"build": { "env": { "VITE_ONLINE_URL": "https://awale.erwann-robin.workers.dev" } }
+```
+
+Same-origin is still the shape the Cloudflare deploy uses, and it is still the
+safer one — see [`src/lib/onlineConfig.ts`](src/lib/onlineConfig.ts). A separate
+host means a front end can outlive the server it was built against, so the URL
+above has to be kept true by hand. The Worker accepts the cross-origin call:
+`ALLOWED_ORIGINS` in [`server/wrangler.toml`](server/wrangler.toml) is empty,
+which allows any origin, and `PUBLIC_APP_URL` already names the Vercel address so
+sign-in lands back there.
+
+Two settings live in the Vercel dashboard and not in this repository, and both
+will serve a stale site while still reporting every deploy as a success:
+**Settings → Git → Production Branch** must be `main`, and **Settings → Domains**
+must have `awale-web.vercel.app` assigned to production. A production branch that
+was set to a feature branch, then deleted, leaves every later push deploying as a
+*preview* — green ticks on GitHub, an unchanged site.
+
 ## Native mobile app
 
 The game logic is platform-free: `src/lib/` has no DOM dependencies except
