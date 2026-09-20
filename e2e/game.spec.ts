@@ -201,3 +201,117 @@ test('the game still loads with the network offline', async ({ page, context }) 
   await expect(page.locator('.pit')).toHaveCount(12);
   await context.setOffline(false);
 });
+
+// ---------------------------------------------------------------------------
+// Move preview. A player should be able to ask "where do these seeds land?"
+// before committing — by hovering with a mouse, or holding with a finger —
+// and the asking must never itself play the move.
+// ---------------------------------------------------------------------------
+
+/** A position where South's pit 6 sweeps four opponent pits for ten seeds. */
+async function seedCapturePosition(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('awale.savedgame.v1', JSON.stringify({
+        mode: 'local', level: 1,
+        pits: [0, 0, 0, 0, 0, 4, 1, 2, 2, 1, 1, 0],
+        scores: [20, 17], turn: 0, history: [], at: Date.now(),
+      }));
+    } catch { /* private mode */ }
+  });
+}
+
+test('hovering a pit previews where its seeds land', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await page.waitForSelector('.pit-legal');
+
+  // The opening move sows four seeds into the four pits that follow.
+  await page.locator('[data-pit="0"]').hover();
+  await expect(page.locator('.pit-preview-sow')).toHaveCount(4);
+  await expect(page.locator('.pit-gain')).toHaveText(['+1', '+1', '+1', '+1']);
+  await expect(page.locator('[data-pit="4"]')).toHaveClass(/pit-preview-last/);
+  // Ghost seeds show the arrivals in place, one per receiving pit.
+  await expect(page.locator('.seed-ghost')).toHaveCount(4);
+
+  // A preview is a peek, not a move: the board has not changed.
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /4 seeds/);
+
+  // Moving off the board clears it.
+  await page.mouse.move(2, 2);
+  await expect(page.locator('.pit-preview-sow')).toHaveCount(0);
+});
+
+test('the preview counts a capture into the store', async ({ page }) => {
+  await useInstantSpeed(page);
+  await seedCapturePosition(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: /CONTINUE/ }).click();
+  await page.waitForSelector('.pit-legal');
+
+  await page.locator('[data-pit="5"]').hover();
+  // Four opponent pits swept, and the ten seeds tallied on the near store.
+  await expect(page.locator('.pit-preview-capture')).toHaveCount(4);
+  await expect(page.locator('.store-near .store-gain')).toHaveText('+10');
+  // Still just a preview.
+  await expect(page.locator('.store-near .store-count')).toHaveText('20');
+});
+
+test('holding a pit previews it, and dragging moves the preview along', async ({ browser }) => {
+  // A touch-capable context: the hold gesture only exists for touch and pen.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
+  });
+  const page = await context.newPage();
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await page.waitForSelector('.pit-legal');
+  // The emulated mouse is still parked where the menu button was, which may
+  // now be a pit — and a hovering mouse previews. Park it off the board.
+  await page.mouse.move(2, 2);
+
+  // Playwright's touchscreen only taps, so drive raw touch points over CDP:
+  // Chromium turns them into the pointer events the board listens for.
+  const cdp = await context.newCDPSession(page);
+  const centre = async (pit: number) => {
+    const box = await page.locator(`[data-pit="${pit}"]`).boundingBox();
+    if (!box) throw new Error(`pit ${pit} has no box`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  const touch = (type: string, p?: { x: number; y: number }) => cdp.send('Input.dispatchTouchEvent', {
+    type, touchPoints: p ? [{ x: p.x, y: p.y, id: 1 }] : [],
+  });
+
+  const first = await centre(0);
+  const later = await centre(3);
+
+  await touch('touchStart', first);
+  // A brief touch is a tap, not a hold — nothing previewed yet. A one-shot
+  // count, because a retrying assertion would simply wait for the hold.
+  await page.waitForTimeout(100);
+  expect(await page.locator('.pit-preview-sow').count()).toBe(0);
+
+  // Hold, and the preview opens on the pit under the finger.
+  await page.waitForTimeout(400);
+  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-preview-source/);
+
+  // Slide to another pit without lifting: the preview follows.
+  await touch('touchMove', later);
+  await expect(page.locator('[data-pit="3"]')).toHaveClass(/pit-preview-source/);
+  await expect(page.locator('[data-pit="0"]')).not.toHaveClass(/pit-preview-source/);
+
+  // Lifting ends the peek and plays nothing.
+  await touch('touchEnd');
+  await expect(page.locator('.pit-preview-sow')).toHaveCount(0);
+  await expect(page.locator('[data-pit="3"]')).toHaveAttribute('aria-label', /4 seeds/);
+
+  // A quick tap still plays the move.
+  const tap = await centre(0);
+  await touch('touchStart', tap);
+  await touch('touchEnd');
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+
+  await context.close();
+});

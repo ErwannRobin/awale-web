@@ -168,6 +168,14 @@ export default function Game({
     // move on. Better a disabled pit than a tap that silently goes nowhere.
     && (!isOnline || online?.view.connection === 'online');
 
+  // The preview gesture differs by pointer: a mouse peeks on hover, a finger
+  // has to hold. Say which, once, under the turn pill.
+  const selectPit = useMemo(() => {
+    const coarse = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(hover: none)').matches;
+    return coarse ? 'game.selectPitHold' : 'game.selectPitHover';
+  }, []) as StringKey;
+
   const status = useMemo(() => {
     if (state.phase === 'over') return null;
     if (state.phase === 'thinking') {
@@ -179,13 +187,13 @@ export default function Game({
     if (state.phase === 'animating') return { pill: t('game.sowing'), line: t('game.seedsMoving') };
     if (mode !== 'local') {
       return state.turn === viewpoint
-        ? { pill: t('game.yourTurn'), line: t('game.selectPit') }
+        ? { pill: t('game.yourTurn'), line: t(selectPit) }
         : { pill: t('game.oppTurn', { name: oppName }), line: t('game.waiting') };
     }
     // Pass-and-play: the board turns round, so the side to move is always
     // the near one — "Us" — and naming it again in the pill adds nothing.
-    return { pill: t('game.yourTurn'), line: t('game.selectPit') };
-  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, t]);
+    return { pill: t('game.yourTurn'), line: t(selectPit) };
+  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, selectPit, t]);
 
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
