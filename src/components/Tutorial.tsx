@@ -6,6 +6,7 @@ import type { GameState } from '../lib/useGame.ts';
 import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
 import { getSettings, SPEED_FACTOR } from '../lib/settings.ts';
+import { useOrientation } from '../lib/useOrientation.ts';
 import { playSow, playCapture, playTap } from '../lib/sound.ts';
 import { hapticCapture, hapticTap } from '../lib/haptics.ts';
 
@@ -21,18 +22,21 @@ const EASY_LEVEL = 0;
 // pits are the row on their own side of the board. Demo moves are played by
 // South so the learner always sees a move from the other side before being
 // asked for one.
+// `portraitKey` is for the one step that names a side of the board: the board
+// turns a quarter-turn below PORTRAIT_MAX_WIDTH, where "row" becomes "column".
+type Common = { key: StringKey; portraitKey?: StringKey; board?: number[] };
 type Step =
-  | { kind: 'message'; key: StringKey; board?: number[] }
-  | { kind: 'demo'; key: StringKey; pit: number; board?: number[] }
-  | { kind: 'interact'; key: StringKey; board?: number[] }
-  | { kind: 'freePlay'; key: StringKey; board?: number[] };
+  | ({ kind: 'message' } & Common)
+  | ({ kind: 'demo'; pit: number } & Common)
+  | ({ kind: 'interact' } & Common)
+  | ({ kind: 'freePlay' } & Common);
 
 // A step without a `board` keeps whatever the previous step left behind: the
 // learner's own move should still be on the table while the next card explains
 // what it showed. Only steps that need a staged position declare one.
 const STEPS: Step[] = [
   { kind: 'message', key: 'tutorial.step1', board: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] },
-  { kind: 'message', key: 'tutorial.step2' },
+  { kind: 'message', key: 'tutorial.step2', portraitKey: 'tutorial.step2.portrait' },
   { kind: 'demo', key: 'tutorial.step3', pit: 5 },
   { kind: 'interact', key: 'tutorial.step4' },
   { kind: 'message', key: 'tutorial.step5' },
@@ -49,7 +53,13 @@ const STEPS: Step[] = [
 // Every line the card can ever show. They are all rendered, stacked in one
 // grid cell with the inactive ones hidden, so the card is as tall as its
 // longest line from the start and no step change ever shifts the board.
-const CARD_KEYS: StringKey[] = [...STEPS.map(s => s.key), 'tutorial.captured'];
+const CARD_KEYS: StringKey[] = [
+  ...STEPS.flatMap(s => (s.portraitKey ? [s.key, s.portraitKey] : [s.key])),
+  'tutorial.captured',
+];
+
+/** A step worth re-running: the ones that move seeds. A message just sits there. */
+const replayable = (s: Step) => s.kind !== 'message';
 
 type Awaiting = 'next' | 'move' | 'demo' | 'busy';
 
@@ -69,6 +79,11 @@ const sameBoard = (a: number[], b: number[]) => a.every((v, i) => v === b[i]);
 
 export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
   const t = useT();
+  const orientation = useOrientation();
+  const stepText = useCallback(
+    (st: Step) => t(st.portraitKey && orientation === 'portrait' ? st.portraitKey : st.key),
+    [t, orientation],
+  );
   const clientRef = useRef<AIClient | null>(null);
   if (clientRef.current === null) { clientRef.current = new AIClient(); clientRef.current.newGame(0); }
 
@@ -180,7 +195,7 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     scoresRef.current = nextScores;
 
     setActivePit(null); setCapturing([]);
-    setAnnouncement(t(s.key));
+    setAnnouncement(stepText(s));
 
     if (s.kind === 'message') setAwaiting('next');
     else if (s.kind === 'interact') setAwaiting('move');
@@ -261,7 +276,7 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     return null;
   })();
 
-  const cardText = banner ?? t(s.key);
+  const cardText = banner ?? stepText(s);
 
   return (
     <div className="screen game tutorial">
@@ -318,7 +333,9 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
 
         <div className="tut-nav">
           <button className="ctrl" onClick={back} disabled={step === 0}>← {t('tutorial.prev')}</button>
-          <button className="ctrl" onClick={replay}>↻ {t('tutorial.replay')}</button>
+          {replayable(s) && (
+            <button className="ctrl" onClick={replay}>↻ {t('tutorial.replay')}</button>
+          )}
           {isLast && (
             <button className="ctrl" onClick={onChallenges}>{t('tutorial.toChallenges')}</button>
           )}

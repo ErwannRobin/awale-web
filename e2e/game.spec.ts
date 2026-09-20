@@ -193,19 +193,39 @@ test('the tutorial card advances on a tap and the step can be replayed', async (
   await page.getByText('LEARN').click();
 
   const progress = page.locator('.tut-progress');
+  const replay = page.getByRole('button', { name: /Replay step/ });
   await expect(progress).toHaveText('1 / 13');
+  // Nothing has moved yet, so there is nothing to replay.
+  await expect(replay).toHaveCount(0);
 
   // The card itself is the primary way forward.
   await page.locator('.tut-card').click();
   await expect(progress).toHaveText('2 / 13');
   await page.locator('.tut-card').click();
-  await expect(progress).toHaveText('3 / 13');
+  await expect(progress).toHaveText('3 / 13');   // the demo sow
+  await expect(replay).toBeVisible();
+
+  await page.getByRole('button', { name: /^NEXT$/ }).click();
+  await expect(progress).toHaveText('4 / 13');
 
   // Back returns to the previous step; replay stays on the current one.
   await page.locator('.tut-nav .ctrl').first().click();
-  await expect(progress).toHaveText('2 / 13');
-  await page.locator('.tut-nav .ctrl').nth(1).click();
-  await expect(progress).toHaveText('2 / 13');
+  await expect(progress).toHaveText('3 / 13');
+  await replay.click();
+  await expect(progress).toHaveText('3 / 13');
+});
+
+test('the tutorial names the side of the board this screen shows', async ({ page }, testInfo) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  await page.locator('.tut-card').click();
+  await expect(page.locator('.tut-progress')).toHaveText('2 / 13');
+  // The board stands on end below PORTRAIT_MAX_WIDTH, where the learner's six
+  // pits are a column on the left rather than the bottom row.
+  await expect(page.locator('.tut-card .tut-text').first())
+    .toHaveText(testInfo.project.name === 'phone' ? /left column/ : /bottom row/);
 });
 
 test('the tutorial leaves the learner\'s own move on the board', async ({ page }) => {
