@@ -528,10 +528,17 @@ a.pill { text-decoration: none; color: inherit; }
   position: relative;
   cursor: default;
   padding: 0;
-  transition: box-shadow 0.22s, transform 0.12s;
+  transition: box-shadow 0.22s, transform 0.12s, opacity 0.18s;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .pit-legal {
   cursor: pointer;
+  /* Hold-to-preview starts here, and a drag from a playable pit must stay a
+     preview rather than becoming a page scroll. Only playable pits claim the
+     gesture, so the rest of the board scrolls as usual. */
+  touch-action: none;
   box-shadow:
     inset 0 8px 16px rgba(0,0,0,0.55),
     0 0 0 2px var(--ring),
@@ -559,6 +566,82 @@ a.pill { text-decoration: none; color: inherit; }
   color: var(--gold-soft); font-size: 0.72rem; font-weight: 700;
   display: grid; place-items: center;
   font-family: 'Georgia', serif;
+}
+
+/* =====================================================================
+   MOVE PREVIEW
+   Hover a playable pit (mouse) or hold one (touch) and the board shows, at a
+   glance, where that move's seeds would land — ghost seeds in every pit that
+   receives one, a gold ring on what it would capture, and the tally in the
+   store. Nothing here touches game state; it is all derived. See
+   lib/preview.ts and components/Board.tsx.
+   ===================================================================== */
+/* A preview is a comparison, so everything not involved steps back. */
+.pit-previewing { opacity: 0.58; }
+.pit-preview-source,
+.pit-preview-sow,
+.pit-preview-capture { opacity: 1; }
+
+.pit-preview-source {
+  box-shadow:
+    inset 0 8px 16px rgba(0,0,0,0.62),
+    0 0 0 2px var(--gold-soft),
+    0 0 18px rgba(230,201,136,0.45);
+}
+.pit-preview-sow {
+  box-shadow:
+    inset 0 8px 16px rgba(0,0,0,0.5),
+    0 0 0 2px rgba(230,201,136,0.5);
+}
+.pit-preview-last {
+  box-shadow:
+    inset 0 8px 16px rgba(0,0,0,0.5),
+    0 0 0 3px rgba(230,201,136,0.85),
+    0 0 20px rgba(230,201,136,0.45);
+}
+.pit-preview-capture {
+  box-shadow:
+    inset 0 8px 16px rgba(0,0,0,0.5),
+    0 0 0 3px rgba(226,138,92,0.95),
+    0 0 26px rgba(226,138,92,0.5);
+}
+
+/* Seeds that WOULD arrive: same arrangement as the real ones, drawn as
+   glowing outlines so a glance separates "will be here" from "is here". */
+.seed-ghost {
+  background: radial-gradient(circle at 34% 30%, rgba(255,240,200,0.45), rgba(230,201,136,0.12) 70%);
+  border: 2px solid rgba(255,235,185,0.95);
+  box-shadow: 0 0 8px rgba(230,201,136,0.75);
+}
+.pit-preview-capture .seed-ghost {
+  background: radial-gradient(circle at 34% 30%, rgba(255,205,170,0.45), rgba(226,138,92,0.12) 70%);
+  border-color: rgba(255,196,160,0.95);
+  box-shadow: 0 0 8px rgba(226,138,92,0.8);
+}
+
+.pit-gain {
+  position: absolute; left: -2px; top: -4px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(20,12,6,0.92); border: 1px solid rgba(230,201,136,0.55);
+  color: var(--gold-soft); font-size: 0.72rem; font-weight: 700;
+  display: grid; place-items: center;
+  font-family: 'Georgia', serif;
+  pointer-events: none;
+}
+.pit-gain-capture {
+  border-color: rgba(226,138,92,0.9);
+  color: #f6c8a8;
+}
+
+.store-preview { box-shadow: inset 0 10px 20px rgba(0,0,0,0.62), 0 0 0 2px rgba(230,201,136,0.6); }
+.store-gain {
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  z-index: 2;
+  background: rgba(20,12,6,0.92); border: 1px solid rgba(230,201,136,0.6);
+  color: var(--gold-soft); font-weight: 700; font-size: 0.72rem;
+  border-radius: 999px; padding: 1px 8px;
+  pointer-events: none;
 }
 
 /* seeds */
@@ -780,6 +863,9 @@ a.pill { text-decoration: none; color: inherit; }
     padding: 16px 20px;
   }
   .store { width: auto; height: clamp(46px, 12vw, 70px); flex-direction: row; padding: 0 12px; }
+  /* The store lies on its side here, so the preview tally sits beside the
+     count rather than on top of it. */
+  .store-gain { position: static; transform: none; margin-left: 6px; }
   .store-hollow { inset: 8px; }
 }
 
