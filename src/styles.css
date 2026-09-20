@@ -8,6 +8,9 @@
   --gold: #d4a845;
   --gold-soft: #e6c988;
   --ivory: #f4ead2;
+  /* Icons are plain white here: against the wood it reads as engraved metal,
+     where a warm ivory just looks like faded text. Light themes override it. */
+  --icon: #ffffff;
   --ink: #2a1a0e;
   --wood-1: #7a4a26;
   --wood-2: #5c3417;
@@ -126,6 +129,7 @@
   --gold: #a9772a;
   --gold-soft: #7a5518;
   --ivory: #2f2415;
+  --icon: #2f2415;   /* white would vanish on a pale table */
   --ink: #2f2415;
   --green: #5d7f3f;
   --green-2: #46632c;
@@ -328,6 +332,8 @@ button { font-family: inherit; touch-action: manipulation; }
   backdrop-filter: blur(6px);
 }
 .icon-btn:hover, .round-btn:hover { border-color: var(--gold); transform: translateY(-1px); }
+.icon-btn { color: var(--icon); }
+.icon-btn svg { width: 22px; height: 22px; }
 
 .menu-hero { text-align: center; margin: clamp(18px, 6vh, 60px) 0 clamp(20px, 4vh, 40px); }
 .hero-ornament { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--gold); }
@@ -351,7 +357,9 @@ button { font-family: inherit; touch-action: manipulation; }
   font-size: clamp(0.72rem, 2.2vw, 0.92rem);
 }
 
-.menu-actions { display: flex; flex-direction: column; gap: 12px; max-width: 460px; width: 100%; margin: 0 auto; }
+/* `auto` on all four sides: the column centres itself in whatever room the
+   hero leaves, instead of hanging under it with the rest of the page empty. */
+.menu-actions { display: flex; flex-direction: column; gap: 12px; max-width: 460px; width: 100%; margin: auto; }
 
 a.pill { text-decoration: none; color: inherit; }
 .pill {
@@ -372,9 +380,20 @@ a.pill { text-decoration: none; color: inherit; }
   background: linear-gradient(180deg, #5a8c40, #34611f);
   border-color: rgba(255,255,255,0.18);
 }
-.pill-icon { font-size: 1.4rem; width: 34px; text-align: center; }
+/* A button centres its own contents in every browser's default stylesheet,
+   which pushed these icons into the middle of the pill. */
+.menu-actions .pill { justify-content: flex-start; }
+.pill-icon {
+  flex: none;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  color: var(--icon);
+  font-size: 1.5rem;   /* the screens still using an emoji here */
+}
+.pill-icon svg { width: 31px; height: 31px; }
 .pill-body { display: flex; flex-direction: column; }
 .pill-title { font-weight: 700; letter-spacing: 0.09em; font-size: 1.05rem; }
+.pill-title-caps { text-transform: uppercase; }
 .pill-sub { color: var(--ivory-70); font-size: 0.82rem; }
 
 .level-head { display: flex; align-items: center; gap: 14px; color: var(--gold-soft); letter-spacing: 0.05em; padding: 2px 4px; }
