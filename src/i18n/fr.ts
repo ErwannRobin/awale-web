@@ -42,8 +42,8 @@ export const fr: Record<keyof typeof en, string> = {
   'level.4.desc': 'Recherche à pleine puissance',
 
   // ---- game ------------------------------------------------------------
-  'game.south': 'Sud',
-  'game.north': 'Nord',
+  'game.us': 'Nous',
+  'game.them': 'Eux',
   'game.yourTurn': 'À vous',
   'game.selectPit': 'Touchez un trou en surbrillance pour semer.',
   'game.oppTurn': 'Au tour de {name}',
@@ -68,6 +68,7 @@ export const fr: Record<keyof typeof en, string> = {
   'game.playAgain': 'REJOUER',
   'game.tryAgain': 'RÉESSAYER',
   'game.backToMenu': 'MENU PRINCIPAL',
+  'game.nextChallenge': 'DÉFI SUIVANT',
   'game.toChallenges': 'DÉFIS',
   'game.ratingChange': 'Classement {before} → {after}',
   'game.resumed': 'Partie reprise',
@@ -112,7 +113,7 @@ export const fr: Record<keyof typeof en, string> = {
   // ---- challenges ------------------------------------------------------
   'challenges.title': 'Défis',
   'challenges.brand': 'DÉFIS',
-  'challenges.lead': 'Vous jouez le Nord et commencez. Battez chaque position pour débloquer la suivante. Résolus : {solved} / {total}.',
+  'challenges.lead': 'Vous commencez. Battez chaque position pour débloquer la suivante. Résolus : {solved} / {total}.',
   'challenges.item': 'Défi {n}',
   'challenges.locked': 'Verrouillé — gagnez le défi précédent pour le débloquer.',
   'challenges.levelTag': 'niv. {n}',

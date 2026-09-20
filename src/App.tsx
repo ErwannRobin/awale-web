@@ -33,7 +33,9 @@ type Screen =
   | { name: 'records' }
   | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number; resume: SavedGame | null }
   | { name: 'online' }
-  | { name: 'signIn' }
+  // Sign-in is reached from the online screen and from the player chip on the
+  // menu, so like Learn and Settings it carries where to go back to.
+  | { name: 'signIn'; back: Screen }
   | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
   // Help and Settings are reachable mid-game, so they carry the screen to
@@ -153,6 +155,20 @@ export default function App() {
   };
 
   /**
+   * The player chip at the top of the menu.
+   *
+   * Signed out, it goes to sign-in: the chip is the account, and that is the
+   * only thing there is to do with one you do not have yet. Signed in, there
+   * is nothing to sign into, so it opens the profile in Settings — and a build
+   * with no server configured has no sign-in at all.
+   */
+  const openAccount = () => setScreen(
+    onlineEnabled() && !account
+      ? { name: 'signIn', back: { name: 'menu' } }
+      : { name: 'settings', back: { name: 'menu' } },
+  );
+
+  /**
    * Android's back button. It has to mean "one screen back", not "quit" —
    * quitting out of a game in progress is exactly what store reviewers flag.
    * Only the menu exits, and only on Android; iOS has no such button and
@@ -163,9 +179,7 @@ export default function App() {
       case 'menu': void exitApp(); return;
       case 'game': leaveGame(); return;
       case 'onlineGame': leaveOnline(); return;
-      // Sign-in is reached from the online screen, so back goes there and not
-      // all the way out to the menu.
-      case 'signIn': setScreen({ name: 'online' }); return;
+      case 'signIn':
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
       case 'challenge': setScreen({ name: 'challenges' }); return;
@@ -189,6 +203,7 @@ export default function App() {
           onChallenges={() => setScreen({ name: 'challenges' })}
           onOnline={() => setScreen({ name: 'online' })}
           onSettings={() => setScreen({ name: 'settings', back: { name: 'menu' } })}
+          onProfile={openAccount}
           onStats={() => setScreen({ name: 'stats' })}
           onRecords={() => setScreen({ name: 'records' })}
         />
@@ -200,7 +215,7 @@ export default function App() {
           onBack={() => setScreen({ name: 'menu' })}
           onToast={showToast}
           account={account}
-          onSignIn={() => setScreen({ name: 'signIn' })}
+          onSignIn={() => setScreen({ name: 'signIn', back: { name: 'online' } })}
           onSignOut={() => {
             clearSession();
             setAccount(null);
@@ -213,12 +228,12 @@ export default function App() {
         <SignIn
           onSignedIn={(session, isNew) => {
             setAccount(session);
-            setScreen({ name: 'online' });
+            setScreen(screen.back);
             showToast(isNew || !session.user.name
               ? t('signIn.welcome')
               : t('signIn.welcomeBack', { name: session.user.name }));
           }}
-          onBack={() => setScreen({ name: 'online' })}
+          onBack={goBackTo(screen.back)}
           onToast={showToast}
         />
       )}
@@ -297,6 +312,9 @@ export default function App() {
           title={t('challenges.item', { n: screen.index + 1 })}
           oppName={t('a11y.opponent')}
           onExit={() => setScreen({ name: 'challenges' })}
+          onNext={screen.index + 1 < CHALLENGES.length
+            ? () => setScreen({ name: 'challenge', index: screen.index + 1 })
+            : undefined}
           onLearn={() => setScreen({ name: 'learn', back: screen })}
           onSettings={() => setScreen({ name: 'settings', back: screen })}
           onToast={showToast}

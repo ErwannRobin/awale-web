@@ -8,6 +8,9 @@
   --gold: #d4a845;
   --gold-soft: #e6c988;
   --ivory: #f4ead2;
+  /* Icons are plain white here: against the wood it reads as engraved metal,
+     where a warm ivory just looks like faded text. Light themes override it. */
+  --icon: #ffffff;
   --ink: #2a1a0e;
   --wood-1: #7a4a26;
   --wood-2: #5c3417;
@@ -126,6 +129,7 @@
   --gold: #a9772a;
   --gold-soft: #7a5518;
   --ivory: #2f2415;
+  --icon: #2f2415;   /* white would vanish on a pale table */
   --ink: #2f2415;
   --green: #5d7f3f;
   --green-2: #46632c;
@@ -328,6 +332,10 @@ button { font-family: inherit; touch-action: manipulation; }
   backdrop-filter: blur(6px);
 }
 .icon-btn:hover, .round-btn:hover { border-color: var(--gold); transform: translateY(-1px); }
+.icon-btn { color: var(--icon); }
+/* The `color` sits on the svg rather than the button so the round buttons
+   still carrying a text glyph (← and ?) keep their ivory. */
+.icon-btn svg, .round-btn svg { width: 22px; height: 22px; color: var(--icon); }
 
 .menu-hero { text-align: center; margin: clamp(18px, 6vh, 60px) 0 clamp(20px, 4vh, 40px); }
 .hero-ornament { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--gold); }
@@ -351,7 +359,9 @@ button { font-family: inherit; touch-action: manipulation; }
   font-size: clamp(0.72rem, 2.2vw, 0.92rem);
 }
 
-.menu-actions { display: flex; flex-direction: column; gap: 12px; max-width: 460px; width: 100%; margin: 0 auto; }
+/* `auto` on all four sides: the column centres itself in whatever room the
+   hero leaves, instead of hanging under it with the rest of the page empty. */
+.menu-actions { display: flex; flex-direction: column; gap: 12px; max-width: 460px; width: 100%; margin: auto; }
 
 a.pill { text-decoration: none; color: inherit; }
 .pill {
@@ -372,9 +382,20 @@ a.pill { text-decoration: none; color: inherit; }
   background: linear-gradient(180deg, #5a8c40, #34611f);
   border-color: rgba(255,255,255,0.18);
 }
-.pill-icon { font-size: 1.4rem; width: 34px; text-align: center; }
+/* A button centres its own contents in every browser's default stylesheet,
+   which pushed these icons into the middle of the pill. */
+.menu-actions .pill { justify-content: flex-start; }
+.pill-icon {
+  flex: none;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  color: var(--icon);
+  font-size: 1.5rem;   /* the screens still using an emoji here */
+}
+.pill-icon svg { width: 31px; height: 31px; }
 .pill-body { display: flex; flex-direction: column; }
 .pill-title { font-weight: 700; letter-spacing: 0.09em; font-size: 1.05rem; }
+.pill-title-caps { text-transform: uppercase; }
 .pill-sub { color: var(--ivory-70); font-size: 0.82rem; }
 
 .level-head { display: flex; align-items: center; gap: 14px; color: var(--gold-soft); letter-spacing: 0.05em; padding: 2px 4px; }
@@ -410,14 +431,23 @@ a.pill { text-decoration: none; color: inherit; }
 .game-top-right { display: flex; gap: 10px; }
 .brand { color: var(--gold); letter-spacing: 0.42em; font-size: clamp(1rem, 3vw, 1.5rem); padding-left: 0.42em; }
 
-/* players row */
-.players {
+/* Player cards + board.
+   Wide screens keep the two cards above the board; the phone rules at the
+   bottom of this file move them to the flanks, where they cost no height. */
+.play-area {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas:
+    "you  turn  opp"
+    "board board board";
   align-items: center;
   gap: clamp(8px, 2vw, 20px);
-  margin: 16px 0 10px;
+  margin: 16px 0 auto;
 }
+.play-area .turn-center { grid-area: turn; }
+.play-area .pcard-you { grid-area: you; }
+.play-area .pcard-opp { grid-area: opp; }
+.play-area .board-wrap { grid-area: board; min-width: 0; }
 .pcard {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; border-radius: 18px;
@@ -433,19 +463,10 @@ a.pill { text-decoration: none; color: inherit; }
 .pcard-opp .avatar { order: 2; }
 .pcard-info { display: flex; flex-direction: column; gap: 6px; }
 .pcard-opp .pcard-info { align-items: flex-end; }
-.pcard-name { font-weight: 600; letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 8px; }
+.pcard-name { font-weight: 600; letter-spacing: 0.04em; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pcard-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcard-score { font-size: clamp(1.6rem, 5vw, 2.3rem); font-weight: 800; color: var(--gold-soft); min-width: 1.4em; text-align: center; }
 .live-dot { width: 9px; height: 9px; border-radius: 50%; background: #6ad06a; box-shadow: 0 0 8px #6ad06a; }
-
-.pips { display: flex; gap: 5px; }
-.pip {
-  width: 18px; height: 18px; border-radius: 50%;
-  display: grid; place-items: center;
-  font-size: 0.62rem; color: var(--ivory-50);
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(212,168,69,0.18);
-}
-.pip-on { color: #2a1a08; background: linear-gradient(160deg, var(--gold-soft), var(--gold)); border-color: transparent; font-weight: 700; }
 
 .turn-center { text-align: center; min-width: 150px; }
 .turn-pill {
@@ -728,14 +749,30 @@ a.pill { text-decoration: none; color: inherit; }
    the pit ORDER is decided there; this only resizes what it arranges. */
 @media (max-width: 620px) {
   .menu-cards { grid-template-columns: 1fr; }
-  .players { grid-template-columns: 1fr; gap: 10px; }
-  .turn-center { order: 0; }
-  .pcard-opp { order: 1; flex-direction: row; }
-  .pcard-you { order: 2; }
-  .pcard-opp .pcard-info { align-items: flex-start; }
-  .pcard-opp .avatar { order: -1; }
 
-  .pit { --size: clamp(46px, 15vw, 74px); }
+  /* The board stands vertically here, so the cards move to its two flanks:
+     yours on the left, alongside your own column of pits. */
+  .play-area {
+    grid-template-areas:
+      "turn turn turn"
+      "you  board opp";
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .pcard {
+    flex-direction: column; gap: 4px;
+    padding: 10px 6px; min-width: 0;
+  }
+  .pcard-you, .pcard-opp { justify-content: center; }
+  .pcard .avatar, .pcard-opp .avatar { width: 38px; height: 38px; order: -1; }
+  .pcard-info, .pcard-opp .pcard-info { align-items: center; max-width: 100%; }
+  /* Same stack on both flanks: avatar, name, score. */
+  .pcard-score, .pcard-opp .pcard-score { order: 1; }
+  .pcard-name { font-size: 0.78rem; gap: 5px; max-width: 100%; }
+  .pcard-score { font-size: clamp(1.3rem, 6vw, 1.8rem); }
+  .turn-center { min-width: 0; }
+
+  .pit { --size: clamp(42px, 13vw, 70px); }
   .board {
     align-items: center;
     border-radius: 60px;

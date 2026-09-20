@@ -8,6 +8,10 @@ import { primeAudio, playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { CHALLENGES } from '../lib/challenges.ts';
 import { onlineEnabled } from '../lib/onlineConfig.ts';
+import {
+  BoltIcon, BotIcon, CapIcon, ChartIcon, GearIcon,
+  GlobeIcon, PlayIcon, TargetIcon, TrophyIcon, UsersIcon,
+} from './Icons.tsx';
 
 interface Props {
   profile: Profile;
@@ -22,6 +26,8 @@ interface Props {
   onTutorial: () => void;
   onChallenges: () => void;
   onSettings: () => void;
+  /** The player chip — the way in to an account. */
+  onProfile: () => void;
   onStats: () => void;
   onRecords: () => void;
 }
@@ -33,7 +39,7 @@ function Diamond() {
 export default function Menu({
   profile, stats, completed, saved,
   onPlayAI, onPlayLocal, onQuickMatch, onContinue, onOnline,
-  onTutorial, onChallenges, onSettings, onStats, onRecords,
+  onTutorial, onChallenges, onSettings, onProfile, onStats, onRecords,
 }: Props) {
   const t = useT();
   const [pickAI, setPickAI] = useState(false);
@@ -48,7 +54,7 @@ export default function Menu({
   return (
     <div className="screen menu">
       <div className="menu-top">
-        <button className="chip chip-avatar" onClick={go(onSettings)} aria-label={t('profile.title')}>
+        <button className="chip chip-avatar" onClick={go(onProfile)} aria-label={t('profile.title')}>
           <span className={`avatar avatar-${profile.avatar}`} aria-hidden />
           <span className="chip-body">
             <span className="chip-name">{profile.name || t('common.player')}</span>
@@ -56,9 +62,15 @@ export default function Menu({
           </span>
         </button>
         <div className="menu-top-right">
-          <button className="icon-btn" onClick={go(onRecords)} aria-label={t('menu.records')}>🏆</button>
-          <button className="icon-btn" onClick={go(onStats)} aria-label={t('menu.stats')}>📊</button>
-          <button className="icon-btn" onClick={go(onSettings)} aria-label={t('common.settings')}>⚙️</button>
+          <button className="icon-btn" onClick={go(onRecords)} aria-label={t('menu.records')}>
+            <TrophyIcon />
+          </button>
+          <button className="icon-btn" onClick={go(onStats)} aria-label={t('menu.stats')}>
+            <ChartIcon />
+          </button>
+          <button className="icon-btn" onClick={go(onSettings)} aria-label={t('common.settings')}>
+            <GearIcon />
+          </button>
         </div>
       </div>
 
@@ -72,7 +84,7 @@ export default function Menu({
         <div className="menu-actions">
           {saved && (
             <button className="pill pill-green" onClick={go(onContinue)}>
-              <span className="pill-icon">▶</span>
+              <span className="pill-icon"><PlayIcon /></span>
               <span className="pill-body">
                 <span className="pill-title">{t('menu.continue')}</span>
                 <span className="pill-sub">
@@ -84,7 +96,7 @@ export default function Menu({
             </button>
           )}
           <button className={saved ? 'pill' : 'pill pill-green'} onClick={go(() => onQuickMatch(quickLevel))}>
-            <span className="pill-icon">⚔️</span>
+            <span className="pill-icon"><BoltIcon /></span>
             <span className="pill-body">
               <span className="pill-title">{t('menu.quickMatch')}</span>
               <span className="pill-sub">{t('menu.quickMatchSub', { level: levelName(quickLevel) })}</span>
@@ -94,7 +106,7 @@ export default function Menu({
               and a menu entry that leads to an error is worse than no entry. */}
           {onlineEnabled() && (
             <button className="pill" onClick={go(onOnline)}>
-              <span className="pill-icon">🌍</span>
+              <span className="pill-icon"><GlobeIcon /></span>
               <span className="pill-body">
                 <span className="pill-title">{t('menu.online')}</span>
                 <span className="pill-sub">{t('menu.onlineSub')}</span>
@@ -102,21 +114,32 @@ export default function Menu({
             </button>
           )}
           <button className="pill" onClick={go(onPlayLocal)}>
-            <span className="pill-icon">👥</span>
+            <span className="pill-icon"><UsersIcon /></span>
             <span className="pill-body">
               <span className="pill-title">{t('menu.twoPlayers')}</span>
               <span className="pill-sub">{t('menu.twoPlayersSub')}</span>
             </span>
           </button>
           <button className="pill" onClick={go(() => setPickAI(true))}>
-            <span className="pill-icon">🤖</span>
+            <span className="pill-icon"><BotIcon /></span>
             <span className="pill-body">
               <span className="pill-title">{t('menu.vsAI')}</span>
               <span className="pill-sub">{t('menu.vsAISub')}</span>
             </span>
           </button>
+          <button className="pill" onClick={go(onChallenges)}>
+            <span className="pill-icon"><TargetIcon /></span>
+            <span className="pill-body">
+              {/* The menu shouts its titles; the screen it opens does not, so
+                  the capitals are CSS rather than a second translation. */}
+              <span className="pill-title pill-title-caps">{t('menu.challenges')}</span>
+              <span className="pill-sub">
+                {t('menu.challengesSub', { solved: completed.length, total: CHALLENGES.length })}
+              </span>
+            </span>
+          </button>
           <button className="pill" onClick={go(onTutorial)}>
-            <span className="pill-icon">🎓</span>
+            <span className="pill-icon"><CapIcon /></span>
             <span className="pill-body">
               <span className="pill-title">{t('menu.learn')}</span>
               <span className="pill-sub">{t('menu.learnSub')}</span>
@@ -140,32 +163,6 @@ export default function Menu({
           ))}
         </div>
       )}
-
-      <div className="menu-cards">
-        <button className="info-card" onClick={go(onChallenges)}>
-          <span className="info-icon">🧩</span>
-          <span>
-            <strong>{t('menu.challenges')}</strong><br />
-            <span className="muted">
-              {t('menu.challengesSub', { solved: completed.length, total: CHALLENGES.length })}
-            </span>
-          </span>
-        </button>
-        <button className="info-card" onClick={go(onRecords)}>
-          <span className="info-icon">🏆</span>
-          <span>
-            <strong>{t('menu.records')}</strong><br />
-            <span className="muted">{t('menu.recordsSub')}</span>
-          </span>
-        </button>
-        <button className="info-card" onClick={go(onStats)}>
-          <span className="info-icon">👑</span>
-          <span>
-            <strong>{t('menu.ranks')}</strong><br />
-            <span className="muted">{t(rank.tier.key as StringKey)}</span>
-          </span>
-        </button>
-      </div>
     </div>
   );
 }

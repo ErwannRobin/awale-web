@@ -41,8 +41,8 @@ export const en = {
   'level.4.desc': 'Full-strength search',
 
   // ---- game ------------------------------------------------------------
-  'game.south': 'South',
-  'game.north': 'North',
+  'game.us': 'Us',
+  'game.them': 'Them',
   'game.yourTurn': 'Your Turn',
   'game.selectPit': 'Select a highlighted pit to sow.',
   'game.oppTurn': "{name}'s Turn",
@@ -67,6 +67,7 @@ export const en = {
   'game.playAgain': 'PLAY AGAIN',
   'game.tryAgain': 'TRY AGAIN',
   'game.backToMenu': 'BACK TO MENU',
+  'game.nextChallenge': 'NEXT CHALLENGE',
   'game.toChallenges': 'CHALLENGES',
   'game.ratingChange': 'Rating {before} → {after}',
   'game.resumed': 'Game resumed',
@@ -111,7 +112,7 @@ export const en = {
   // ---- challenges ------------------------------------------------------
   'challenges.title': 'Puzzle Challenges',
   'challenges.brand': 'CHALLENGES',
-  'challenges.lead': 'You play North and move first. Beat each fixed position to unlock the next. Solved {solved} / {total}.',
+  'challenges.lead': 'You move first. Beat each fixed position to unlock the next. Solved {solved} / {total}.',
   'challenges.item': 'Challenge {n}',
   'challenges.locked': 'Locked — win the previous challenge to unlock.',
   'challenges.levelTag': 'lvl {n}',

@@ -10,6 +10,7 @@ import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
+import { GearIcon } from './Icons.tsx';
 
 /** Long enough for the win banner and its chime to land before the OS sheet. */
 const REVIEW_DELAY_MS = 1500;
@@ -29,6 +30,8 @@ interface Props {
   /** Free play against the AI feeds the rating; challenges and pass-and-play do not. */
   rated?: boolean;
   onExit: () => void;
+  /** Challenges only: open the next one, when this is not the last. */
+  onNext?: () => void;
   onLearn: () => void;
   onSettings: () => void;
   onToast: (msg: string) => void;
@@ -38,25 +41,19 @@ interface Props {
 const TIP_KEYS: StringKey[] = ['tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6'];
 
 function PlayerCard({
-  name, score, pits, offset, active, side, avatar,
+  name, score, active, side, avatar,
 }: {
-  name: string; score: number; pits: number[]; offset: number;
+  name: string; score: number;
   active: boolean; side: 'you' | 'opp'; avatar: string;
 }) {
-  const pipRow = [];
-  for (let k = 0; k < 6; k++) {
-    pipRow.push(
-      <span key={k} className={`pip ${pits[offset + k] > 0 ? 'pip-on' : ''}`}>{pits[offset + k]}</span>,
-    );
-  }
   return (
     <div className={`pcard pcard-${side} ${active ? 'pcard-active' : ''}`}>
       {side === 'opp' && <div className="pcard-score">{score}</div>}
       <div className="pcard-info">
         <div className="pcard-name">
-          {name} {active && <span className="live-dot" aria-hidden />}
+          <span className="pcard-name-text">{name}</span>
+          {active && <span className="live-dot" aria-hidden />}
         </div>
-        <div className="pips" aria-hidden>{pipRow}</div>
       </div>
       {side === 'you' && <div className="pcard-score">{score}</div>}
       <div className={`avatar avatar-${side} avatar-${avatar}`} aria-hidden />
@@ -66,7 +63,7 @@ function PlayerCard({
 
 export default function Game({
   mode, level, setup, goal, title, oppName: oppOverride, resume, persist, rated,
-  online, onExit, onLearn, onSettings, onToast, onStatsChange,
+  online, onExit, onNext, onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
   const isOnline = mode === 'online';
@@ -84,10 +81,10 @@ export default function Game({
   // Narration for the live region. Built from the same translation table as the
   // visible UI, so a screen reader follows the game in the player's language.
   const narrator = useMemo<Narrator>(() => {
+    // The local board flips with every turn, so "you" always means whoever is
+    // holding the device right now — the same person the near row belongs to.
     const who = (p: 0 | 1) =>
-      mode === 'local'
-        ? t(p === 0 ? 'game.south' : 'game.north')
-        : p === viewpointRef.current ? t('common.you') : t('a11y.opponent');
+      p === viewpointRef.current ? t('common.you') : t('a11y.opponent');
     return {
       moved: (p, pit) => t('a11y.moved', { who: who(p), index: (pit % 6) + 1 }),
       captured: (p, count) => t('a11y.captured', { who: who(p), count }),
@@ -98,7 +95,7 @@ export default function Game({
         them: scores[1 - viewpointRef.current],
       }),
     };
-  }, [t, mode]);
+  }, [t]);
 
   // The store rating sheet, asked for after a win and never after a loss.
   // Delayed so the win lands first, and cancelled if the player leaves before
@@ -159,13 +156,11 @@ export default function Game({
 
   const opponentSlot = online?.view.snapshot?.players[1 - viewpoint] ?? null;
 
-  const youName = mode === 'local'
-    ? t(viewpoint === 0 ? 'game.south' : 'game.north')
-    : t('common.you');
+  const youName = mode === 'local' ? t('game.us') : t('common.you');
   const oppName = oppOverride
     ?? (isOnline ? (opponentSlot?.name || t('online.opponent'))
       : mode === 'ai' ? levelName(level)
-        : t(viewpoint === 0 ? 'game.north' : 'game.south'));
+        : t('game.them'));
 
   const interactive =
     state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint)
@@ -187,15 +182,17 @@ export default function Game({
         ? { pill: t('game.yourTurn'), line: t('game.selectPit') }
         : { pill: t('game.oppTurn', { name: oppName }), line: t('game.waiting') };
     }
-    return { pill: t('game.oppTurn', { name: youName }), line: t('game.selectPit') };
-  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, youName, t]);
+    // Pass-and-play: the board turns round, so the side to move is always
+    // the near one — "Us" — and naming it again in the pill adds nothing.
+    return { pill: t('game.yourTurn'), line: t('game.selectPit') };
+  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, t]);
 
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
     if (isChallenge) return humanWon ? t('game.challengeDone') : t('game.challengeFailed');
     if (mode === 'local') {
-      return t('game.sideWins', { name: t(state.winner === 0 ? 'game.south' : 'game.north') });
+      return t('game.sideWins', { name: t(state.winner === viewpoint ? 'game.us' : 'game.them') });
     }
     return humanWon ? t('game.youWin') : t('game.oppWins', { name: oppName });
   };
@@ -218,6 +215,13 @@ export default function Game({
     setRatingDelta(null);
     newGame();
   };
+
+  // A solved challenge leads to the next one. Sending the player back to the
+  // list to find it themselves is a step nobody wants, so the list stays where
+  // it always was — behind the ← in the header.
+  const goNext = isChallenge && humanWon && onNext
+    ? () => { playTap(); hapticTap(); onNext(); }
+    : null;
 
   // Resigning is one tap too easy to do by accident mid-thought, so it asks
   // once. The question withdraws itself rather than sitting there as a trap.
@@ -251,7 +255,9 @@ export default function Game({
         <div className="brand">{title ? title.toUpperCase() : '◇ AWALÉ ◇'}</div>
         <div className="game-top-right">
           <button className="round-btn" onClick={onLearn} aria-label={t('game.howToPlay')}>?</button>
-          <button className="round-btn" onClick={onSettings} aria-label={t('common.settings')}>⚙</button>
+          <button className="round-btn" onClick={onSettings} aria-label={t('common.settings')}>
+            <GearIcon />
+          </button>
         </div>
       </header>
 
@@ -262,12 +268,9 @@ export default function Game({
 
       {banner && <div className="net-banner" role="status">{banner}</div>}
 
-      <div className="players">
-        <PlayerCard
-          name={youName} score={state.scores[viewpoint]} pits={state.pits}
-          offset={viewpoint * 6} active={state.turn === viewpoint && state.phase !== 'over'}
-          side="you" avatar={youAvatar}
-        />
+      {/* One grid so the two player cards can sit above the board on a wide
+          screen and flank it on a phone, where vertical space is scarce. */}
+      <div className="play-area">
         <div className="turn-center">
           {status && (
             <>
@@ -279,13 +282,17 @@ export default function Game({
           )}
         </div>
         <PlayerCard
-          name={oppName} score={state.scores[opp]} pits={state.pits}
-          offset={opp * 6} active={state.turn === opp && state.phase !== 'over'}
+          name={youName} score={state.scores[viewpoint]}
+          active={state.turn === viewpoint && state.phase !== 'over'}
+          side="you" avatar={youAvatar}
+        />
+        <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
+        <PlayerCard
+          name={oppName} score={state.scores[opp]}
+          active={state.turn === opp && state.phase !== 'over'}
           side="opp" avatar="olive"
         />
       </div>
-
-      <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
 
       <div className="game-bottom">
         {goal ? (
@@ -355,7 +362,7 @@ export default function Game({
                 </span>
               </p>
             )}
-            {isChallenge && humanWon && <p className="over-note">{t('game.nextUnlocked')}</p>}
+            {isChallenge && humanWon && !goNext && <p className="over-note">{t('game.nextUnlocked')}</p>}
             {overNote() && <p className="over-note">{overNote()}</p>}
             {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (
               <p className="over-note">{t('online.rematchOffered', { name: oppName })}</p>
@@ -372,6 +379,12 @@ export default function Game({
                   </span>
                 </span>
               </button>
+            ) : goNext ? (
+              <button className="pill pill-green" onClick={goNext}>
+                <span className="pill-body">
+                  <span className="pill-title">{t('game.nextChallenge')}</span>
+                </span>
+              </button>
             ) : (
               <button className="pill pill-green" onClick={restart}>
                 <span className="pill-body">
@@ -379,11 +392,19 @@ export default function Game({
                 </span>
               </button>
             )}
-            <button className="pill" onClick={onExit}>
-              <span className="pill-body">
-                <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
-              </span>
-            </button>
+            {goNext ? (
+              <button className="pill" onClick={restart}>
+                <span className="pill-body">
+                  <span className="pill-title">{t('game.tryAgain')}</span>
+                </span>
+              </button>
+            ) : (
+              <button className="pill" onClick={onExit}>
+                <span className="pill-body">
+                  <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}
