@@ -333,7 +333,9 @@ button { font-family: inherit; touch-action: manipulation; }
 }
 .icon-btn:hover, .round-btn:hover { border-color: var(--gold); transform: translateY(-1px); }
 .icon-btn { color: var(--icon); }
-.icon-btn svg { width: 22px; height: 22px; }
+/* The `color` sits on the svg rather than the button so the round buttons
+   still carrying a text glyph (← and ?) keep their ivory. */
+.icon-btn svg, .round-btn svg { width: 22px; height: 22px; color: var(--icon); }
 
 .menu-hero { text-align: center; margin: clamp(18px, 6vh, 60px) 0 clamp(20px, 4vh, 40px); }
 .hero-ornament { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--gold); }

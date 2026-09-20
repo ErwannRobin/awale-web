@@ -10,6 +10,7 @@ import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
+import { GearIcon } from './Icons.tsx';
 
 /** Long enough for the win banner and its chime to land before the OS sheet. */
 const REVIEW_DELAY_MS = 1500;
@@ -245,7 +246,9 @@ export default function Game({
         <div className="brand">{title ? title.toUpperCase() : '◇ AWALÉ ◇'}</div>
         <div className="game-top-right">
           <button className="round-btn" onClick={onLearn} aria-label={t('game.howToPlay')}>?</button>
-          <button className="round-btn" onClick={onSettings} aria-label={t('common.settings')}>⚙</button>
+          <button className="round-btn" onClick={onSettings} aria-label={t('common.settings')}>
+            <GearIcon />
+          </button>
         </div>
       </header>
 
