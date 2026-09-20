@@ -42,8 +42,8 @@ export const fr: Record<keyof typeof en, string> = {
   'level.4.desc': 'Recherche à pleine puissance',
 
   // ---- game ------------------------------------------------------------
-  'game.south': 'Sud',
-  'game.north': 'Nord',
+  'game.us': 'Nous',
+  'game.them': 'Eux',
   'game.yourTurn': 'À vous',
   'game.selectPit': 'Touchez un trou en surbrillance pour semer.',
   'game.oppTurn': 'Au tour de {name}',

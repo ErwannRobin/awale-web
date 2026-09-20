@@ -38,25 +38,19 @@ interface Props {
 const TIP_KEYS: StringKey[] = ['tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6'];
 
 function PlayerCard({
-  name, score, pits, offset, active, side, avatar,
+  name, score, active, side, avatar,
 }: {
-  name: string; score: number; pits: number[]; offset: number;
+  name: string; score: number;
   active: boolean; side: 'you' | 'opp'; avatar: string;
 }) {
-  const pipRow = [];
-  for (let k = 0; k < 6; k++) {
-    pipRow.push(
-      <span key={k} className={`pip ${pits[offset + k] > 0 ? 'pip-on' : ''}`}>{pits[offset + k]}</span>,
-    );
-  }
   return (
     <div className={`pcard pcard-${side} ${active ? 'pcard-active' : ''}`}>
       {side === 'opp' && <div className="pcard-score">{score}</div>}
       <div className="pcard-info">
         <div className="pcard-name">
-          {name} {active && <span className="live-dot" aria-hidden />}
+          <span className="pcard-name-text">{name}</span>
+          {active && <span className="live-dot" aria-hidden />}
         </div>
-        <div className="pips" aria-hidden>{pipRow}</div>
       </div>
       {side === 'you' && <div className="pcard-score">{score}</div>}
       <div className={`avatar avatar-${side} avatar-${avatar}`} aria-hidden />
@@ -84,10 +78,10 @@ export default function Game({
   // Narration for the live region. Built from the same translation table as the
   // visible UI, so a screen reader follows the game in the player's language.
   const narrator = useMemo<Narrator>(() => {
+    // The local board flips with every turn, so "you" always means whoever is
+    // holding the device right now — the same person the near row belongs to.
     const who = (p: 0 | 1) =>
-      mode === 'local'
-        ? t(p === 0 ? 'game.south' : 'game.north')
-        : p === viewpointRef.current ? t('common.you') : t('a11y.opponent');
+      p === viewpointRef.current ? t('common.you') : t('a11y.opponent');
     return {
       moved: (p, pit) => t('a11y.moved', { who: who(p), index: (pit % 6) + 1 }),
       captured: (p, count) => t('a11y.captured', { who: who(p), count }),
@@ -98,7 +92,7 @@ export default function Game({
         them: scores[1 - viewpointRef.current],
       }),
     };
-  }, [t, mode]);
+  }, [t]);
 
   // The store rating sheet, asked for after a win and never after a loss.
   // Delayed so the win lands first, and cancelled if the player leaves before
@@ -159,13 +153,11 @@ export default function Game({
 
   const opponentSlot = online?.view.snapshot?.players[1 - viewpoint] ?? null;
 
-  const youName = mode === 'local'
-    ? t(viewpoint === 0 ? 'game.south' : 'game.north')
-    : t('common.you');
+  const youName = mode === 'local' ? t('game.us') : t('common.you');
   const oppName = oppOverride
     ?? (isOnline ? (opponentSlot?.name || t('online.opponent'))
       : mode === 'ai' ? levelName(level)
-        : t(viewpoint === 0 ? 'game.north' : 'game.south'));
+        : t('game.them'));
 
   const interactive =
     state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint)
@@ -187,15 +179,17 @@ export default function Game({
         ? { pill: t('game.yourTurn'), line: t('game.selectPit') }
         : { pill: t('game.oppTurn', { name: oppName }), line: t('game.waiting') };
     }
-    return { pill: t('game.oppTurn', { name: youName }), line: t('game.selectPit') };
-  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, youName, t]);
+    // Pass-and-play: the board turns round, so the side to move is always
+    // the near one — "Us" — and naming it again in the pill adds nothing.
+    return { pill: t('game.yourTurn'), line: t('game.selectPit') };
+  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, t]);
 
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
     if (isChallenge) return humanWon ? t('game.challengeDone') : t('game.challengeFailed');
     if (mode === 'local') {
-      return t('game.sideWins', { name: t(state.winner === 0 ? 'game.south' : 'game.north') });
+      return t('game.sideWins', { name: t(state.winner === viewpoint ? 'game.us' : 'game.them') });
     }
     return humanWon ? t('game.youWin') : t('game.oppWins', { name: oppName });
   };
@@ -262,12 +256,9 @@ export default function Game({
 
       {banner && <div className="net-banner" role="status">{banner}</div>}
 
-      <div className="players">
-        <PlayerCard
-          name={youName} score={state.scores[viewpoint]} pits={state.pits}
-          offset={viewpoint * 6} active={state.turn === viewpoint && state.phase !== 'over'}
-          side="you" avatar={youAvatar}
-        />
+      {/* One grid so the two player cards can sit above the board on a wide
+          screen and flank it on a phone, where vertical space is scarce. */}
+      <div className="play-area">
         <div className="turn-center">
           {status && (
             <>
@@ -279,13 +270,17 @@ export default function Game({
           )}
         </div>
         <PlayerCard
-          name={oppName} score={state.scores[opp]} pits={state.pits}
-          offset={opp * 6} active={state.turn === opp && state.phase !== 'over'}
+          name={youName} score={state.scores[viewpoint]}
+          active={state.turn === viewpoint && state.phase !== 'over'}
+          side="you" avatar={youAvatar}
+        />
+        <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
+        <PlayerCard
+          name={oppName} score={state.scores[opp]}
+          active={state.turn === opp && state.phase !== 'over'}
           side="opp" avatar="olive"
         />
       </div>
-
-      <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
 
       <div className="game-bottom">
         {goal ? (

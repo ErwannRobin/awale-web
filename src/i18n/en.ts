@@ -41,8 +41,8 @@ export const en = {
   'level.4.desc': 'Full-strength search',
 
   // ---- game ------------------------------------------------------------
-  'game.south': 'South',
-  'game.north': 'North',
+  'game.us': 'Us',
+  'game.them': 'Them',
   'game.yourTurn': 'Your Turn',
   'game.selectPit': 'Select a highlighted pit to sow.',
   'game.oppTurn': "{name}'s Turn",

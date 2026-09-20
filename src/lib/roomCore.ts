@@ -82,7 +82,9 @@ export interface JoinResult extends Step {
 
 const freshBoard = () => Array(12).fill(4) as number[];
 
-const defaultName = (seat: Seat) => (seat === 0 ? 'South' : 'North');
+// Seat names the UI can show when a player joined without a nickname. The
+// board turns round on a phone, so a compass label would point nowhere.
+const defaultName = (seat: Seat) => (seat === 0 ? 'Player 1' : 'Player 2');
 
 export function createRoom(code: string, now: number): RoomState {
   return {
