@@ -26,6 +26,8 @@ interface Props {
   onTutorial: () => void;
   onChallenges: () => void;
   onSettings: () => void;
+  /** The player chip — the way in to an account. */
+  onProfile: () => void;
   onStats: () => void;
   onRecords: () => void;
 }
@@ -37,7 +39,7 @@ function Diamond() {
 export default function Menu({
   profile, stats, completed, saved,
   onPlayAI, onPlayLocal, onQuickMatch, onContinue, onOnline,
-  onTutorial, onChallenges, onSettings, onStats, onRecords,
+  onTutorial, onChallenges, onSettings, onProfile, onStats, onRecords,
 }: Props) {
   const t = useT();
   const [pickAI, setPickAI] = useState(false);
@@ -52,7 +54,7 @@ export default function Menu({
   return (
     <div className="screen menu">
       <div className="menu-top">
-        <button className="chip chip-avatar" onClick={go(onSettings)} aria-label={t('profile.title')}>
+        <button className="chip chip-avatar" onClick={go(onProfile)} aria-label={t('profile.title')}>
           <span className={`avatar avatar-${profile.avatar}`} aria-hidden />
           <span className="chip-body">
             <span className="chip-name">{profile.name || t('common.player')}</span>
