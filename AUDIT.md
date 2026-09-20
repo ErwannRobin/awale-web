@@ -140,9 +140,15 @@ Sound, vibration, animation speed (slow / normal / fast / **instant**), board
 theme (wood / night / sand), seed-count badges, left-handed layout, language,
 and three scoped reset actions. Everything persists.
 
-- **Sound** is synthesised with the Web Audio API — a filtered noise burst for a
-  seed hitting wood, decaying partials for captures and the endgame. No audio
-  files, so nothing to package and nothing to download.
+- **Sound** is synthesised with the Web Audio API. A seed drop is modelled in
+  three layers — a bright shell click, a dry wood contact, and the pit's own
+  resonance, which rings when the pit is empty and dulls as it fills — plus a
+  few faint rattles as the seed settles on the seeds already there. Every drop
+  is randomised, so a sowing run sounds like a hand and not a metronome. A
+  capture pours the whole handful into the store. Everything runs through one
+  compressed bus, which is what lets the levels sit roughly ten times louder
+  than the first version without clipping. No audio files, so nothing to
+  package and nothing to download.
 - **Vibration** uses the Vibration API where it exists (Android; iOS Safari has
   none), with the Capacitor Haptics swap written into the file.
 - **Themes** are pure CSS token overrides on `[data-theme]`. Every colour in the
@@ -293,8 +299,9 @@ Short list now, and honest about why.
    file should be amended. **This is the one item that needs your decision.**
 5. **No analytics or crash reporting.** Deliberate — there is no backend and
    nothing leaves the device. The error boundary logs to the console.
-6. **Sound is synthesised, not sampled.** It reads as a game, not as a recording
-   of a real board. Real samples would sound better at the cost of bundle size.
+6. **Sound is synthesised, not sampled.** The physical model gets it close to a
+   real board, but recorded seeds would still be better — at the cost of bundle
+   size. There is also no volume slider: sound is on or off.
 7. **Store artwork.** Both native projects still carry the default Capacitor
    icon and splash. `npx @capacitor/assets generate` builds every size from one
    1024×1024 source; nobody has drawn that source yet.

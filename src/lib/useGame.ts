@@ -204,10 +204,12 @@ export function useGame({
     // 2. sow one seed at a time
     result.sowed.forEach((idx, k) => {
       at(sowMs * (k + 1), () => {
+        // The sound depends on how full the pit was BEFORE this seed landed.
+        const before = display[idx];
         display[idx]++;
         setActivePit(idx);
         setPits([...display]);
-        if (factor > 0) playSow(k);
+        if (factor > 0) playSow(k, before);
       });
     });
 
@@ -230,12 +232,10 @@ export function useGame({
         });
       });
       at(afterSow, () => {
-        playCapture(result.captured.length);
+        const total = result.captured.reduce((sum, c) => sum + sown[c], 0);
+        playCapture(result.captured.length, total);
         hapticCapture();
-        if (narrator) {
-          const total = result.captured.reduce((sum, c) => sum + sown[c], 0);
-          setAnnouncement(narrator.captured(player, total));
-        }
+        if (narrator) setAnnouncement(narrator.captured(player, total));
       });
     }
 
