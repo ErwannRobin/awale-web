@@ -30,6 +30,8 @@ interface Props {
   /** Free play against the AI feeds the rating; challenges and pass-and-play do not. */
   rated?: boolean;
   onExit: () => void;
+  /** Challenges only: open the next one, when this is not the last. */
+  onNext?: () => void;
   onLearn: () => void;
   onSettings: () => void;
   onToast: (msg: string) => void;
@@ -61,7 +63,7 @@ function PlayerCard({
 
 export default function Game({
   mode, level, setup, goal, title, oppName: oppOverride, resume, persist, rated,
-  online, onExit, onLearn, onSettings, onToast, onStatsChange,
+  online, onExit, onNext, onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
   const isOnline = mode === 'online';
@@ -214,6 +216,13 @@ export default function Game({
     newGame();
   };
 
+  // A solved challenge leads to the next one. Sending the player back to the
+  // list to find it themselves is a step nobody wants, so the list stays where
+  // it always was — behind the ← in the header.
+  const goNext = isChallenge && humanWon && onNext
+    ? () => { playTap(); hapticTap(); onNext(); }
+    : null;
+
   // Resigning is one tap too easy to do by accident mid-thought, so it asks
   // once. The question withdraws itself rather than sitting there as a trap.
   const [confirmResign, setConfirmResign] = useState(false);
@@ -353,7 +362,7 @@ export default function Game({
                 </span>
               </p>
             )}
-            {isChallenge && humanWon && <p className="over-note">{t('game.nextUnlocked')}</p>}
+            {isChallenge && humanWon && !goNext && <p className="over-note">{t('game.nextUnlocked')}</p>}
             {overNote() && <p className="over-note">{overNote()}</p>}
             {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (
               <p className="over-note">{t('online.rematchOffered', { name: oppName })}</p>
@@ -370,6 +379,12 @@ export default function Game({
                   </span>
                 </span>
               </button>
+            ) : goNext ? (
+              <button className="pill pill-green" onClick={goNext}>
+                <span className="pill-body">
+                  <span className="pill-title">{t('game.nextChallenge')}</span>
+                </span>
+              </button>
             ) : (
               <button className="pill pill-green" onClick={restart}>
                 <span className="pill-body">
@@ -377,11 +392,19 @@ export default function Game({
                 </span>
               </button>
             )}
-            <button className="pill" onClick={onExit}>
-              <span className="pill-body">
-                <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
-              </span>
-            </button>
+            {goNext ? (
+              <button className="pill" onClick={restart}>
+                <span className="pill-body">
+                  <span className="pill-title">{t('game.tryAgain')}</span>
+                </span>
+              </button>
+            ) : (
+              <button className="pill" onClick={onExit}>
+                <span className="pill-body">
+                  <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}

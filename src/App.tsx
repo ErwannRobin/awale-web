@@ -312,6 +312,9 @@ export default function App() {
           title={t('challenges.item', { n: screen.index + 1 })}
           oppName={t('a11y.opponent')}
           onExit={() => setScreen({ name: 'challenges' })}
+          onNext={screen.index + 1 < CHALLENGES.length
+            ? () => setScreen({ name: 'challenge', index: screen.index + 1 })
+            : undefined}
           onLearn={() => setScreen({ name: 'learn', back: screen })}
           onSettings={() => setScreen({ name: 'settings', back: screen })}
           onToast={showToast}
