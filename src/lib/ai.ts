@@ -1,8 +1,15 @@
 import { owner, isValid, distribute, WINNING_SCORE } from './engine.ts';
 
-// Plain negamax. Legacy quirk to KEEP: at the depth horizon the move i itself is NOT
-// applied — the leaf evaluates the parent's position.
-export function value(pits: number[], scores: number[], i: number, ply: number, depth: number): number {
+// Negamax with alpha-beta. Legacy quirk to KEEP: at the depth horizon the move i
+// itself is NOT applied — the leaf evaluates the parent's position.
+//
+// `alpha`/`beta` bound the value the caller still cares about. Callers that want
+// an exact score (the root, and the tests) pass the default full window; the
+// recursion narrows it to skip replies that are already refuted. Pruning never
+// changes the value returned through a full window, so every level plays the
+// same moves it did before — it just reaches them far deeper per second.
+export function value(pits: number[], scores: number[], i: number, ply: number, depth: number,
+                      alpha = -100, beta = 100): number {
   const p = [...pits], s = [...scores];
   const me = owner(i), other = 1 - me;
   if (ply + 1 < depth) {
@@ -10,9 +17,25 @@ export function value(pits: number[], scores: number[], i: number, ply: number, 
     // The game also stops the moment someone banks 25 — searching past that
     // would let the AI trade a win away for a bigger final margin.
     if (r.running && s[me] < WINNING_SCORE && s[other] < WINNING_SCORE) {
+      // Horizon collapse. Children at ply + 1 === depth skip their own move, so
+      // they all return the same parent-relative score, s[other] - s[me]; this
+      // node negates that back to s[me] - s[other]. Expanding them cost ~5x the
+      // nodes for zero information. Only "is there a reply at all?" matters,
+      // because no reply leaves `best` at the -100 sentinel below.
+      if (ply + 2 === depth) {
+        for (let j = other * 6; j < other * 6 + 6; j++)
+          if (isValid(p, j)) return s[me] - s[other];
+        return 100;
+      }
+      // We return -best, so the caller's alpha becomes an upper bound on best.
       let best = -100;
+      const cut = -alpha;
       for (let j = other * 6; j < other * 6 + 6; j++)
-        if (isValid(p, j)) best = Math.max(best, value(p, s, j, ply + 1, depth));
+        if (isValid(p, j)) {
+          const v = value(p, s, j, ply + 1, depth, Math.max(best, -beta), cut);
+          if (v > best) best = v;
+          if (best >= cut) break;   // the caller already has a better line
+        }
       return -best;
     }
   }
@@ -48,9 +71,16 @@ export class AwaleAI {
   // used to ignore captures entirely; MIN_DEPTH keeps every level playing.
   private static readonly MIN_DEPTH = 2;
 
+  // Per-level depth ceilings. Levels 0-2 are pinned where they have always been
+  // — they are meant to be beatable, and alpha-beta must not silently promote
+  // them. Expert used to share the 3 * level formula, which capped it at 9: with
+  // the old plain search that was already ~0.7s, but with pruning depth 9 costs
+  // ~20ms, so the ceiling, not the time budget, was holding Expert back. 14 is
+  // what the 1s budget actually buys now.
+  private static readonly CEILINGS = [2, 3, 6, 14];
+
   private clampDepth(): number {
-    const ceiling = this.level === 0 ? AwaleAI.MIN_DEPTH : 3 * this.level;
-    const d = Math.min(Math.max(this.depths[this.level], AwaleAI.MIN_DEPTH), ceiling);
+    const d = Math.min(Math.max(this.depths[this.level], AwaleAI.MIN_DEPTH), AwaleAI.CEILINGS[this.level]);
     this.depths[this.level] = d;
     return d;
   }
@@ -78,8 +108,12 @@ export class AwaleAI {
       if (d > bestDelay) { bestDelay = d; move = j; }
     }
     const secs = (performance.now() - t0) / 1000;   // self-tuning depth per level
-    if (secs > this.budgets[this.level]) this.depths[this.level]--;
-    if (secs < this.budgets[this.level] / 6) this.depths[this.level]++;
+    const budget = this.budgets[this.level];
+    // Cost roughly quadruples per ply, so a big overshoot needs more than one
+    // step back — otherwise a single bushy position stalls the board for
+    // several moves in a row while the depth creeps down one ply at a time.
+    if (secs > budget) this.depths[this.level] -= secs > budget * 4 ? 2 : 1;
+    if (secs < budget / 6) this.depths[this.level]++;
     this.clampDepth();                              // never drift below MIN_DEPTH
     return move;
   }
