@@ -13,7 +13,9 @@
 //
 //   for f in public/sounds/v1/*.wav; do ffmpeg -i "$f" -b:a 96k "${f%.wav}.mp3"; done
 //
-// then set PACK_EXT in src/lib/sound.ts to 'mp3'.
+// then drop the .mp3 file in alongside — sound.ts tries .wav then .mp3 per
+// clip name, so it's picked up with no code change, and .wav can be deleted
+// or kept as a fallback.
 //
 // API SHAPE: this targets POST /v1/sound-generation with the `xi-api-key`
 // header. If ElevenLabs has moved on, the script prints the server's error body

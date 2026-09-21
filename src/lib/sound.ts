@@ -198,7 +198,11 @@ function seedDrop(ac: Ctx, t0: number, seeds: number, level = 1) {
 // ---------------------------------------------------------------------------
 
 const PACK_DIR = 'sounds/v1/';
-const PACK_EXT = 'wav';
+// Tried in order per clip, so the pack can freely mix formats — gen-sounds.ts
+// writes .wav, but a hand-picked replacement clip is often only available as
+// an .mp3. Whichever exists first at a given name wins; decodeAudioData
+// doesn't care which it was.
+const PACK_EXTS = ['wav', 'mp3'];
 
 type Kind = 'drop' | 'dropSeeds' | 'scoop' | 'tap';
 
@@ -231,6 +235,16 @@ function have(kind: Kind): boolean {
  * is silent by design — a missing pack is a normal state (no pack shipped yet),
  * not an error worth a console full of noise.
  */
+async function fetchClip(base: string, name: string): Promise<ArrayBuffer> {
+  let lastStatus = 'no extensions tried';
+  for (const ext of PACK_EXTS) {
+    const r = await fetch(`${base}${name}.${ext}`);
+    if (r.ok) return r.arrayBuffer();
+    lastStatus = String(r.status);
+  }
+  throw new Error(lastStatus);
+}
+
 function loadPack(ac: Ctx): void {
   if (packState !== 'idle') return;
   packState = 'loading';
@@ -239,8 +253,7 @@ function loadPack(ac: Ctx): void {
   for (const kind of Object.keys(PACK) as Kind[]) {
     for (const name of PACK[kind]) {
       jobs.push(
-        fetch(`${base}${name}.${PACK_EXT}`)
-          .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+        fetchClip(base, name)
           .then(buf => ac.decodeAudioData(buf))
           .then(decoded => { (clips[kind] ??= []).push(decoded); })
           .catch(() => {}),
