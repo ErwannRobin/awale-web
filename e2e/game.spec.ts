@@ -444,3 +444,43 @@ test('holding a pit marks its landing hole, and dragging moves the mark along', 
 
   await context.close();
 });
+
+test('the browser Back button walks back through the screens', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByText('Challenges').first().click();
+  const puzzles = page.locator('.challenge-item');
+  await expect(puzzles.first()).toBeVisible();
+
+  await puzzles.first().click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // Back is one screen back, not one site back — the app is still here.
+  await page.goBack();
+  await expect(puzzles.first()).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByText('TWO PLAYERS')).toBeVisible();
+
+  // And Forward returns to the screen Back left.
+  await page.goForward();
+  await expect(puzzles.first()).toBeVisible();
+});
+
+test('Back out of settings puts the game back on the board', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // A move, so the board is one the player would hate to lose.
+  await playablePits(page).first().click();
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByRole('radio', { name: 'Night' })).toBeVisible();
+
+  await page.goBack();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+});
