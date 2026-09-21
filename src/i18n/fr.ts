@@ -138,7 +138,6 @@ export const fr: Record<keyof typeof en, string> = {
   'tutorial.next': 'SUIVANT',
   'tutorial.prev': 'Retour',
   'tutorial.replay': 'Rejouer l’étape',
-  'tutorial.tapToContinue': 'Touchez la carte pour continuer.',
   'tutorial.playNow': 'JOUER UNE PARTIE',
   'tutorial.playNowSub': 'Une première partie facile · {level}',
   'tutorial.toChallenges': 'Aller aux défis →',
@@ -204,10 +203,16 @@ export const fr: Record<keyof typeof en, string> = {
   'settings.noAccount': 'Il n’y a aucun compte et rien n’est envoyé nulle part — effacer les données du navigateur efface aussi ceci.',
 
   // ---- profile ---------------------------------------------------------
+  'profile.brand': 'PROFIL',
   'profile.title': 'Profil',
+  'profile.lead': 'Le nom et le visage que les autres joueurs voient — et le compte derrière.',
+  'profile.sectionIdentity': 'Nom et avatar',
+  'profile.sectionAccount': 'Compte',
   'profile.name': 'Nom affiché',
   'profile.namePlaceholder': 'Votre nom',
   'profile.avatar': 'Avatar',
+  'profile.rank': 'Rang',
+  'profile.account': 'Connecté en tant que',
 
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATISTIQUES',
@@ -314,7 +319,6 @@ export const fr: Record<keyof typeof en, string> = {
   'signIn.unavailable': 'La connexion est indisponible pour le moment.',
   'signIn.welcome': 'Bienvenue. Vous êtes connecté.',
   'signIn.welcomeBack': 'Bon retour, {name}.',
-  'signIn.signedIn': 'Connecté',
   'signIn.signOut': 'Se déconnecter',
   'signIn.signedOut': 'Déconnecté.',
   'signIn.privacyTitle': 'Votre numéro n’est jamais montré à personne',

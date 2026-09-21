@@ -966,6 +966,7 @@ a.pill { text-decoration: none; color: inherit; }
 .set-help { font-size: 0.78rem; color: var(--ivory-60); line-height: 1.3; }
 .set-help-block { display: block; margin: 0 0 12px; padding: 0 4px; }
 .set-control { flex: none; }
+.set-value { color: var(--gold); font-weight: 700; white-space: nowrap; }
 .set-actions { display: flex; flex-direction: column; gap: 8px; }
 
 /* On a phone a segmented control and its label do not fit side by side. */

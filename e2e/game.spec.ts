@@ -191,6 +191,24 @@ test('Escape does not walk out of a game', async ({ page }) => {
   await expect(page.locator('.board')).toBeVisible();
 });
 
+test('the player chip opens a profile screen, and the gear opens settings', async ({ page }) => {
+  await page.goto('/');
+
+  // The chip: who you are. Name, avatar — and the account, which is the only
+  // place to sign in or out.
+  await page.getByLabel('Profile').click();
+  await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
+  await page.getByLabel('Display name').fill('Ama');
+  await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
+  await page.getByText('Done').click();
+  await expect(page.locator('.chip-name')).toHaveText('Ama');
+
+  // The gear: how the game behaves. The name lives on the other screen now.
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByLabel('Display name')).toHaveCount(0);
+});
+
 test('the browser chrome takes the colour of the table top', async ({ page }) => {
   const colour = () => page.locator('meta[name="theme-color"]').getAttribute('content');
 
