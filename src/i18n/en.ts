@@ -106,7 +106,7 @@ export const en = {
   'learn.3.h': 'Capturing',
   'learn.3.b': "If your last seed lands in an opponent's pit that then holds exactly 2 or 3 seeds, you capture it. Capture also sweeps backward through the pits just before it while they too hold 2 or 3 — up to four pits in a row.",
   'learn.4.h': 'Feed your opponent',
-  'learn.4.b': 'If the opponent has no seeds, you must play a move that reaches their side to give them some. A move that would capture every last one of their seeds (a "grand slam") is not allowed if any other move exists.',
+  'learn.4.b': 'If the opponent has no seeds, you must play a move that reaches their side to give them some. A move that would capture every last one of their seeds (a "grand slam") is not allowed if any other move exists. If it is your only move, you play it but capture nothing: every seed stays on the board.',
   'learn.5.h': 'Winning',
   'learn.5.b': 'First to capture 25 or more seeds wins the game. If a player cannot move, each side keeps the seeds still on their own row. Equal scores at the end is a draw.',
 
