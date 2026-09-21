@@ -211,12 +211,13 @@ const PACK: Record<Kind, string[]> = {
   tap: ['tap-1'],
 };
 
-// CALIBRATION: the clip gains in the play* functions below were set against
-// stand-in clips (the real pack cannot be generated from every environment).
-// They are deliberately conservative, and the limiter on the bus guarantees
-// nothing clips whatever the clips turn out to be — but once a real pack is in
-// public/sounds/v1/, re-measure and adjust so a sampled drop sits at roughly
-// the same loudness as the synthesised one it replaces.
+// CALIBRATION: the clip gains in the play* functions below are set against the
+// real generated pack (measured by rendering in an OfflineAudioContext — see
+// the project's audit notes). Recorded audio has a much higher crest factor
+// than the synthesised drop (similar peak, far less RMS), so it needs more
+// gain, not less, to read as equally loud. The bus limiter guarantees nothing
+// clips regardless of a future pack's own loudness, but re-measure this if the
+// pack is regenerated with different normalisation peaks in gen-sounds.ts.
 const clips: Partial<Record<Kind, AudioBuffer[]>> = {};
 const lastPlayed: Partial<Record<Kind, number>> = {};
 let packState: 'idle' | 'loading' | 'done' = 'idle';
@@ -301,9 +302,10 @@ export function playSow(step = 0, seeds = 0): void {
   // fuller it is; a bare pit gets the bright one.
   const kind: Kind = seeds >= 2 && have('dropSeeds') ? 'dropSeeds' : 'drop';
   const damp = seeds === 0 ? 0 : Math.max(2600, 12000 - seeds * 900);
-  // Clips are normalised at generation time, so they are far denser than a
-  // synthesised drop and need much less gain to sit at the same loudness.
-  if (playClip(ac, kind, level * rnd(0.30, 0.38), rnd(0.93, 1.08), jitter, damp)) return;
+  // Recorded clips have a much higher crest factor than the synthesised
+  // drop — same peak, far less RMS energy — so they need MORE gain, not
+  // less, to read as equally loud. Calibrated against the real pack.
+  if (playClip(ac, kind, level * rnd(0.60, 0.74), rnd(0.93, 1.08), jitter, damp)) return;
 
   seedDrop(ac, ac.currentTime + jitter, seeds, level);
 }
@@ -347,7 +349,7 @@ export function playTap(): void {
   if (!enabled()) return;
   const ac = audio();
   if (!ac) return;
-  if (playClip(ac, 'tap', 0.30, rnd(0.95, 1.05))) return;
+  if (playClip(ac, 'tap', 0.55, rnd(0.95, 1.05))) return;
   burst(ac, ac.currentTime, 0.55, 0.022, 'bandpass', rnd(900, 1100), 0.8);
 }
 

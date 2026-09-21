@@ -35,6 +35,15 @@ interface Spec {
   seconds: number;
   /** Peak the trimmed clip is normalised to. Keeps the pack internally balanced. */
   peak: number;
+  /**
+   * Hard cap on the clip's length after trimming, in ms. `duration_seconds` is
+   * a hint, not a limit — the model sometimes returns a sustained ring several
+   * times longer than asked (measured: a "short dry knock" came back at 850–
+   * 960ms). At the game's 220ms-per-seed sowing cadence (110ms on "fast"), a
+   * clip that long overlaps 3-4 deep on itself and turns to mud. Omit for
+   * clips that are not on that per-seed cadence (the capture scoop).
+   */
+  maxMs?: number;
 }
 
 // Close-mic, dry, no music: anything atmospheric fights the game's own pacing,
@@ -49,6 +58,7 @@ const SPECS: Spec[] = [
     text: `One small hard dried seed dropped from a few centimetres into an empty carved wooden bowl. A single short dry wooden knock with a brief hollow ring, then silence. ${DRY}`,
     seconds: 0.5,
     peak: 0.85,
+    maxMs: 320,
   })),
   // Four drops onto seeds already in the pit: duller, with a rattle.
   ...[1, 2, 3, 4].map(i => ({
@@ -56,6 +66,7 @@ const SPECS: Spec[] = [
     text: `One small hard dried seed dropped onto a small pile of dried seeds inside a carved wooden bowl. A short dull click followed by a faint rattle of seeds settling. ${DRY}`,
     seconds: 0.5,
     peak: 0.8,
+    maxMs: 300,
   })),
   // The capture: a handful swept up and poured into the store.
   ...[1, 2].map(i => ({
@@ -69,6 +80,7 @@ const SPECS: Spec[] = [
     text: `A single soft fingertip tap on a polished wooden board. Very short and quiet. ${DRY}`,
     seconds: 0.5,
     peak: 0.5,
+    maxMs: 220,
   },
 ];
 
@@ -97,8 +109,11 @@ async function generate(spec: Spec): Promise<Int16Array> {
   return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 2));
 }
 
-/** Trim silence, normalise to `peak`, fade the tail so the clip cannot click. */
-function clean(pcm: Int16Array, peak: number): Int16Array {
+/**
+ * Trim silence, cap the length, normalise to `peak`, fade the tail so the clip
+ * cannot click.
+ */
+function clean(pcm: Int16Array, peak: number, maxMs?: number): Int16Array {
   const f = Float32Array.from(pcm, v => v / 32768);
 
   let max = 0;
@@ -116,9 +131,16 @@ function clean(pcm: Int16Array, peak: number): Int16Array {
   start = Math.max(0, start - Math.floor(SAMPLE_RATE * 0.003));
   end = Math.min(f.length - 1, end + Math.floor(SAMPLE_RATE * 0.004));
 
+  // A sustained ring past `maxMs` gets cut, not just left to decay on its own —
+  // the model's own decay is sometimes minutes-long-sounding relative to a real
+  // wooden knock. A longer fade on the cut hides the truncation.
+  if (maxMs != null) end = Math.min(end, start + Math.floor(SAMPLE_RATE * maxMs / 1000));
+
   const cut = f.slice(start, end + 1);
   const gain = peak / max;
-  const fade = Math.min(Math.floor(SAMPLE_RATE * 0.008), Math.floor(cut.length / 4));
+  const naturalFade = Math.floor(SAMPLE_RATE * 0.008);
+  const cappedFade = Math.floor(SAMPLE_RATE * 0.025);
+  const fade = Math.min(maxMs != null ? cappedFade : naturalFade, Math.floor(cut.length / 4));
   const out = new Int16Array(cut.length);
   for (let i = 0; i < cut.length; i++) {
     const tail = i >= cut.length - fade ? (cut.length - i) / fade : 1;
@@ -162,7 +184,7 @@ mkdirSync(OUT_DIR, { recursive: true });
 let failed = 0;
 for (const spec of todo) {
   try {
-    const pcm = clean(await generate(spec), spec.peak);
+    const pcm = clean(await generate(spec), spec.peak, spec.maxMs);
     const file = join(OUT_DIR, `${spec.name}.wav`);
     writeFileSync(file, wav(pcm));
     const ms = Math.round((pcm.length / SAMPLE_RATE) * 1000);
