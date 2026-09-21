@@ -171,6 +171,21 @@ caches by URL, so replacing the bytes at `/sounds/v1/drop-1.wav` would serve
 stale audio to anyone who already has it. Add `v2` instead, and update
 `PACK_DIR` in `sound.ts` and `SOUNDS` in `public/sw.js` together.
 
+There are two layers of caching to know about here, and only one of them a
+version bump fixes:
+
+- **The service worker's own Cache Storage** — once a browser has installed it,
+  cache-first means a hit is served without ever looking at the network again,
+  headers or no headers. Only a new URL (i.e. bumping the version) reaches an
+  existing install. This is what the rule above is for.
+- **The CDN edge** (`vercel.json` / `public/_headers`) — both set
+  `must-revalidate` on `/sounds/*`, so replacing a clip's bytes at the *same*
+  URL reaches every visitor who hasn't cached it yet, including a fresh
+  browser with no service worker installed. Without this, a fresh browser can
+  still hear a stale clip, because it's the CDN's copy that's stale, not
+  anything client-side — clearing cache or opening a private window doesn't
+  help, since the browser was never the one holding it.
+
 ## Online play
 
 Two people, one board, over a WebSocket. **One** Cloudflare Worker in

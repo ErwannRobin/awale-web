@@ -1,0 +1,26 @@
+# Cloudflare Workers Static Assets reads this file (same syntax as Cloudflare
+# Pages) to set response headers. Vite copies everything in public/ into
+# dist/ unchanged, so this ends up at the root the [assets] binding serves
+# from in server/wrangler.toml.
+#
+# Mirrors vercel.json, which needs the identical rules for the Vercel mirror
+# — keep the two in step.
+
+# /assets/* is Vite's own output: filenames are content-hashed, so the same
+# URL never means different bytes and it can be cached forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Everything below has a FIXED name and can change contents at that same URL
+# (a new build, a regenerated sound clip) — must-revalidate so neither the
+# CDN edge nor a client ever serves stale bytes from a prior deploy.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+/sounds/*
+  Cache-Control: public, max-age=0, must-revalidate
