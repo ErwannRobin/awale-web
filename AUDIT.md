@@ -219,7 +219,6 @@ These are left alone, but they should be *decisions*, not accidents:
 
 | Quirk | Where | Effect |
 | --- | --- | --- |
-| Captures capped at 4 pits per move | `engine.ts` `distribute` | Non-standard. Real oware sweeps back as far as the 2/3 chain runs. |
 | Horizon evaluates the position *before* the move | `ai.ts` `value` | Costs one ply of real depth at every level. |
 | Cyclic-draw check ignores pits 5 and 11 | `engine.ts` `endGame` | `slice(0,5)` / `slice(6,11)` exclude the last pit of each row, so some perpetual cycles are never detected. |
 | `attacksAllSeeds` returns `true` for an empty pit | `engine.ts` | Makes an empty pit count as a "legal alternative" in the grand-slam test. |
@@ -228,6 +227,21 @@ These are left alone, but they should be *decisions*, not accidents:
 The last one is the only one I would call a latent bug rather than a flavour
 choice. `scripts/challenges.ts` deliberately mirrors `useGame`'s version, with a
 comment, so the verifier and the game agree.
+
+### Removed: captures capped at 4 pits
+
+`distribute` used to sweep at most four pits backward (`Math.min(attacked, 4)`),
+and `attacksAllSeeds` mirrored the cap with an `attacked <= 4` guard. Real oware
+sweeps the whole 2/3 chain, and players hit the difference: a move that should
+have taken a five-pit chain took four and left the fifth pit standing. Both the
+cap and its mirror are gone, so the chain now runs in full.
+
+The knock-on effect is legality, not just scoring. A five-pit sweep usually
+empties the opponent's row, which makes the move a grand slam — so a move that
+the capped engine happily played is now refused whenever the player has another
+one. Challenge positions 6 and 11 no longer verify as winnable under the
+corrected rule (`npm run verify:challenges`, inconclusive at 4M nodes); they need
+re-tuning or replacing.
 
 ---
 

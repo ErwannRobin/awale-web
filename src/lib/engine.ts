@@ -9,6 +9,10 @@ export const owner = (pit: number) => Math.floor((pit % 12) / 6);
 
 // Does playing pit i capture ALL the opponent's seeds? (empty pits count as "yes" —
 // that exact quirk matters for the grand-slam rule below)
+//
+// The backward 2/3 chain is walked in full: it must match the whole capture that
+// `distribute` performs, or a move could be judged safe here and then starve the
+// opponent for real.
 export function attacksAllSeeds(pits: number[], i: number): boolean {
   if (pits[i] === 0) return true;
   const p = [...pits]; const other = 1 - owner(i);
@@ -16,11 +20,8 @@ export function attacksAllSeeds(pits: number[], i: number): boolean {
   while (n > 0) { j = (j + 1) % 12; if (j !== i) { p[j]++; n--; } }
   let attacked = 0;
   while (j >= 0 && Math.floor(j / 6) === other && (p[j] === 2 || p[j] === 3)) { j--; attacked++; }
-  if (attacked <= 4) {
-    const nonEmpty = p.slice(other * 6, other * 6 + 6).filter(x => x !== 0).length;
-    return attacked === nonEmpty;
-  }
-  return false;
+  const nonEmpty = p.slice(other * 6, other * 6 + 6).filter(x => x !== 0).length;
+  return attacked === nonEmpty;
 }
 
 export function isValid(pits: number[], i: number): boolean {
@@ -47,7 +48,7 @@ export function distribute(pits: number[], scores: number[], i: number): MoveRes
   const last = j; let attacked = 0;
   while (j >= 0 && Math.floor(j / 6) === other && (pits[j] === 2 || pits[j] === 3)) { j--; attacked++; }
   const captured: number[] = [];
-  const firstKept = last - Math.min(attacked, 4);   // captures are CAPPED at 4 pits per move
+  const firstKept = last - attacked;               // the whole 2/3 chain is swept, no cap
   // Grand slam: a capture that would sweep the opponent's row clean is cancelled
   // in full — not trimmed to leave one pit behind. `isValid` already forbids such
   // a move when another one exists, so we only get here when the player had no
