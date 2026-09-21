@@ -848,6 +848,13 @@ a.pill { text-decoration: none; color: inherit; }
   .pcard-score { font-size: clamp(1.3rem, 6vw, 1.8rem); }
   .turn-center { min-width: 0; max-width: 100%; }
 
+  /* Two buttons on the right against one on the left pushed the brand off
+     centre. Stacking them (gear on top, ? beneath) makes the right side one
+     button wide, so the title lands dead centre between the two columns. */
+  .game-top { align-items: flex-start; }
+  .game-top-right { flex-direction: column-reverse; gap: 8px; }
+  .brand { flex: 1; text-align: center; line-height: 44px; }
+
   .pit { --size: clamp(42px, 13vw, 70px); }
   .board {
     align-items: center;
