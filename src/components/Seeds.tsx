@@ -21,37 +21,26 @@ function layout(i: number, total: number) {
 
 interface Props {
   pit: number;
-  /** How many seeds this call draws, counting from slot 0. */
   count: number;
-  /** First slot to draw. Lets a move preview fill only the incoming seeds. */
-  from?: number;
-  /** Slots the bowl is packed for. Defaults to `count`; a preview passes the
-   *  post-sow total so real and ghost seeds share one arrangement. */
-  total?: number;
-  /** Faint, dashed outlines: seeds that would arrive, not seeds that are there. */
-  ghost?: boolean;
 }
 
-export default function Seeds({ pit, count, from = 0, total, ghost = false }: Props) {
+export default function Seeds({ pit, count }: Props) {
   if (count <= 0) return null;
   const shown = Math.min(count, 12);
-  const packed = Math.min(total ?? count, 12);
-  const start = Math.min(Math.max(from, 0), shown);
-  if (start >= shown) return null;
   const dots = [];
-  for (let i = start; i < shown; i++) {
+  for (let i = 0; i < shown; i++) {
     const h = hash(pit * 131 + i * 17);
     const color = STONE[h % STONE.length];
     const jx = ((hash(h) % 100) / 100 - 0.5) * 6;
     const jy = ((hash(h + 7) % 100) / 100 - 0.5) * 6;
-    const { x, y } = layout(i, packed);
+    const { x, y } = layout(i, shown);
     dots.push(
       <span
         key={i}
-        className={`seed seed-${color}${ghost ? ' seed-ghost' : ''}`}
+        className={`seed seed-${color}`}
         style={{ left: `calc(${x + jx}% )`, top: `calc(${y + jy}%)` }}
       />,
     );
   }
-  return <span className={`seeds${ghost ? ' seeds-ghost' : ''}`}>{dots}</span>;
+  return <span className="seeds">{dots}</span>;
 }
