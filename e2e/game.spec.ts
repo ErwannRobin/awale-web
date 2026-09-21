@@ -86,6 +86,57 @@ test('a full game against the AI finishes and is recorded', async ({ page }) => 
   await expect(page.locator('.stat-tile').first()).toContainText('1');
 });
 
+test('the board holds still while the coaching text changes', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+
+  await page.getByText('PLAY VS AI').click();
+  await page.getByText('Novice').click();
+
+  const board = page.locator('.board');
+  await expect(board).toBeVisible();
+  const start = await board.boundingBox();
+
+  // The line under the turn pill swaps between three different lengths as the
+  // turn changes, and the tip below the board rotates every six seconds. Both
+  // sit in a slot sized for their longest text, so the board must not budge.
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(3500);   // long enough to cross a tip change
+    const pits = playablePits(page);
+    if (await pits.count() > 0) await pits.last().click();
+    await page.waitForTimeout(400);
+    expect(await board.boundingBox()).toEqual(start);
+  }
+});
+
+test('one × switches both coaching texts off, and Settings brings them back', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+
+  await page.getByText('PLAY VS AI').click();
+  await page.getByText('Novice').click();
+
+  await expect(page.locator('.turn-line-row')).toBeVisible();
+  await expect(page.locator('.tip-card')).toBeVisible();
+
+  // Either × switches off BOTH — the line above the board and the card below.
+  await page.locator('.tip-close').first().click();
+  await expect(page.locator('.turn-line-row')).toHaveCount(0);
+  await expect(page.locator('.tip-card')).toHaveCount(0);
+
+  // It is a stored setting, not a one-screen dismissal, so it outlives this
+  // board. (The reload can't be checked here: the harness rewrites settings on
+  // every navigation.)
+  const stored = await page.evaluate(() => localStorage.getItem('awale.settings.v1'));
+  expect(JSON.parse(stored ?? '{}').showTips).toBe(false);
+
+  // Settings puts them back.
+  await page.getByLabel('Settings').first().click();
+  await page.getByRole('switch', { name: 'Show tips' }).click();
+  await page.getByText('Done').click();
+  await expect(page.locator('.tip-card')).toBeVisible();
+});
+
 test('a game in progress survives a reload', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');
@@ -121,6 +172,38 @@ test('settings change the board and persist', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
 });
 
+test('Escape closes Settings', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByText('Done')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.board')).toBeVisible();
+});
+
+test('Escape does not walk out of a game', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.board')).toBeVisible();
+});
+
+test('the browser chrome takes the colour of the table top', async ({ page }) => {
+  const colour = () => page.locator('meta[name="theme-color"]').getAttribute('content');
+
+  await page.goto('/');
+  // Wood: the top of its table gradient, not the near-black it used to hold.
+  expect((await colour())?.toLowerCase()).toBe('#6b4024');
+
+  await page.getByLabel('Settings').first().click();
+  await page.getByRole('radio', { name: 'Sand' }).click();
+  await expect.poll(async () => (await colour())?.toLowerCase()).toBe('#f0e0c2');
+  await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+});
+
 test('switching to French translates the interface', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Settings').first().click();
@@ -148,7 +231,9 @@ test('challenges unlock in order', async ({ page }) => {
  */
 async function runTutorialToEnd(page: Page, onStep?: () => Promise<void>) {
   const play = page.getByRole('button', { name: /PLAY A GAME/ });
-  for (let i = 0; i < 90; i++) {
+  // The tutorial ignores the speed setting and always sows slowly, so a demo
+  // step can hold the walker for several seconds. Hence the generous cap.
+  for (let i = 0; i < 400; i++) {
     await onStep?.();
     if (await play.isVisible()) return true;
     const next = page.getByRole('button', { name: /^NEXT$/ });
@@ -174,7 +259,10 @@ test('the tutorial runs from start to finish into an easy game', async ({ page }
   await page.getByRole('button', { name: /PLAY A GAME/ }).click();
   await expect(page.locator('.tut-card')).toHaveCount(0);
   await expect(page.locator('.board')).toBeVisible();
-  await expect(page.getByText('Novice').first()).toBeVisible();
+  // Read the opponent's card, not a loose text match: the status line reserves
+  // its height with hidden copies of every line it can show, one of which
+  // names the opponent too.
+  await expect(page.locator('.pcard-opp')).toContainText('Novice');
 });
 
 test('the tutorial offers the challenges as a secondary exit', async ({ page }) => {
@@ -436,11 +524,17 @@ test('holding a pit marks its landing hole, and dragging moves the mark along', 
   await expect(page.locator('.pit-target')).toHaveCount(0);
   await expect(page.locator('[data-pit="3"]')).toHaveAttribute('aria-label', /4 seeds/);
 
-  // A quick tap still plays the move.
+  // A quick tap still plays the move. Each CDP call is a round trip, so on a
+  // loaded machine the gap between the two can itself outlast the hold delay
+  // and turn the tap into a hold — which plays nothing, by design. Retry the
+  // whole gesture rather than the assertion: the pit is untouched either way.
   const tap = await centre(0);
-  await touch('touchStart', tap);
-  await touch('touchEnd');
-  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+  await expect(async () => {
+    await touch('touchStart', tap);
+    await touch('touchEnd');
+    await expect(page.locator('[data-pit="0"]'))
+      .toHaveAttribute('aria-label', /0 seeds/, { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
 
   await context.close();
 });

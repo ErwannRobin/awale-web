@@ -72,6 +72,8 @@ export const en = {
   'game.toChallenges': 'CHALLENGES',
   'game.ratingChange': 'Rating {before} → {after}',
   'game.resumed': 'Game resumed',
+  'game.hideTips': 'Hide the tips',
+  'game.tipsHidden': 'Tips hidden — Settings brings them back.',
 
   // ---- announcements (screen readers) ----------------------------------
   'a11y.board': 'Awalé board',
@@ -186,6 +188,8 @@ export const en = {
   'settings.themeSand': 'Sand',
   'settings.counts': 'Show seed counts',
   'settings.countsHelp': 'The little number badge on each pit.',
+  'settings.tips': 'Show tips',
+  'settings.tipsHelp': 'The helper line under the turn pill and the tip card below the board.',
   'settings.leftHanded': 'Left-handed layout',
   'settings.leftHandedHelp': 'Moves your store to the other side. The sowing direction never changes.',
   'settings.sectionNotify': 'Reminders',

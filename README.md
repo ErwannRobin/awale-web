@@ -46,7 +46,8 @@ of the oware / mancala family.
   screen back*, exactly like the on-screen ←. Back out of Settings mid-game and
   the board is where you left it. The iOS shell has no such gesture of its own —
   Apple's convention is the on-screen arrow — so there it is the web build that
-  gains it.
+  gains it. On a desktop keyboard, Escape closes Settings, Help and sign-in;
+  it stops there, so a stray key press cannot walk out of a game.
 
 There is **no leaderboard**. Online games are unrated: your rating measures you
 against the four AI levels on this device, and a stranger cannot move it. A
@@ -104,6 +105,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/navigation.ts` | The screen stack, kept in browser history |
 | `src/lib/useScreenHistory.ts` | That stack as React state — the app's only way to change screen |
 | `src/lib/useBackButton.ts` | Android's back button |
+| `src/lib/useEscapeKey.ts` | Escape, for the panels a desktop can close with it |
 | `src/lib/progress.ts` | Challenge unlock progress |
 | `src/lib/protocol.ts` | The wire format, and every message validated on arrival |
 | `src/lib/roomCore.ts` | A match as pure functions — the server's rules |
@@ -408,7 +410,7 @@ server while the app runs on a device.
 | Reminders | — | one local notification, off by default |
 | Store rating | — | the in-app review sheet after a win |
 | Back button | — | one screen back, and only the menu exits |
-| Status bar | `theme-color` | styled to the board's own dark |
+| Status bar | `theme-color`, repainted with the theme | styled to the board's own dark |
 
 `lib/platform.ts` answers "are we native?"; every plugin is behind a dynamic
 `import()` in a native-only branch, so a browser build never loads native code.

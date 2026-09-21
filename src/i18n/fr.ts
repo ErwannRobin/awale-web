@@ -73,6 +73,8 @@ export const fr: Record<keyof typeof en, string> = {
   'game.toChallenges': 'DÉFIS',
   'game.ratingChange': 'Classement {before} → {after}',
   'game.resumed': 'Partie reprise',
+  'game.hideTips': 'Masquer les conseils',
+  'game.tipsHidden': 'Conseils masqués — les Réglages les rétablissent.',
 
   // ---- announcements ---------------------------------------------------
   'a11y.board': 'Plateau d’awalé',
@@ -185,6 +187,8 @@ export const fr: Record<keyof typeof en, string> = {
   'settings.themeSand': 'Sable',
   'settings.counts': 'Afficher le nombre de graines',
   'settings.countsHelp': 'La petite pastille chiffrée sur chaque trou.',
+  'settings.tips': 'Afficher les conseils',
+  'settings.tipsHelp': 'La ligne d’aide sous la pastille de tour et la carte de conseil sous le plateau.',
   'settings.leftHanded': 'Disposition gaucher',
   'settings.leftHandedHelp': 'Déplace votre grenier de l’autre côté. Le sens du semis ne change jamais.',
   'settings.sectionNotify': 'Rappels',
