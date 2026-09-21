@@ -208,7 +208,7 @@ test('the game still loads with the network offline', async ({ page, context }) 
 // and the asking must never itself play the move.
 // ---------------------------------------------------------------------------
 
-test('hovering a pit marks the hole its last seed lands in', async ({ page }) => {
+test('hovering your own pit marks the hole its last seed lands in', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');
   await page.getByText('TWO PLAYERS').click();
@@ -228,6 +228,32 @@ test('hovering a pit marks the hole its last seed lands in', async ({ page }) =>
   // Moving off the board clears it.
   await page.mouse.move(2, 2);
   await expect(page.locator('.pit-target')).toHaveCount(0);
+});
+
+test('hovering an opponent pit marks where THEIR seeds would land', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await page.waitForSelector('.pit-legal');
+
+  // Reading the opponent's threats is half the game, so their row answers the
+  // same question yours does. Four seeds from their third pit reach your first.
+  await page.locator('[data-pit="8"]').hover();
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-target/);
+
+  // Peeking at their row is all you may do with it: it is not yours to play.
+  await expect(page.locator('[data-pit="8"]')).toHaveAttribute('aria-disabled', 'true');
+  await page.locator('[data-pit="8"]').click({ force: true });
+  await page.waitForTimeout(300);
+  await expect(page.locator('[data-pit="8"]')).toHaveAttribute('aria-label', /4 seeds/);
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /4 seeds/);
+
+  // And the tab order still stops only at the pits you can actually play.
+  const stops = await page.locator('.pit').evaluateAll(
+    els => els.filter(el => (el as HTMLElement).tabIndex >= 0).map(el => el.getAttribute('data-pit')),
+  );
+  expect(stops.sort()).toEqual(['0', '1', '2', '3', '4', '5']);
 });
 
 test('a big pit laps the board and lands past the hole it came from', async ({ page }) => {
@@ -294,6 +320,11 @@ test('holding a pit marks its landing hole, and dragging moves the mark along', 
   // Slide to another pit without lifting: the mark follows.
   await touch('touchMove', later);
   await expect(page.locator('[data-pit="7"]')).toHaveClass(/pit-target/);
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+
+  // Slide onto the opponent's row and it answers for them.
+  await touch('touchMove', await centre(8));
+  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-target/);
   await expect(page.locator('.pit-target')).toHaveCount(1);
 
   // Lifting ends the peek and plays nothing.

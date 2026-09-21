@@ -3,6 +3,7 @@ import Seeds from './Seeds.tsx';
 import type { GameState } from '../lib/useGame.ts';
 import { boardLayout } from '../lib/layout.ts';
 import { landingPit } from '../lib/preview.ts';
+import { isValid } from '../lib/engine.ts';
 import { useOrientation } from '../lib/useOrientation.ts';
 import { useSettings } from '../lib/useSettings.ts';
 import { hapticTap } from '../lib/haptics.ts';
@@ -64,25 +65,35 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
   );
 
   // ---- move preview ------------------------------------------------------
-  // Hovering (mouse) or holding (touch) a playable pit answers the question a
-  // beginner asks every turn: where does my last seed land? Just that pit —
-  // sketching the whole sowing turns a glance into arithmetic. The preview is
-  // derived, never stored in the game state.
+  // Hovering (mouse) or holding (touch) a pit answers the question a beginner
+  // asks every turn: where does that last seed land? Just that pit — sketching
+  // the whole sowing turns a glance into arithmetic.
+  //
+  // Both rows answer it. Reading the opponent's threats is half of awalé, and
+  // "what does that big pit of theirs reach?" is the same question asked of
+  // their side, so a pit is previewable whenever its own owner could legally
+  // play it — playable-by-you is a narrower thing, and it still gates taps.
+  // The preview is derived, never stored in the game state.
   const [preview, setPreview] = useState<{ source: number; target: number } | null>(null);
+
+  const canPreview = useCallback(
+    (pit: number) => state.phase === 'idle' && isValid(state.pits, pit),
+    [state.phase, state.pits],
+  );
 
   const showPreview = useCallback((pit: number | null) => {
     setPreview(prev => {
-      if (pit === null || !isLegal(pit)) return prev === null ? prev : null;
+      if (pit === null || !canPreview(pit)) return prev === null ? prev : null;
       if (prev?.source === pit) return prev;
       return { source: pit, target: landingPit(state.pits, pit) };
     });
-  }, [isLegal, state.pits]);
+  }, [canPreview, state.pits]);
 
   // Any change of position or turn invalidates the peek; drop it rather than
-  // leave ghost seeds pointing at a board that has moved on.
+  // leave a mark pointing at a board that has moved on.
   useEffect(() => {
-    if (state.phase !== 'idle' || !interactive) setPreview(null);
-  }, [state.phase, interactive]);
+    if (state.phase !== 'idle') setPreview(null);
+  }, [state.phase]);
 
   // ---- long press, and dragging from pit to pit --------------------------
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,7 +122,7 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
 
   const onPointerDown = (pit: number) => (e: ReactPointerEvent) => {
     if (e.pointerType === 'mouse') return;          // mouse peeks on hover
-    if (!isLegal(pit)) return;
+    if (!canPreview(pit)) return;
     pressAt.current = { x: e.clientX, y: e.clientY };
     holdTimer.current = setTimeout(() => {
       holding.current = true;
@@ -127,7 +138,7 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
       // The finger keeps its capture on the pit it started from, so ask the
       // document what is actually under it.
       const pit = pitUnder(e.clientX, e.clientY);
-      showPreview(pit !== null && isLegal(pit) ? pit : null);
+      showPreview(pit);
       return;
     }
     const start = pressAt.current;
@@ -168,15 +179,20 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
       index: (pit % 6) + 1,
       count,
     };
+    // Not `disabled`: a disabled button swallows the pointer events an
+    // opponent-side peek is made of. `aria-disabled` says the same thing to
+    // assistive tech, `handleClick` enforces it, and the tab order still stops
+    // only at the pits you can actually play.
     return (
       <button
         key={pit}
         type="button"
         data-pit={pit}
         className={cls}
-        disabled={!legal}
+        aria-disabled={legal ? undefined : true}
+        tabIndex={legal ? 0 : -1}
         onClick={() => handleClick(pit)}
-        onPointerEnter={e => { if (e.pointerType === 'mouse' && legal) showPreview(pit); }}
+        onPointerEnter={e => { if (e.pointerType === 'mouse') showPreview(pit); }}
         onPointerLeave={e => { if (e.pointerType === 'mouse') showPreview(null); }}
         onPointerDown={onPointerDown(pit)}
         onPointerMove={onPointerMove}

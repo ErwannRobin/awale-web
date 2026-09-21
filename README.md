@@ -16,10 +16,12 @@ of the oware / mancala family.
   move always sits nearest the viewer.
 - **Continue** — an in-progress game survives a refresh, a closed tab, or a
   backgrounded app.
-- **Move preview** — hover a playable pit (mouse) or hold one (touch) and the
-  board marks the hole that move's last seed would land in. Just that hole:
-  drawing the whole sowing would make a glance into arithmetic. Holding and
-  sliding walks the preview from pit to pit; lifting your finger plays nothing.
+- **Move preview** — hover a pit (mouse) or hold one (touch) and the board
+  marks the hole that move's last seed would land in. Just that hole: drawing
+  the whole sowing would make a glance into arithmetic. Both rows answer —
+  reading the opponent's threats is half of awalé — though their row is still
+  not yours to play. Holding and sliding walks the preview from pit to pit;
+  lifting your finger plays nothing.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
 - **Undo** (vs AI) — restores your previous position.
 - **Challenges** — 12 fixed puzzle positions, every one machine-verified as
