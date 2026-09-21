@@ -212,6 +212,7 @@ export const fr: Record<keyof typeof en, string> = {
   'profile.namePlaceholder': 'Votre nom',
   'profile.avatar': 'Avatar',
   'profile.rank': 'Rang',
+  'profile.account': 'Connecté en tant que',
 
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATISTIQUES',
@@ -318,7 +319,6 @@ export const fr: Record<keyof typeof en, string> = {
   'signIn.unavailable': 'La connexion est indisponible pour le moment.',
   'signIn.welcome': 'Bienvenue. Vous êtes connecté.',
   'signIn.welcomeBack': 'Bon retour, {name}.',
-  'signIn.signedIn': 'Connecté',
   'signIn.signOut': 'Se déconnecter',
   'signIn.signedOut': 'Déconnecté.',
   'signIn.privacyTitle': 'Votre numéro n’est jamais montré à personne',

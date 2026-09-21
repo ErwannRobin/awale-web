@@ -213,6 +213,7 @@ export const en = {
   'profile.namePlaceholder': 'Your name',
   'profile.avatar': 'Avatar',
   'profile.rank': 'Rank',
+  'profile.account': 'Signed in as',
 
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATS',
@@ -319,7 +320,6 @@ export const en = {
   'signIn.unavailable': 'Sign-in is unavailable right now.',
   'signIn.welcome': 'Welcome. You are signed in.',
   'signIn.welcomeBack': 'Welcome back, {name}.',
-  'signIn.signedIn': 'Signed in',
   'signIn.signOut': 'Sign out',
   'signIn.signedOut': 'Signed out.',
   'signIn.privacyTitle': 'Your number is never shown to anyone',

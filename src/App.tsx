@@ -273,7 +273,6 @@ export default function App() {
           onStart={room => nav.go({ name: 'onlineGame', room })}
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
-          account={account}
         />
       )}
 

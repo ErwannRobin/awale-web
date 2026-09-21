@@ -101,17 +101,9 @@ export default function Profile({
             <h3 className="set-head">{t('profile.sectionAccount')}</h3>
             {account ? (
               <>
-                <div className="info-card info-card-static">
-                  <span className="info-icon">✅</span>
-                  <span className="account-line">
-                    <span>
-                      {t('signIn.signedIn')} ·{' '}
-                      <strong className="account-name">
-                        {account.user.name || t('common.player')}
-                      </strong>
-                    </span>
-                  </span>
-                </div>
+                <Row label={t('profile.account')}>
+                  <span className="set-value">{account.user.name || t('common.player')}</span>
+                </Row>
                 <div className="set-actions">
                   <button
                     className="ctrl ctrl-danger"

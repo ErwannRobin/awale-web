@@ -4,22 +4,17 @@ import { makeRoomCode, normaliseRoomCode, CODE_LENGTH } from '../lib/protocol.ts
 import { queueUrl } from '../lib/onlineConfig.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
-import { authEnabled, type Session } from '../lib/auth.ts';
 
 interface Props {
   onStart: (room: string) => void;
   onBack: () => void;
   onToast: (msg: string) => void;
-  /** The signed-in account, or null when playing anonymously. */
-  account: Session | null;
 }
 
 /** How long to wait for the matchmaker before giving up and saying so. */
 const QUEUE_TIMEOUT_MS = 8000;
 
-export default function Online({
-  onStart, onBack, onToast, account,
-}: Props) {
+export default function Online({ onStart, onBack, onToast }: Props) {
   const t = useT();
   const [joining, setJoining] = useState(false);
   const [code, setCode] = useState('');
@@ -135,25 +130,6 @@ export default function Online({
               </span>
             </button>
           </form>
-        </div>
-      )}
-
-      {/* The account itself — signing in, signing out — lives on the profile
-          screen behind the player chip in the main menu. This screen only
-          reports which account you are about to play as. */}
-      {authEnabled() && !joining && account && (
-        <div className="menu-actions">
-          <div className="info-card info-card-static">
-            <span className="info-icon">✅</span>
-            <span className="account-line">
-              <span>
-                {t('signIn.signedIn')} ·{' '}
-                <strong className="account-name">
-                  {account.user.name || t('common.player')}
-                </strong>
-              </span>
-            </span>
-          </div>
         </div>
       )}
 
