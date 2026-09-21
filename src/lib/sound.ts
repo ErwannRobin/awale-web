@@ -235,12 +235,27 @@ function have(kind: Kind): boolean {
  * is silent by design — a missing pack is a normal state (no pack shipped yet),
  * not an error worth a console full of noise.
  */
+// audio/* is the real signal; some static servers (Vite's dev server among
+// them) don't set a content-type for extensionless or unusual serving setups,
+// so a missing header is tolerated rather than rejected — only a WRONG one
+// (below) is disqualifying.
+function looksLikeAudio(r: Response): boolean {
+  const type = r.headers.get('content-type');
+  return type == null || type.startsWith('audio/') || type === 'application/octet-stream';
+}
+
 async function fetchClip(base: string, name: string): Promise<ArrayBuffer> {
   let lastStatus = 'no extensions tried';
   for (const ext of PACK_EXTS) {
     const r = await fetch(`${base}${name}.${ext}`);
-    if (r.ok) return r.arrayBuffer();
-    lastStatus = String(r.status);
+    // A dev server's SPA fallback (and some static hosts) answer a missing
+    // file with 200 OK and the index page's HTML rather than a 404 — r.ok
+    // alone can't tell that apart from a real hit, so a clip whose next
+    // extension might actually exist would never get tried. Checking the
+    // content-type catches it and falls through to try .mp3 after .wav (or
+    // report "not found" honestly once every extension is exhausted).
+    if (r.ok && looksLikeAudio(r)) return r.arrayBuffer();
+    lastStatus = r.ok ? `200 but content-type was ${r.headers.get('content-type')}` : String(r.status);
   }
   throw new Error(lastStatus);
 }
