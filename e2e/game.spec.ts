@@ -172,28 +172,15 @@ test('settings change the board and persist', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
 });
 
-test('Escape and the browser Back button close Settings', async ({ page }) => {
+test('Escape closes Settings', async ({ page }) => {
   await page.goto('/');
   await page.getByText('TWO PLAYERS').click();
   await expect(page.locator('.board')).toBeVisible();
 
-  // Escape, the desktop habit.
   await page.getByLabel('Settings').first().click();
   await expect(page.getByText('Done')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.board')).toBeVisible();
-
-  // Back, which used to leave the site entirely.
-  await page.getByLabel('Settings').first().click();
-  await expect(page.getByText('Done')).toBeVisible();
-  await page.goBack();
-  await expect(page.locator('.board')).toBeVisible();
-
-  // One more step back leaves the game for the menu. (The menu is matched by
-  // its container: once a game has been left there is a CONTINUE card, and
-  // "TWO PLAYERS" then names both that card and the button below it.)
-  await page.goBack();
-  await expect(page.locator('.menu')).toBeVisible();
 });
 
 test('Escape does not walk out of a game', async ({ page }) => {
@@ -537,11 +524,57 @@ test('holding a pit marks its landing hole, and dragging moves the mark along', 
   await expect(page.locator('.pit-target')).toHaveCount(0);
   await expect(page.locator('[data-pit="3"]')).toHaveAttribute('aria-label', /4 seeds/);
 
-  // A quick tap still plays the move.
+  // A quick tap still plays the move. Each CDP call is a round trip, so on a
+  // loaded machine the gap between the two can itself outlast the hold delay
+  // and turn the tap into a hold — which plays nothing, by design. Retry the
+  // whole gesture rather than the assertion: the pit is untouched either way.
   const tap = await centre(0);
-  await touch('touchStart', tap);
-  await touch('touchEnd');
-  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+  await expect(async () => {
+    await touch('touchStart', tap);
+    await touch('touchEnd');
+    await expect(page.locator('[data-pit="0"]'))
+      .toHaveAttribute('aria-label', /0 seeds/, { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
 
   await context.close();
+});
+
+test('the browser Back button walks back through the screens', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByText('Challenges').first().click();
+  const puzzles = page.locator('.challenge-item');
+  await expect(puzzles.first()).toBeVisible();
+
+  await puzzles.first().click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // Back is one screen back, not one site back — the app is still here.
+  await page.goBack();
+  await expect(puzzles.first()).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByText('TWO PLAYERS')).toBeVisible();
+
+  // And Forward returns to the screen Back left.
+  await page.goForward();
+  await expect(puzzles.first()).toBeVisible();
+});
+
+test('Back out of settings puts the game back on the board', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // A move, so the board is one the player would hate to lose.
+  await playablePits(page).first().click();
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
+
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByRole('radio', { name: 'Night' })).toBeVisible();
+
+  await page.goBack();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /0 seeds/);
 });

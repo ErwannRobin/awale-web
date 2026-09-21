@@ -18,10 +18,9 @@ import { clearSession, loadSession, refreshSession, type Session } from './lib/a
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
+import { useScreenHistory } from './lib/useScreenHistory.ts';
 import { useBackButton } from './lib/useBackButton.ts';
-import { useBrowserBack } from './lib/useBrowserBack.ts';
 import { useEscapeKey } from './lib/useEscapeKey.ts';
-import { isNative } from './lib/platform.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
 import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
@@ -50,14 +49,32 @@ export default function App() {
   const settings = useSettings();
   const t = useT();
 
-  // A `?join=CODE` link opens straight into that room. Landing on the menu
-  // first and making the player find the code again would waste the link.
-  const [screen, setScreen] = useState<Screen>(() => {
-    if (!onlineEnabled()) return { name: 'menu' };
-    const code = readJoinCode();
-    const room = code ? normaliseRoomCode(code) : null;
-    return room ? { name: 'onlineGame', room } : { name: 'menu' };
-  });
+  /**
+   * The screen stack lives in `window.history`, so the browser's Back — the
+   * desktop arrow, the phone's back gesture, Safari's edge swipe — means "one
+   * screen back" instead of "leave the game". `go` opens a screen, `back`
+   * returns to the one under it, `replace` stands in for it.
+   *
+   * A restored `game` screen re-reads the save slot: the snapshot stored in the
+   * history entry is from when the game started, and the board has moved on.
+   * A save that is gone (the game ended) sends the player to the menu.
+   */
+  const nav = useScreenHistory<Screen>(
+    // A `?join=CODE` link opens straight into that room. Landing on the menu
+    // first and making the player find the code again would waste the link.
+    () => {
+      if (!onlineEnabled()) return { name: 'menu' };
+      const code = readJoinCode();
+      const room = code ? normaliseRoomCode(code) : null;
+      return room ? { name: 'onlineGame', room } : { name: 'menu' };
+    },
+    useCallback((target: Screen): Screen => {
+      if (target.name !== 'game') return target;
+      const latest = loadSavedGame();
+      return latest ? { ...target, resume: latest } : { name: 'menu' };
+    }, []),
+  );
+  const screen = nav.screen;
   const [completed, setCompleted] = useState<number[]>(() => loadCompleted());
   const [profile, setProfile] = useState(loadProfile);
   // Read from storage so a returning player is signed in before the first
@@ -112,6 +129,22 @@ export default function App() {
   const refreshStats = useCallback(() => setStats(loadStats()), []);
   const refreshSaved = useCallback(() => setSaved(loadSavedGame()), []);
 
+  /**
+   * The menu reads the save slot and the stats afresh every time it appears.
+   *
+   * Leaving a game through its own ← goes via `leaveGame`, which refreshes both
+   * before the menu renders; a browser Back out of the board does not, and a
+   * menu still offering to continue a game that has just ended would be a lie.
+   * `clearJoinCode` for the same reason: whichever way the player walked out of
+   * an online game, a reload must not walk back into it.
+   */
+  useEffect(() => {
+    if (screen.name !== 'menu') return;
+    refreshSaved();
+    refreshStats();
+    clearJoinCode();
+  }, [screen.name, refreshSaved, refreshStats]);
+
   const markComplete = useCallback((index: number) => {
     setCompleted(prev => {
       if (prev.includes(index)) return prev;
@@ -124,21 +157,21 @@ export default function App() {
   const startGame = (mode: 'ai' | 'local', level = 3, resume: SavedGame | null = null) => {
     // Starting fresh abandons any stored game, so the menu stops offering it.
     if (!resume) { clearSavedGame(); setSaved(null); }
-    setScreen({ name: 'game', mode, level, key: ++gameKey.current, resume });
+    nav.go({ name: 'game', mode, level, key: ++gameKey.current, resume });
   };
 
   const leaveOnline = () => {
     // Drop the invite from the address bar on the way out, so a refresh does
     // not walk back into a game that has finished.
     clearJoinCode();
-    setScreen({ name: 'menu' });
+    nav.back({ name: 'menu' });
     void refreshReminder('left a game');
   };
 
   const leaveGame = () => {
     refreshSaved();
     refreshStats();
-    setScreen({ name: 'menu' });
+    nav.back({ name: 'menu' });
     // Just played, so any "you have not played in a while" reminder moves out.
     void refreshReminder('left a game');
   };
@@ -158,18 +191,14 @@ export default function App() {
   }, [challengeIndex, markComplete]);
 
   /**
-   * Returning to a game re-reads the save slot rather than reusing the stale
-   * `resume` object captured when the game started, so the board comes back
-   * exactly where it was left.
+   * The ← on a screen that was opened over another one.
+   *
+   * It pops the history entry rather than pushing the screen it came from, so
+   * the arrow and the browser's own Back do the one thing. The screen carried
+   * in `back` is only needed when there is no entry to pop — a reload, or an
+   * invite link that opened straight into a game.
    */
-  const goBackTo = (target: Screen) => () => {
-    if (target.name === 'game') {
-      const latest = loadSavedGame();
-      setScreen(latest ? { ...target, resume: latest } : { name: 'menu' });
-      return;
-    }
-    setScreen(target);
-  };
+  const goBackTo = (target: Screen) => () => nav.back(target);
 
   /**
    * The player chip at the top of the menu.
@@ -179,42 +208,43 @@ export default function App() {
    * is nothing to sign into, so it opens the profile in Settings — and a build
    * with no server configured has no sign-in at all.
    */
-  const openAccount = () => setScreen(
+  const openAccount = () => nav.go(
     onlineEnabled() && !account
       ? { name: 'signIn', back: { name: 'menu' } }
       : { name: 'settings', back: { name: 'menu' } },
   );
 
   /**
-   * What "back" means, wherever it is pressed: Android's hardware button, the
-   * browser's Back button, Escape on a desktop keyboard. One screen back, not
-   * "quit" — quitting out of a game in progress is exactly what store
-   * reviewers flag. Only the menu exits, and only on Android; iOS has no such
-   * button and forbids a programmatic exit anyway, and on the web the browser
-   * leaves the site by itself.
+   * Android's back button, which the native shell hands to us instead of
+   * letting the WebView act on it — and, through `useEscapeKey` below, the
+   * Escape key. Both run the very same moves as the on-screen ←, so a screen
+   * cannot mean one thing to a button and another to a gesture — and back
+   * means "one screen back", not "quit", because quitting out of a game in
+   * progress is exactly what store reviewers flag.
+   *
+   * Only the last screen standing exits, and only on Android; iOS has no such
+   * button and forbids a programmatic exit anyway.
    */
   const goBack = () => {
     switch (screen.name) {
-      case 'menu': void exitApp(); return;
+      // The menu is normally the bottom of the stack — but not after a game
+      // that ended while it sat under a Settings screen, so ask, don't assume.
+      case 'menu': if (nav.atRoot()) void exitApp(); else nav.back({ name: 'menu' }); return;
       case 'game': leaveGame(); return;
       case 'onlineGame': leaveOnline(); return;
       case 'signIn':
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
-      case 'challenge': setScreen({ name: 'challenges' }); return;
-      default: setScreen({ name: 'menu' });
+      case 'challenge': nav.back({ name: 'challenges' }); return;
+      default: nav.back({ name: 'menu' });
     }
   };
 
   useBackButton(goBack);
 
-  // The same meaning for the web: the browser's Back button, and the back
-  // swipe that goes with it, step one screen back instead of leaving the site.
-  // Not on native, where the button above already has it and both would fire.
-  useBrowserBack(!isNative() && screen.name !== 'menu', goBack);
-
-  // Escape closes the panels that sit ON something else. It stops there on
+  // Escape closes the panels that sit ON something else, and stops there on
   // purpose: Escape out of a game would be a keystroke away from a lost board.
+  // (The browser's own Back walks the whole stack — that is useScreenHistory.)
   useEscapeKey(
     screen.name === 'settings' || screen.name === 'learn' || screen.name === 'signIn',
     goBack,
@@ -232,23 +262,23 @@ export default function App() {
           onPlayLocal={() => startGame('local')}
           onQuickMatch={level => startGame('ai', level)}
           onContinue={() => saved && startGame(saved.mode, saved.level, saved)}
-          onTutorial={() => setScreen({ name: 'tutorial' })}
-          onChallenges={() => setScreen({ name: 'challenges' })}
-          onOnline={() => setScreen({ name: 'online' })}
-          onSettings={() => setScreen({ name: 'settings', back: { name: 'menu' } })}
+          onTutorial={() => nav.go({ name: 'tutorial' })}
+          onChallenges={() => nav.go({ name: 'challenges' })}
+          onOnline={() => nav.go({ name: 'online' })}
+          onSettings={() => nav.go({ name: 'settings', back: { name: 'menu' } })}
           onProfile={openAccount}
-          onStats={() => setScreen({ name: 'stats' })}
-          onRecords={() => setScreen({ name: 'records' })}
+          onStats={() => nav.go({ name: 'stats' })}
+          onRecords={() => nav.go({ name: 'records' })}
         />
       )}
 
       {screen.name === 'online' && (
         <Online
-          onStart={room => setScreen({ name: 'onlineGame', room })}
-          onBack={() => setScreen({ name: 'menu' })}
+          onStart={room => nav.go({ name: 'onlineGame', room })}
+          onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
           account={account}
-          onSignIn={() => setScreen({ name: 'signIn', back: { name: 'online' } })}
+          onSignIn={() => nav.go({ name: 'signIn', back: { name: 'online' } })}
           onSignOut={() => {
             clearSession();
             setAccount(null);
@@ -261,7 +291,7 @@ export default function App() {
         <SignIn
           onSignedIn={(session, isNew) => {
             setAccount(session);
-            setScreen(screen.back);
+            nav.back(screen.back);
             showToast(isNew || !session.user.name
               ? t('signIn.welcome')
               : t('signIn.welcomeBack', { name: session.user.name }));
@@ -276,8 +306,8 @@ export default function App() {
           key={screen.room}
           room={screen.room}
           onExit={leaveOnline}
-          onLearn={() => setScreen({ name: 'learn', back: screen })}
-          onSettings={() => setScreen({ name: 'settings', back: screen })}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}
         />
       )}
@@ -299,15 +329,17 @@ export default function App() {
       )}
 
       {screen.name === 'stats' && (
-        <StatsScreen completed={completed} onBack={() => setScreen({ name: 'menu' })} />
+        <StatsScreen completed={completed} onBack={() => nav.back({ name: 'menu' })} />
       )}
 
-      {screen.name === 'records' && <Records onBack={() => setScreen({ name: 'menu' })} />}
+      {screen.name === 'records' && <Records onBack={() => nav.back({ name: 'menu' })} />}
 
       {screen.name === 'tutorial' && (
         <Tutorial
-          onExit={() => setScreen({ name: 'menu' })}
-          onChallenges={() => setScreen({ name: 'challenges' })}
+          onExit={() => nav.back({ name: 'menu' })}
+          // The tutorial is finished by the time it offers this, so it steps
+          // aside rather than stacking: Back from the puzzles means the menu.
+          onChallenges={() => nav.replace({ name: 'challenges' })}
           onPlay={level => startGame('ai', level)}
         />
       )}
@@ -315,8 +347,8 @@ export default function App() {
       {screen.name === 'challenges' && (
         <Challenges
           completed={completed}
-          onStart={index => setScreen({ name: 'challenge', index })}
-          onBack={() => setScreen({ name: 'menu' })}
+          onStart={index => nav.go({ name: 'challenge', index })}
+          onBack={() => nav.back({ name: 'menu' })}
         />
       )}
 
@@ -329,8 +361,8 @@ export default function App() {
           persist
           rated={screen.mode === 'ai'}
           onExit={leaveGame}
-          onLearn={() => setScreen({ name: 'learn', back: screen })}
-          onSettings={() => setScreen({ name: 'settings', back: screen })}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}
           onStatsChange={refreshStats}
         />
@@ -345,12 +377,14 @@ export default function App() {
           goal={t(challengeGoalKey(screen.index))}
           title={t('challenges.item', { n: screen.index + 1 })}
           oppName={t('a11y.opponent')}
-          onExit={() => setScreen({ name: 'challenges' })}
+          onExit={() => nav.back({ name: 'challenges' })}
+          // "Next" walks along the list, it does not go deeper into it, so one
+          // Back returns to the puzzles instead of replaying the solved ones.
           onNext={screen.index + 1 < CHALLENGES.length
-            ? () => setScreen({ name: 'challenge', index: screen.index + 1 })
+            ? () => nav.replace({ name: 'challenge', index: screen.index + 1 })
             : undefined}
-          onLearn={() => setScreen({ name: 'learn', back: screen })}
-          onSettings={() => setScreen({ name: 'settings', back: screen })}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}
         />
       )}
