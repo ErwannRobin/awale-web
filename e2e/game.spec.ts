@@ -203,62 +203,82 @@ test('the game still loads with the network offline', async ({ page, context }) 
 });
 
 // ---------------------------------------------------------------------------
-// Move preview. A player should be able to ask "where do these seeds land?"
+// Move preview. A player should be able to ask "where does my last seed land?"
 // before committing — by hovering with a mouse, or holding with a finger —
 // and the asking must never itself play the move.
 // ---------------------------------------------------------------------------
 
-/** A position where South's pit 6 sweeps four opponent pits for ten seeds. */
-async function seedCapturePosition(page: Page) {
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem('awale.savedgame.v1', JSON.stringify({
-        mode: 'local', level: 1,
-        pits: [0, 0, 0, 0, 0, 4, 1, 2, 2, 1, 1, 0],
-        scores: [20, 17], turn: 0, history: [], at: Date.now(),
-      }));
-    } catch { /* private mode */ }
-  });
-}
-
-test('hovering a pit previews where its seeds land', async ({ page }) => {
+test('hovering your own pit marks the hole its last seed lands in', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');
   await page.getByText('TWO PLAYERS').click();
   await page.waitForSelector('.pit-legal');
 
-  // The opening move sows four seeds into the four pits that follow.
+  // Four seeds from pit 1 land in the fourth pit along, and nowhere else is
+  // marked: the preview is the target hole, not the whole sowing.
   await page.locator('[data-pit="0"]').hover();
-  await expect(page.locator('.pit-preview-sow')).toHaveCount(4);
-  await expect(page.locator('.pit-gain')).toHaveText(['+1', '+1', '+1', '+1']);
-  await expect(page.locator('[data-pit="4"]')).toHaveClass(/pit-preview-last/);
-  // Ghost seeds show the arrivals in place, one per receiving pit.
-  await expect(page.locator('.seed-ghost')).toHaveCount(4);
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+  await expect(page.locator('[data-pit="4"]')).toHaveClass(/pit-target/);
+  // One ghost seed shows the arrival in place.
+  await expect(page.locator('.seed-ghost')).toHaveCount(1);
 
   // A preview is a peek, not a move: the board has not changed.
   await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /4 seeds/);
 
   // Moving off the board clears it.
   await page.mouse.move(2, 2);
-  await expect(page.locator('.pit-preview-sow')).toHaveCount(0);
+  await expect(page.locator('.pit-target')).toHaveCount(0);
 });
 
-test('the preview counts a capture into the store', async ({ page }) => {
+test('hovering an opponent pit marks where THEIR seeds would land', async ({ page }) => {
   await useInstantSpeed(page);
-  await seedCapturePosition(page);
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await page.waitForSelector('.pit-legal');
+
+  // Reading the opponent's threats is half the game, so their row answers the
+  // same question yours does. Four seeds from their third pit reach your first.
+  await page.locator('[data-pit="8"]').hover();
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-target/);
+
+  // Peeking at their row is all you may do with it: it is not yours to play.
+  await expect(page.locator('[data-pit="8"]')).toHaveAttribute('aria-disabled', 'true');
+  await page.locator('[data-pit="8"]').click({ force: true });
+  await page.waitForTimeout(300);
+  await expect(page.locator('[data-pit="8"]')).toHaveAttribute('aria-label', /4 seeds/);
+  await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /4 seeds/);
+
+  // And the tab order still stops only at the pits you can actually play.
+  const stops = await page.locator('.pit').evaluateAll(
+    els => els.filter(el => (el as HTMLElement).tabIndex >= 0).map(el => el.getAttribute('data-pit')),
+  );
+  expect(stops.sort()).toEqual(['0', '1', '2', '3', '4', '5']);
+});
+
+test('a big pit laps the board and lands past the hole it came from', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.addInitScript(() => {
+    try {
+      // Your sixth pit holds twelve seeds: eleven fill the rest of the ring,
+      // and the twelfth passes its own hole by to land one further on.
+      localStorage.setItem('awale.savedgame.v1', JSON.stringify({
+        mode: 'local', level: 1,
+        pits: [0, 0, 0, 0, 0, 12, 4, 4, 4, 4, 4, 4],
+        scores: [12, 0], turn: 0, history: [], at: Date.now(),
+      }));
+    } catch { /* private mode */ }
+  });
   await page.goto('/');
   await page.getByRole('button', { name: /CONTINUE/ }).click();
   await page.waitForSelector('.pit-legal');
 
   await page.locator('[data-pit="5"]').hover();
-  // Four opponent pits swept, and the ten seeds tallied on the near store.
-  await expect(page.locator('.pit-preview-capture')).toHaveCount(4);
-  await expect(page.locator('.store-near .store-gain')).toHaveText('+10');
-  // Still just a preview.
-  await expect(page.locator('.store-near .store-count')).toHaveText('20');
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+  await expect(page.locator('[data-pit="6"]')).toHaveClass(/pit-target/);
 });
 
-test('holding a pit previews it, and dragging moves the preview along', async ({ browser }) => {
+test('holding a pit marks its landing hole, and dragging moves the mark along', async ({ browser }) => {
   // A touch-capable context: the hold gesture only exists for touch and pen.
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
@@ -291,20 +311,25 @@ test('holding a pit previews it, and dragging moves the preview along', async ({
   // A brief touch is a tap, not a hold — nothing previewed yet. A one-shot
   // count, because a retrying assertion would simply wait for the hold.
   await page.waitForTimeout(100);
-  expect(await page.locator('.pit-preview-sow').count()).toBe(0);
+  expect(await page.locator('.pit-target').count()).toBe(0);
 
-  // Hold, and the preview opens on the pit under the finger.
+  // Hold, and the landing hole of the pit under the finger is marked.
   await page.waitForTimeout(400);
-  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-preview-source/);
+  await expect(page.locator('[data-pit="4"]')).toHaveClass(/pit-target/);
 
-  // Slide to another pit without lifting: the preview follows.
+  // Slide to another pit without lifting: the mark follows.
   await touch('touchMove', later);
-  await expect(page.locator('[data-pit="3"]')).toHaveClass(/pit-preview-source/);
-  await expect(page.locator('[data-pit="0"]')).not.toHaveClass(/pit-preview-source/);
+  await expect(page.locator('[data-pit="7"]')).toHaveClass(/pit-target/);
+  await expect(page.locator('.pit-target')).toHaveCount(1);
+
+  // Slide onto the opponent's row and it answers for them.
+  await touch('touchMove', await centre(8));
+  await expect(page.locator('[data-pit="0"]')).toHaveClass(/pit-target/);
+  await expect(page.locator('.pit-target')).toHaveCount(1);
 
   // Lifting ends the peek and plays nothing.
   await touch('touchEnd');
-  await expect(page.locator('.pit-preview-sow')).toHaveCount(0);
+  await expect(page.locator('.pit-target')).toHaveCount(0);
   await expect(page.locator('[data-pit="3"]')).toHaveAttribute('aria-label', /4 seeds/);
 
   // A quick tap still plays the move.

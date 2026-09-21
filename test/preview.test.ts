@@ -1,7 +1,7 @@
-// The move preview must promise exactly what the move delivers. Every case
-// here checks the preview against `applyMove` — the code that actually plays
-// the move — so the two can never drift apart.
-import { previewMove } from '../src/lib/preview.ts';
+// The landing pit the board points at must be the pit the move actually fills
+// last. Every case here checks `landingPit` against `applyMove` — the code
+// that really plays the move — so the two can never drift apart.
+import { landingPit } from '../src/lib/preview.ts';
 import { applyMove, legalMoves, type Seat } from '../src/lib/rules.ts';
 
 let pass = 0, fail = 0;
@@ -18,41 +18,15 @@ function eq(name: string, got: unknown, want: unknown) {
 const fresh = () => Array(12).fill(4) as number[];
 
 // ---- the basics ---------------------------------------------------------
-{
-  const p = previewMove(fresh(), 0);
-  eq('opening move · four seeds sown', p.gain.reduce((a, b) => a + b, 0), 4);
-  eq('opening move · pits 1-4 each gain one', p.gain.slice(0, 6), [0, 1, 1, 1, 1, 0]);
-  eq('opening move · source empties', p.after[0], 0);
-  eq('opening move · lands on pit 4', p.last, 4);
-  eq('opening move · captures nothing', p.captured, []);
-  eq('opening move · store gains nothing', p.capturedSeeds, 0);
-  eq('opening move · mover is south', p.mover, 0);
-}
+eq('opening move · four seeds land in pit 4', landingPit(fresh(), 0), 4);
+eq('a single seed lands next door', landingPit([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0), 1);
+eq('sowing wraps past the last pit', landingPit([0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0], 5), 8);
+// Eleven seeds fill the other eleven pits; the twelfth would be the pit itself,
+// which sowing skips, so a twelfth seed goes one further.
+eq('a lap skips the pit it came from', landingPit([12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0), 1);
+eq('an empty pit has no landing pit', landingPit(fresh().fill(0), 3), 3);
 
-// A pit holding more than 11 seeds laps the board and skips its own hole.
-{
-  const pits = [13, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1];
-  const p = previewMove(pits, 0);
-  eq('lap · source stays empty', p.after[0], 0);
-  eq('lap · source gains nothing', p.gain[0], 0);
-  eq('lap · two seeds in the first pit round', p.gain[1], 2);
-  eq('lap · thirteen seeds placed', p.gain.reduce((a, b) => a + b, 0), 13);
-}
-
-// A capture: the last seed makes an opponent pit hold three, sweeping back
-// through the pit before it, which holds two.
-{
-  const pits = [0, 0, 0, 0, 0, 2, 1, 2, 1, 0, 0, 0];
-  const p = previewMove(pits, 5);
-  eq('capture · sweeps both pits', p.captured.slice().sort(), [6, 7]);
-  eq('capture · store gains five', p.capturedSeeds, 5);
-  eq('capture · last seed lands in pit 7', p.last, 7);
-}
-
-// ---- preview agrees with the real move, everywhere ----------------------
-// Random positions, both seats, every legal move: the preview's post-sow
-// board minus its captures must be the board `applyMove` produces, and its
-// store tally must be the score `applyMove` awards.
+// ---- it agrees with the real move, everywhere ---------------------------
 {
   let seed = 12345;
   const rnd = (n: number) => {
@@ -71,41 +45,21 @@ const fresh = () => Array(12).fill(4) as number[];
     }
     const seat = rnd(2) as Seat;
     for (const move of legalMoves(pits, seat)) {
-      const p = previewMove(pits, move);
       const real = applyMove(pits, scores, move);
       checked++;
-
-      // Post-sow board, with the captured pits emptied.
-      const expected = [...p.after];
-      for (const c of p.captured) expected[c] = 0;
-
-      // `applyMove` folds the remaining seeds away when the move ends the
-      // game; only the still-running case has a board to compare.
-      const boardOk = real.end !== null
-        || JSON.stringify(expected) === JSON.stringify(real.pits);
-      const storeOk = p.capturedSeeds === real.scores[seat] - scores[seat];
-      const sowOk = JSON.stringify(p.captured.slice().sort())
-        === JSON.stringify(real.captured.slice().sort());
-      const lastOk = p.last === real.sowed[real.sowed.length - 1];
-
-      if (!boardOk || !storeOk || !sowOk || !lastOk) {
-        mismatches++;
-        if (mismatches === 1) {
-          console.error(`  first mismatch: pits=${JSON.stringify(pits)} move=${move}`);
-        }
-      }
+      if (landingPit(pits, move) !== real.sowed[real.sowed.length - 1]) mismatches++;
     }
   }
   ok('random positions were actually exercised', checked > 2000);
-  eq('preview matches the played move in every case', mismatches, 0);
+  eq('landing pit matches the played move in every case', mismatches, 0);
 }
 
-// ---- the preview never touches the position it is given ------------------
+// ---- it never touches the position it is given --------------------------
 {
   const pits = fresh();
   const copy = [...pits];
-  previewMove(pits, 3);
-  eq('previewMove is pure', pits, copy);
+  landingPit(pits, 3);
+  eq('landingPit is pure', pits, copy);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

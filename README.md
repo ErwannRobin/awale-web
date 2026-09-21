@@ -16,10 +16,12 @@ of the oware / mancala family.
   move always sits nearest the viewer.
 - **Continue** — an in-progress game survives a refresh, a closed tab, or a
   backgrounded app.
-- **Move preview** — hover a playable pit (mouse) or hold one (touch) and the
-  board shows where that move's seeds would land, what it would capture, and
-  how many seeds it would put in your store. Holding and sliding walks the
-  preview from pit to pit; lifting your finger plays nothing.
+- **Move preview** — hover a pit (mouse) or hold one (touch) and the board
+  marks the hole that move's last seed would land in. Just that hole: drawing
+  the whole sowing would make a glance into arithmetic. Both rows answer —
+  reading the opponent's threats is half of awalé — though their row is still
+  not yours to play. Holding and sliding walks the preview from pit to pit;
+  lifting your finger plays nothing.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
 - **Undo** (vs AI) — restores your previous position.
 - **Challenges** — 12 fixed puzzle positions, every one machine-verified as
@@ -80,7 +82,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/useGame.ts` | Game state machine + seed-by-seed animation |
 | `src/lib/layout.ts` | Pit arrangement + the counterclockwise invariant |
 | `src/lib/rules.ts` | One move start to finish — shared by the board and the server |
-| `src/lib/preview.ts` | What a move *would* do — the hover/hold preview |
+| `src/lib/preview.ts` | Where a move's last seed lands — the hover/hold preview |
 | `src/lib/useOrientation.ts` | The one browser-specific piece of the layout |
 | `src/lib/storage.ts` | Pluggable key/value persistence |
 | `src/lib/platform.ts` | Web or native shell — the question every seam asks |
