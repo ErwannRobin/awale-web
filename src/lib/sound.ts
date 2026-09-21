@@ -17,7 +17,7 @@
 //
 // PORTING NOTE: React Native has no Web Audio. Swap the `play*` exports for
 // expo-av / react-native-sound clips; nothing else calls into this file.
-import { getSettings } from './settings.ts';
+import { getSettings, subscribeSettings } from './settings.ts';
 
 type Ctx = AudioContext & { resume(): Promise<void> };
 
@@ -83,6 +83,10 @@ function audio(): Ctx | null {
 
 function enabled(): boolean {
   return getSettings().sound && !unavailable;
+}
+
+function musicEnabled(): boolean {
+  return getSettings().music && !unavailable;
 }
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -204,15 +208,19 @@ const PACK_DIR = 'sounds/v1/';
 // doesn't care which it was.
 const PACK_EXTS = ['wav', 'mp3'];
 
-type Kind = 'drop' | 'dropSeeds' | 'scoop' | 'tap';
+type Kind = 'drop' | 'dropSeeds' | 'dropMany' | 'scoop' | 'tap' | 'win' | 'lose';
 
 const PACK: Record<Kind, string[]> = {
   // Several takes each: one clip replayed twelve times in a row is exactly the
   // machine-gun effect the randomised synthesis was written to avoid.
   drop: ['drop-1', 'drop-2', 'drop-3', 'drop-4', 'drop-5', 'drop-6'],
   dropSeeds: ['drop-seeds-1', 'drop-seeds-2', 'drop-seeds-3', 'drop-seeds-4'],
+  // A single take: a pit this full is rare enough that repetition never shows.
+  dropMany: ['drop-many'],
   scoop: ['scoop-1', 'scoop-2'],
   tap: ['tap-1'],
+  win: ['victory-1'],
+  lose: ['lost-1'],
 };
 
 // CALIBRATION: the clip gains in the play* functions below are set against the
@@ -327,8 +335,10 @@ export function playSow(step = 0, seeds = 0): void {
   const level = 0.9 + Math.min(step, 8) * 0.012;
 
   // A pit that already holds seeds gets the duller take, damped further the
-  // fuller it is; a bare pit gets the bright one.
-  const kind: Kind = seeds >= 2 && have('dropSeeds') ? 'dropSeeds' : 'drop';
+  // fuller it is; a bare pit gets the bright one. Past 6 seeds the pit is
+  // properly crowded, so a distinct heavier clip takes over.
+  const kind: Kind = seeds > 6 && have('dropMany') ? 'dropMany'
+    : seeds >= 2 && have('dropSeeds') ? 'dropSeeds' : 'drop';
   const damp = seeds === 0 ? 0 : Math.max(2600, 12000 - seeds * 900);
   // Recorded clips have a much higher crest factor than the synthesised
   // drop — same peak, far less RMS energy — so they need MORE gain, not
@@ -383,13 +393,95 @@ export function playTap(): void {
 
 export function playWin(): void {
   if (!enabled()) return;
+  const ac = audio();
+  if (ac && playClip(ac, 'win', 0.8, rnd(0.97, 1.03))) return;
   [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.5, 0.15, 'sine', i * 0.11));
 }
 
 export function playLose(): void {
   if (!enabled()) return;
+  const ac = audio();
+  if (ac && playClip(ac, 'lose', 0.8, rnd(0.97, 1.03))) return;
   [392, 349.23, 293.66].forEach((f, i) => tone(f, 0.55, 0.14, 'sine', i * 0.14));
 }
+
+// ---------------------------------------------------------------------------
+// Ambiance music
+//
+// One looping djembe track under active play. Kept separate from the sample
+// pack above: it needs a persistent looping source and its own gain straight
+// to the destination — the `bus` limiter above is tuned for sharp one-shot
+// transients (seed drops) and would needlessly pump against a sustained loop.
+// ---------------------------------------------------------------------------
+
+const MUSIC_NAME = 'djembe-loop';
+const MUSIC_GAIN = 0.14;
+
+let musicBuffer: AudioBuffer | null = null;
+let musicLoading = false;
+let musicWanted = false;
+let musicSrc: AudioBufferSourceNode | null = null;
+let musicGainNode: GainNode | null = null;
+
+function startMusicNow(ac: Ctx): void {
+  if (!musicBuffer || musicSrc) return;
+  const src = ac.createBufferSource();
+  src.buffer = musicBuffer;
+  src.loop = true;
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(MUSIC_GAIN, ac.currentTime);
+  src.connect(gain).connect(ac.destination);
+  src.start();
+  musicSrc = src;
+  musicGainNode = gain;
+}
+
+function loadMusic(ac: Ctx): void {
+  if (musicBuffer || musicLoading) return;
+  musicLoading = true;
+  const base = (import.meta.env?.BASE_URL ?? '/') + PACK_DIR;
+  fetchClip(base, MUSIC_NAME)
+    .then(buf => ac.decodeAudioData(buf))
+    .then(decoded => {
+      musicBuffer = decoded;
+      if (musicWanted) startMusicNow(ac);
+    })
+    .catch(() => {});
+}
+
+/**
+ * Start the ambiance loop. Safe to call repeatedly — a no-op once playing —
+ * and safe before the track has finished loading, which starts it once it
+ * has. No fallback: silence, not synthesis, if the clip is missing.
+ */
+export function playMusic(): void {
+  musicWanted = true;
+  if (!musicEnabled()) return;
+  const ac = audio();
+  if (!ac) return;
+  if (musicBuffer) startMusicNow(ac);
+  else loadMusic(ac);
+}
+
+/** Stop the ambiance loop, e.g. on leaving the board. */
+export function stopMusic(): void {
+  musicWanted = false;
+  if (musicSrc) {
+    try { musicSrc.stop(); } catch { /* already stopped */ }
+    musicSrc.disconnect();
+    musicSrc = null;
+  }
+  if (musicGainNode) { musicGainNode.disconnect(); musicGainNode = null; }
+}
+
+// Music gets toggled mid-game from the Settings screen — the one-shot effects
+// above just recheck `enabled()` on their next call, but a running loop needs
+// to be told to stop (and restarted if the player turns it back on while
+// still on the board).
+subscribeSettings(s => {
+  if (!s.music) stopMusic();
+  else if (musicWanted) playMusic();
+});
 
 /**
  * Call from a user gesture (a button press) so the audio context is unlocked

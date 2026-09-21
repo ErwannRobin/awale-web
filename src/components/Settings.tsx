@@ -165,6 +165,14 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
               hapticTap();
             }} />
           </Row>
+          <Row label={t('settings.music')} help={t('settings.musicHelp')}>
+            <Toggle on={s.music} label={t('settings.music')} onChange={v => {
+              updateSettings({ music: v });
+              if (v) primeAudio();
+              playTap();
+              hapticTap();
+            }} />
+          </Row>
           <Row label={t('settings.haptics')} help={t('settings.hapticsHelp')}>
             <Toggle on={s.haptics} label={t('settings.haptics')} onChange={v => {
               updateSettings({ haptics: v });

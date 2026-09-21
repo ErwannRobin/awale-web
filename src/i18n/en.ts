@@ -170,6 +170,8 @@ export const en = {
   'settings.sectionData': 'Your data',
   'settings.sound': 'Sound effects',
   'settings.soundHelp': 'Seed drops, captures and the end-of-game chime.',
+  'settings.music': 'Ambiance music',
+  'settings.musicHelp': 'A background djembe loop while a game is on.',
   'settings.haptics': 'Vibration',
   'settings.hapticsHelp': 'Not supported by every device or browser.',
   'settings.speed': 'Animation speed',

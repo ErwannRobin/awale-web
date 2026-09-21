@@ -15,9 +15,9 @@ const CACHE = 'awale-v1';
 // clip (sound.ts tries .wav then .mp3), and whichever one doesn't exist is a
 // missing entry, tolerated the same as a build shipped with no pack at all.
 const SOUND_NAMES = [
-  'drop-1', 'drop-2', 'drop-3', 'drop-4', 'drop-5', 'drop-6',
+  'drop-1', 'drop-2', 'drop-3', 'drop-4', 'drop-5', 'drop-6', 'drop-many',
   'drop-seeds-1', 'drop-seeds-2', 'drop-seeds-3', 'drop-seeds-4',
-  'scoop-1', 'scoop-2', 'tap-1',
+  'scoop-1', 'scoop-2', 'tap-1', 'victory-1', 'lost-1', 'djembe-loop',
 ];
 const SOUNDS = SOUND_NAMES.flatMap(name => [`/sounds/v1/${name}.wav`, `/sounds/v1/${name}.mp3`]);
 
