@@ -7,7 +7,22 @@
 // Navigations fall back to the cached shell so a cold offline start works.
 
 const CACHE = 'awale-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
+
+// The seed sample pack. Precached so a cold offline start still has sound, and
+// versioned in its path because these names are fixed: a new pack is v2, never
+// new bytes at an old URL. Keep in step with PACK_DIR in src/lib/sound.ts.
+// Missing entries are tolerated (`allSettled` below), so a build with no pack
+// installs exactly as before.
+const SOUNDS = [
+  'drop-1', 'drop-2', 'drop-3', 'drop-4', 'drop-5', 'drop-6',
+  'drop-seeds-1', 'drop-seeds-2', 'drop-seeds-3', 'drop-seeds-4',
+  'scoop-1', 'scoop-2', 'tap-1',
+].map(name => `/sounds/v1/${name}.wav`);
+
+const SHELL = [
+  '/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png',
+  ...SOUNDS,
+];
 
 self.addEventListener('install', event => {
   event.waitUntil(

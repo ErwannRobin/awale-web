@@ -21,7 +21,8 @@
     "test:selfplay": "node --experimental-strip-types --no-warnings test/selfplay.test.ts",
     "test:e2e": "playwright test",
     "dev:server": "node --experimental-strip-types --no-warnings server/dev-server.ts",
-    "verify:challenges": "node --experimental-strip-types --no-warnings scripts/verify-challenges.ts"
+    "verify:challenges": "node --experimental-strip-types --no-warnings scripts/verify-challenges.ts",
+    "sounds:generate": "node --experimental-strip-types --no-warnings scripts/gen-sounds.ts"
   },
   "dependencies": {
     "@capacitor-community/in-app-review": "^8.0.0",

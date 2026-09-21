@@ -67,6 +67,8 @@ npm test                   # engine, layout, AI, state, online and self-play sui
 npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
                            # dev match server, and plays a game in two browsers)
 npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
+
+ELEVENLABS_API_KEY=... npm run sounds:generate   # regenerate the seed sample pack
 ```
 
 CI runs all of these on every push (`.github/workflows/ci.yml`).
@@ -102,7 +104,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/stats.ts` | Elo rating, streaks, per-level tallies, ranks |
 | `src/lib/profile.ts` | Display name and avatar |
 | `src/lib/saveGame.ts` | The resumable in-progress game |
-| `src/lib/sound.ts` | Web Audio effects — synthesised, no asset files |
+| `src/lib/sound.ts` | Web Audio effects — recorded seed samples, synthesised fallback |
 | `src/lib/haptics.ts` | Vibration feedback |
 | `src/lib/challenges.ts` | Challenge data + goal-text keys |
 | `src/i18n/` | English and French tables, typed so a gap is a build error |
@@ -110,6 +112,8 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/components/` | Every screen |
 | `server/` | The Cloudflare Worker — see [`server/README.md`](server/README.md) |
 | `scripts/verify-challenges.ts` | Proves each puzzle conserves seeds and is winnable |
+| `scripts/gen-sounds.ts` | Generates the seed sample pack (ElevenLabs) |
+| `public/sounds/v1/` | The sample pack itself — versioned, see below |
 
 The engine and AI are a faithful port of a long-standing C implementation; their
 rules (including historical quirks) are intentionally preserved verbatim. The
@@ -126,6 +130,38 @@ asserted by `test/layout.test.ts` — for both viewpoints and both orientations.
 A layout that rotates the board *and mirrors it* silently reverses the sowing
 direction; that bug shipped once. Never set `flex-direction` on `.board`,
 `.pit-grid` or `.pit-row` from CSS — `Board.tsx` sets it from the layout module.
+
+### Sound
+
+Two layers, in `src/lib/sound.ts`:
+
+1. **A recorded sample pack** in `public/sounds/v1/` — six single-seed drops,
+   four drops onto seeds already in the pit, two capture scoops, one tap. Which
+   clip plays depends on how full the destination pit is, and each is given a
+   small random gain and playback-rate shift so no two drops are identical.
+2. **Synthesis**, used whenever a clip is not available: before the pack has
+   finished decoding, in a build shipped without one, or for a clip that failed
+   to load. A drop is modelled as a shell click, a wood contact and two damped
+   modes of the pit body, all randomised.
+
+Everything runs through one bus — gain, compressor, soft limiter — which is
+what lets the levels be loud without clipping when sounds overlap.
+
+To regenerate the pack you need an [ElevenLabs](https://elevenlabs.io) key:
+
+```bash
+ELEVENLABS_API_KEY=... npm run sounds:generate            # all clips
+ELEVENLABS_API_KEY=... npm run sounds:generate -- scoop-1 # just one
+```
+
+The prompts, durations and normalisation live in `scripts/gen-sounds.ts`, so a
+pack is reproducible rather than a pile of files nobody can regenerate. Check
+the licence terms of your ElevenLabs plan before shipping generated audio.
+
+**A new pack is a new version.** The clip names are fixed and the service worker
+caches by URL, so replacing the bytes at `/sounds/v1/drop-1.wav` would serve
+stale audio to anyone who already has it. Add `v2` instead, and update
+`PACK_DIR` in `sound.ts` and `SOUNDS` in `public/sw.js` together.
 
 ## Online play
 
