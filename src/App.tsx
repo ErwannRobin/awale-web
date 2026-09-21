@@ -278,7 +278,6 @@ export default function App() {
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
           account={account}
-          onSignIn={() => nav.go({ name: 'signIn', back: { name: 'online' } })}
           onSignOut={() => {
             clearSession();
             setAccount(null);
