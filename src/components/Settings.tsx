@@ -212,6 +212,9 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
           <Row label={t('settings.counts')} help={t('settings.countsHelp')}>
             <Toggle on={s.showCounts} label={t('settings.counts')} onChange={v => set('showCounts', v)} />
           </Row>
+          <Row label={t('settings.tips')} help={t('settings.tipsHelp')}>
+            <Toggle on={s.showTips} label={t('settings.tips')} onChange={v => set('showTips', v)} />
+          </Row>
           <Row label={t('settings.leftHanded')} help={t('settings.leftHandedHelp')}>
             <Toggle on={s.leftHanded} label={t('settings.leftHanded')} onChange={v => set('leftHanded', v)} />
           </Row>

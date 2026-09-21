@@ -5,7 +5,7 @@ import { AIClient } from '../lib/aiClient.ts';
 import type { GameState } from '../lib/useGame.ts';
 import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
-import { getSettings, SPEED_FACTOR } from '../lib/settings.ts';
+import { SPEED_FACTOR } from '../lib/settings.ts';
 import { useOrientation } from '../lib/useOrientation.ts';
 import { playSow, playCapture, playTap } from '../lib/sound.ts';
 import { hapticCapture, hapticTap } from '../lib/haptics.ts';
@@ -13,6 +13,12 @@ import { hapticCapture, hapticTap } from '../lib/haptics.ts';
 const SOW_MS = 220;
 const CAP_MS = 260;
 const DEMO_DELAY = 1000;
+
+// The tutorial always sows at the slow tempo, whatever the player's animation
+// speed setting says. A demo is there to be FOLLOWED seed by seed — at `fast`
+// it is a blur, and at `instant` the seeds simply teleport and the lesson is
+// lost. The setting still rules every other board in the app.
+const TUTORIAL_FACTOR = SPEED_FACTOR.slow;
 
 // The game the closing call-to-action starts: the gentlest opponent, because
 // the player has just met the rules for the first time.
@@ -113,8 +119,8 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
   const at = (ms: number, fn: () => void) => { timers.current.push(setTimeout(fn, ms)); };
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
 
-  // Shared seed-by-seed animation (mirrors the main game, including the
-  // animation-speed setting).
+  // Seed-by-seed sowing, the same shape as the main board's — at the tutorial's
+  // own fixed tempo rather than the player's speed setting.
   const animate = useCallback((pit: number, onDone?: (running: boolean) => void) => {
     const mover = owner(pit);
     const pre = [...pitsRef.current];
@@ -124,9 +130,8 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     const sown = [...pre]; sown[pit] = 0; for (const i of res.sowed) sown[i]++;
     pitsRef.current = work; scoresRef.current = sc;
 
-    const factor = SPEED_FACTOR[getSettings().speed];
-    const sowMs = SOW_MS * factor;
-    const capMs = CAP_MS * factor;
+    const sowMs = SOW_MS * TUTORIAL_FACTOR;
+    const capMs = CAP_MS * TUTORIAL_FACTOR;
 
     setAwaiting('busy');
     setActivePit(pit); setCapturing([]);
@@ -135,7 +140,7 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     res.sowed.forEach((idx, k) => at(sowMs * (k + 1), () => {
       const before = disp[idx];   // how full the pit was before this seed landed
       disp[idx]++; setActivePit(idx); setPits([...disp]);
-      if (factor > 0) playSow(k, before);
+      playSow(k, before);
     }));
     const afterSow = sowMs * (res.sowed.length + 1);
     res.captured.forEach((cap, k) => at(afterSow + capMs * k, () => {
@@ -148,7 +153,7 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
       hapticCapture();
     });
 
-    const end = afterSow + capMs * res.captured.length + 240 * factor;
+    const end = afterSow + capMs * res.captured.length + 240 * TUTORIAL_FACTOR;
     at(end, () => {
       setActivePit(null); setCapturing([]);
       setPits([...pitsRef.current]); setScores([...scoresRef.current]);

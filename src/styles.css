@@ -21,7 +21,6 @@
   --panel-line: rgba(212, 168, 69, 0.28);
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
 
-  --page-bg: #130a05;
   --table-1: #6b4024;   /* table gradient, lightest → darkest */
   --table-2: #472711;
   --table-3: #2a160a;
@@ -89,7 +88,6 @@
   --panel-line: rgba(201, 176, 114, 0.24);
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.7);
 
-  --page-bg: #080a0f;
   --table-1: #26303f;
   --table-2: #182029;
   --table-3: #0e1319;
@@ -137,7 +135,6 @@
   --panel-line: rgba(169, 119, 42, 0.32);
   --shadow: 0 16px 36px rgba(90, 66, 30, 0.28);
 
-  --page-bg: #f3e7cf;
   --table-1: #f0e0c2;
   --table-2: #e3cda6;
   --table-3: #d3b784;
@@ -179,7 +176,11 @@ body {
   color: var(--ivory);
   font-family: 'Iowan Old Style', 'Palatino Linotype', 'Georgia', serif;
   -webkit-font-smoothing: antialiased;
-  background: var(--page-bg);
+  /* The far end of the table gradient, so the canvas — everything the fixed
+     table layers below cannot reach: the rubber-band strip, the sliver a
+     mobile toolbar uncovers as it retracts — is the same wood, not a
+     different colour showing through. */
+  background: var(--table-4);
   overflow-x: hidden;
   /* App-shell behaviour: no rubber-band scroll past the edges, no grey flash
      on tap, no accidental text selection or double-tap zoom when dragging
@@ -199,6 +200,7 @@ button { font-family: inherit; touch-action: manipulation; }
 /* ---- ambient table background --------------------------------------- */
 .app {
   min-height: 100%;
+  min-height: 100dvh;
   position: relative;
   isolation: isolate;
 }
@@ -217,6 +219,11 @@ button { font-family: inherit; touch-action: manipulation; }
   content: '';
   position: fixed;
   inset: 0;
+  /* The largest the viewport ever gets. `inset: 0` alone tracks the SMALL
+     viewport on mobile, so the strip a retracting toolbar uncovers would fall
+     outside the table; `lvh` covers it, and over-constrained geometry means
+     `bottom` is simply ignored where the unit is supported. */
+  height: 100lvh;
   z-index: -3;
   background:
     var(--wood-grain)
@@ -248,6 +255,7 @@ button { font-family: inherit; touch-action: manipulation; }
   content: '';
   position: fixed;
   inset: 0;
+  height: 100lvh;   /* see ::before — full height on a mobile toolbar too */
   z-index: -2;
   pointer-events: none;
   background:
@@ -468,7 +476,11 @@ a.pill { text-decoration: none; color: inherit; }
 .pcard-score { font-size: clamp(1.6rem, 5vw, 2.3rem); font-weight: 800; color: var(--gold-soft); min-width: 1.4em; text-align: center; }
 .live-dot { width: 9px; height: 9px; border-radius: 50%; background: #6ad06a; box-shadow: 0 0 8px #6ad06a; }
 
-.turn-center { text-align: center; min-width: 150px; }
+/* The status block keeps a constant height whatever it says: the pill has a
+   reserved slot, and the helper line under it is a ghost stack (see
+   .turn-line-stack). Nothing the board sits under may resize mid-game. */
+.turn-center { text-align: center; min-width: 150px; max-width: 360px; margin: 0 auto; }
+.turn-pill-slot { display: flex; align-items: center; justify-content: center; min-height: 44px; }
 .turn-pill {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 9px 20px; border-radius: 999px;
@@ -480,7 +492,15 @@ a.pill { text-decoration: none; color: inherit; }
 .turn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
 .turn-pill-think .turn-dot { animation: pulse-dot 0.9s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
-.turn-line { margin-top: 7px; color: var(--ivory-72); font-size: 0.86rem; }
+.turn-line-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; }
+/* Every line the status can ever show, stacked in ONE grid cell with all but
+   the live one hidden. The cell is as tall as the longest line from the first
+   paint, so no phrasing — and no wrap onto a second line — moves the board. */
+.turn-line-stack { display: grid; min-width: 0; flex: 0 1 auto; }
+.turn-line-stack > .turn-line { grid-area: 1 / 1; }
+.turn-line { color: var(--ivory-72); font-size: 0.86rem; }
+.turn-line-ghost { visibility: hidden; pointer-events: none; }
+.turn-close-spacer { width: 32px; flex: none; }
 
 /* =====================================================================
    BOARD
@@ -635,8 +655,24 @@ a.pill { text-decoration: none; color: inherit; }
   border-radius: 50%; display: grid; place-items: center;
   border: 1px solid var(--panel-line); color: var(--gold);
 }
+/* Same ghost stack as the status line, so the rotating tips never resize the
+   card and never shift the board above it. */
+.tip-stack { display: grid; flex: 1 1 auto; min-width: 0; align-items: center; }
+.tip-stack > .tip-body { grid-area: 1 / 1; }
+.tip-body-ghost { visibility: hidden; pointer-events: none; }
 .tip-text { font-size: 0.9rem; color: var(--ivory-80); line-height: 1.35; }
-.tip-more { background: none; border: none; color: var(--gold); cursor: pointer; font-family: inherit; padding: 4px 0 0; font-size: 0.85rem; }
+.tip-more { display: block; background: none; border: none; color: var(--gold); cursor: pointer; font-family: inherit; padding: 4px 0 0; font-size: 0.85rem; text-align: left; }
+
+/* The × that switches BOTH coaching texts off. Quiet until you look for it. */
+.tip-close {
+  flex: none; width: 32px; height: 32px; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid transparent; background: none;
+  color: var(--ivory-60); font-family: inherit; font-size: 1.1rem; line-height: 1;
+  cursor: pointer; transition: color 0.2s, border-color 0.2s;
+}
+.tip-close:hover { color: var(--gold); border-color: var(--panel-line); }
+.tip-close:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .game-controls { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 .ctrl {
@@ -810,7 +846,7 @@ a.pill { text-decoration: none; color: inherit; }
   .pcard-score, .pcard-opp .pcard-score { order: 1; }
   .pcard-name { font-size: 0.78rem; gap: 5px; max-width: 100%; }
   .pcard-score { font-size: clamp(1.3rem, 6vw, 1.8rem); }
-  .turn-center { min-width: 0; }
+  .turn-center { min-width: 0; max-width: 100%; }
 
   .pit { --size: clamp(42px, 13vw, 70px); }
   .board {

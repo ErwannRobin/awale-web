@@ -6,6 +6,8 @@ import type { StringKey } from '../i18n/index.ts';
 import { loadStats, saveStats, applyResult, type Outcome } from '../lib/stats.ts';
 import type { SavedGame } from '../lib/saveGame.ts';
 import { playTap, playMusic, stopMusic } from '../lib/sound.ts';
+import { useSettings } from '../lib/useSettings.ts';
+import { updateSettings } from '../lib/settings.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
 import { maybeRequestReview } from '../lib/review.ts';
@@ -67,6 +69,7 @@ export default function Game({
 }: Props) {
   const t = useT();
   const isOnline = mode === 'online';
+  const showTips = useSettings().showTips;
   const [tip, setTip] = useState(0);
   const youAvatar = useMemo(() => loadProfile().avatar, []);
   // An online game arrives with a `setup` too — the seat and the opening
@@ -198,6 +201,26 @@ export default function Game({
     return { pill: t('game.yourTurn'), line: t(selectPit) };
   }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, selectPit, t]);
 
+  // Every helper line this game can ever put under the pill, rendered as
+  // invisible ghosts behind the live one. The slot is therefore as tall as its
+  // longest line from the first paint, so a longer line — or a line that wraps
+  // where the previous one did not — never nudges the board down the screen.
+  const statusLines = useMemo(() => {
+    const all = [t(selectPit), t('game.seedsMoving')];
+    if (isOnline) all.push(t('online.sendingSub'), t('game.waiting'));
+    else if (mode === 'ai') all.push(t('game.choosing', { name: oppName }), t('game.waiting'));
+    return [...new Set(all)];
+  }, [t, selectPit, isOnline, mode, oppName]);
+
+  // One × switches off both coaching texts at once — the line under the pill
+  // and the tip card below the board. Settings puts them back; the toast says
+  // so, because a control that only ever hides is a trap.
+  const hideTips = () => {
+    playTap(); hapticTap();
+    updateSettings({ showTips: false });
+    onToast(t('game.tipsHidden'));
+  };
+
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
@@ -283,13 +306,27 @@ export default function Game({
           screen and flank it on a phone, where vertical space is scarce. */}
       <div className="play-area">
         <div className="turn-center">
-          {status && (
-            <>
+          {/* Reserved whether or not there is a pill: the board stays put when
+              the game ends and the status disappears. */}
+          <div className="turn-pill-slot">
+            {status && (
               <div className={`turn-pill ${state.phase === 'thinking' ? 'turn-pill-think' : ''}`}>
                 <span className="turn-dot" aria-hidden />{status.pill}
               </div>
-              <div className="turn-line">{status.line}</div>
-            </>
+            )}
+          </div>
+          {showTips && (
+            <div className="turn-line-row">
+              {/* Balances the × so the line stays centred under the pill. */}
+              <span className="turn-close-spacer" aria-hidden />
+              <div className="turn-line-stack">
+                <div className="turn-line">{status?.line ?? ''}</div>
+                {statusLines.map(line => (
+                  <div key={line} className="turn-line turn-line-ghost" aria-hidden="true">{line}</div>
+                ))}
+              </div>
+              <button className="tip-close" onClick={hideTips} aria-label={t('game.hideTips')}>×</button>
+            </div>
           )}
         </div>
         <PlayerCard
@@ -314,15 +351,26 @@ export default function Game({
               <div className="tip-text">{goal}</div>
             </div>
           </div>
-        ) : (
+        ) : showTips ? (
           <div className="tip-card">
             <span className="tip-orn" aria-hidden>✧</span>
-            <div>
-              <div className="tip-text">{t(TIP_KEYS[tip])}</div>
-              <button className="tip-more" onClick={onLearn}>{t('game.learnMore')}</button>
+            {/* Same ghost stack as the status line: the card is as tall as the
+                longest tip from the start, so the rotation never resizes it. */}
+            <div className="tip-stack">
+              <div className="tip-body">
+                <div className="tip-text">{t(TIP_KEYS[tip])}</div>
+                <button className="tip-more" onClick={onLearn}>{t('game.learnMore')}</button>
+              </div>
+              {TIP_KEYS.map(k => (
+                <div key={k} className="tip-body tip-body-ghost" aria-hidden="true">
+                  <div className="tip-text">{t(k)}</div>
+                  <span className="tip-more">{t('game.learnMore')}</span>
+                </div>
+              ))}
             </div>
+            <button className="tip-close" onClick={hideTips} aria-label={t('game.hideTips')}>×</button>
           </div>
-        )}
+        ) : null}
         <div className="game-controls">
           {isOnline ? (
             // No restart, no hint, no undo: none of the three mean anything

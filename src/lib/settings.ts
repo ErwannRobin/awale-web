@@ -21,6 +21,12 @@ export interface Settings {
   /** Puts your own store under your thumb; it never mirrors the pit ring. */
   leftHanded: boolean;
   showCounts: boolean;
+  /**
+   * The coaching text: the helper line under the turn pill and the tip card
+   * below the board. A player who knows the game can switch both off with the
+   * × on either of them, and bring them back from Settings.
+   */
+  showTips: boolean;
   language: Language;
   /**
    * Local "come back and play" reminders. Native shell only, and off until the
@@ -58,6 +64,7 @@ export function defaultSettings(): Settings {
     theme: 'wood',
     leftHanded: false,
     showCounts: true,
+    showTips: true,
     language: detectLanguage(),
     reminders: false,
   };
@@ -81,6 +88,7 @@ function coerce(raw: unknown): Settings {
     theme: THEMES.includes(o.theme as ThemeName) ? (o.theme as ThemeName) : d.theme,
     leftHanded: bool(o.leftHanded, d.leftHanded),
     showCounts: bool(o.showCounts, d.showCounts),
+    showTips: bool(o.showTips, d.showTips),
     language: o.language === 'fr' || o.language === 'en' ? o.language : d.language,
     reminders: bool(o.reminders, d.reminders),
   };
