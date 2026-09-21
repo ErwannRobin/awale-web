@@ -436,7 +436,14 @@ export function useGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => () => { clearTimers(); clientRef.current?.dispose(); }, []);
+  useEffect(() => () => {
+    clearTimers();
+    clientRef.current?.dispose();
+    // StrictMode dev double-invoke: without this, the next mount's client()
+    // reuses this disposed (terminated-worker) instance and every bestMove()
+    // call hangs forever.
+    clientRef.current = null;
+  }, []);
 
   const state: GameState = {
     pits, scores, turn, phase, winner, legal,
