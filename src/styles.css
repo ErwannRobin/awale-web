@@ -765,10 +765,28 @@ a.pill { text-decoration: none; color: inherit; }
   border: 1px solid var(--gold);
   box-shadow: 0 0 24px rgba(212,168,69,0.14);
 }
+.tut-card-tappable { cursor: pointer; }
+.tut-card-tappable:hover { border-color: var(--ivory); }
+.tut-card-tappable:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* Every possible card line is rendered into the SAME grid cell, with all but
+   the current one hidden. The cell is therefore as tall as the longest line
+   from the first paint, so moving between steps never resizes the card and
+   never shifts the board underneath it. */
+.tut-text-stack { display: grid; flex: 1 1 auto; min-width: 0; align-items: center; }
+.tut-text-stack > .tut-text { grid-area: 1 / 1; }
 .tut-text { font-size: 1.02rem; line-height: 1.4; color: var(--ivory); }
+.tut-text-ghost { visibility: hidden; pointer-events: none; }
+
 .tut-footer { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 16px; }
-.tut-hint { color: var(--gold-soft); font-size: 0.92rem; letter-spacing: 0.02em; }
+/* Reserved whether or not there is a hint, so it cannot push the board. */
+.tut-hint { color: var(--gold-soft); font-size: 0.92rem; letter-spacing: 0.02em; min-height: 1.3em; }
+/* Likewise the primary slot: NEXT is absent while a demo plays. */
+.tut-primary { min-height: 62px; align-items: center; }
 .tut-next { min-width: 200px; justify-content: center; }
+.tut-nav { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.tut-nav .ctrl { padding: 9px 16px; font-size: 0.88rem; }
+.tut-nav .ctrl:disabled { opacity: 0.4; cursor: default; }
 .tutorial .board-wrap { margin-top: 6px; }
 
 /* =====================================================================
@@ -810,6 +828,17 @@ a.pill { text-decoration: none; color: inherit; }
   }
   .store { width: auto; height: clamp(46px, 12vw, 70px); flex-direction: row; padding: 0 12px; }
   .store-hollow { inset: 8px; }
+
+  /* The tutorial carries one control row more than the game screen, and a
+     card sized for its longest line. Tighten both so the whole step — card,
+     board, and the back / replay row — still fits one phone screen. */
+  .tutorial .tut-card { margin: 10px auto 4px; padding: 12px 14px; gap: 10px; }
+  .tutorial .tip-orn { width: 34px; height: 34px; }
+  .tutorial .tut-text { font-size: 0.95rem; }
+  .tutorial .tut-footer { gap: 8px; margin-top: 10px; }
+  .tutorial .tut-hint { font-size: 0.85rem; }
+  .tutorial .tut-primary { min-height: 56px; }
+  .tutorial .tut-nav .ctrl { padding: 8px 12px; font-size: 0.82rem; }
 }
 
 @media (max-width: 380px) {

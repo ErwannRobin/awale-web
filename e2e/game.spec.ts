@@ -142,15 +142,16 @@ test('challenges unlock in order', async ({ page }) => {
   await expect(items.nth(1)).toBeDisabled();
 });
 
-test('the tutorial runs from start to finish', async ({ page }) => {
-  await useInstantSpeed(page);
-  await page.goto('/');
-  await page.getByText('LEARN').click();
-
-  await expect(page.locator('.tut-card')).toBeVisible();
+/**
+ * Walks the tutorial forward until the last step's play call-to-action shows.
+ * `onStep` runs once per pass, before anything is clicked.
+ */
+async function runTutorialToEnd(page: Page, onStep?: () => Promise<void>) {
+  const play = page.getByRole('button', { name: /PLAY A GAME/ });
   for (let i = 0; i < 90; i++) {
-    if (await page.locator('.menu-hero').isVisible()) break;
-    const next = page.getByRole('button', { name: /^(NEXT|FINISH)$/ });
+    await onStep?.();
+    if (await play.isVisible()) return true;
+    const next = page.getByRole('button', { name: /^NEXT$/ });
     if (await next.isVisible()) { await next.click(); await page.waitForTimeout(80); continue; }
     const pits = playablePits(page);
     // Last pit = closest to the opponent's row, so the free-play step's
@@ -158,7 +159,109 @@ test('the tutorial runs from start to finish', async ({ page }) => {
     if (await pits.count() > 0) { await pits.last().click(); await page.waitForTimeout(80); continue; }
     await page.waitForTimeout(120);
   }
-  await expect(page.locator('.menu-hero')).toBeVisible();
+  return play.isVisible();
+}
+
+test('the tutorial runs from start to finish into an easy game', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  await expect(page.locator('.tut-card')).toBeVisible();
+  expect(await runTutorialToEnd(page)).toBe(true);
+
+  // The closing call to action drops straight into a game against Novice.
+  await page.getByRole('button', { name: /PLAY A GAME/ }).click();
+  await expect(page.locator('.tut-card')).toHaveCount(0);
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.getByText('Novice').first()).toBeVisible();
+});
+
+test('the tutorial offers the challenges as a secondary exit', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+  expect(await runTutorialToEnd(page)).toBe(true);
+
+  await page.getByRole('button', { name: /Go to Challenges/ }).click();
+  await expect(page.locator('.challenge-item').first()).toBeVisible();
+});
+
+test('the tutorial card advances on a tap and the step can be replayed', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  const progress = page.locator('.tut-progress');
+  const replay = page.getByRole('button', { name: /Replay step/ });
+  await expect(progress).toHaveText('1 / 13');
+  // Nothing has moved yet, so there is nothing to replay.
+  await expect(replay).toHaveCount(0);
+
+  // The card itself is the primary way forward.
+  await page.locator('.tut-card').click();
+  await expect(progress).toHaveText('2 / 13');
+  await page.locator('.tut-card').click();
+  await expect(progress).toHaveText('3 / 13');   // the demo sow
+  await expect(replay).toBeVisible();
+
+  await page.getByRole('button', { name: /^NEXT$/ }).click();
+  await expect(progress).toHaveText('4 / 13');
+
+  // Back returns to the previous step; replay stays on the current one.
+  await page.locator('.tut-nav .ctrl').first().click();
+  await expect(progress).toHaveText('3 / 13');
+  await replay.click();
+  await expect(progress).toHaveText('3 / 13');
+});
+
+test('the tutorial names the side of the board this screen shows', async ({ page }, testInfo) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  await page.locator('.tut-card').click();
+  await expect(page.locator('.tut-progress')).toHaveText('2 / 13');
+  // The board stands on end below PORTRAIT_MAX_WIDTH, where the learner's six
+  // pits are a column on the left rather than the bottom row.
+  await expect(page.locator('.tut-card .tut-text').first())
+    .toHaveText(testInfo.project.name === 'phone' ? /left column/ : /bottom row/);
+});
+
+test('the tutorial leaves the learner\'s own move on the board', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  const progress = page.locator('.tut-progress');
+  await page.locator('.tut-card').click();          // 1 -> 2
+  await page.locator('.tut-card').click();          // 2 -> 3 (the demo sow)
+  await page.getByRole('button', { name: /^NEXT$/ }).click();   // 3 -> 4
+  await expect(progress).toHaveText('4 / 13');
+
+  const emptyPits = page.locator('.pit-count', { hasText: /^0$/ });
+  await expect(emptyPits).toHaveCount(1);           // the pit the demo emptied
+
+  await playablePits(page).last().click();
+  await expect(progress).toHaveText('5 / 13');
+
+  // The explanation step must not re-seed a staged position over the move the
+  // learner just made: their emptied pit is still empty.
+  await expect(emptyPits).toHaveCount(2);
+});
+
+test('the tutorial card keeps one height across every step', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('LEARN').click();
+
+  // A card that grows with its text would shove the board down the screen.
+  const card = page.locator('.tut-card');
+  const heights = new Set<number>();
+  await runTutorialToEnd(page, async () => {
+    heights.add(Math.round((await card.boundingBox())!.height));
+  });
+  expect([...heights]).toHaveLength(1);
 });
 
 test('the board is playable with a keyboard alone', async ({ page }) => {
