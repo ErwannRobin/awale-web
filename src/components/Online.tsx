@@ -12,7 +12,6 @@ interface Props {
   onToast: (msg: string) => void;
   /** The signed-in account, or null when playing anonymously. */
   account: Session | null;
-  onSignIn: () => void;
   onSignOut: () => void;
 }
 
@@ -20,7 +19,7 @@ interface Props {
 const QUEUE_TIMEOUT_MS = 8000;
 
 export default function Online({
-  onStart, onBack, onToast, account, onSignIn, onSignOut,
+  onStart, onBack, onToast, account, onSignOut,
 }: Props) {
   const t = useT();
   const [joining, setJoining] = useState(false);
@@ -140,35 +139,24 @@ export default function Online({
         </div>
       )}
 
-      {/* Signing in is an offer, not a gate: every button above works without
-          it. What it buys is a name and a seat that follow you to another
-          device, which only matters once you are playing strangers. */}
-      {authEnabled() && !joining && (
+      {/* Signing in lives on the player chip in the main menu, so this screen
+          only reports the account you already have — and lets you leave it. */}
+      {authEnabled() && !joining && account && (
         <div className="menu-actions">
-          {account ? (
-            <div className="info-card info-card-static">
-              <span className="info-icon">✅</span>
-              <span className="account-line">
-                <span>
-                  {t('signIn.signedIn')} ·{' '}
-                  <strong className="account-name">
-                    {account.user.name || t('common.player')}
-                  </strong>
-                </span>
-                <button className="ctrl" onClick={() => { tap(); onSignOut(); }}>
-                  {t('signIn.signOut')}
-                </button>
+          <div className="info-card info-card-static">
+            <span className="info-icon">✅</span>
+            <span className="account-line">
+              <span>
+                {t('signIn.signedIn')} ·{' '}
+                <strong className="account-name">
+                  {account.user.name || t('common.player')}
+                </strong>
               </span>
-            </div>
-          ) : (
-            <button className="pill" onClick={() => { tap(); onSignIn(); }}>
-              <span className="pill-icon">🔐</span>
-              <span className="pill-body">
-                <span className="pill-title">{t('signIn.menu')}</span>
-                <span className="pill-sub">{t('signIn.menuSub')}</span>
-              </span>
-            </button>
-          )}
+              <button className="ctrl" onClick={() => { tap(); onSignOut(); }}>
+                {t('signIn.signOut')}
+              </button>
+            </span>
+          </div>
         </div>
       )}
 
