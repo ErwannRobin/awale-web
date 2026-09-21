@@ -172,6 +172,51 @@ test('settings change the board and persist', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
 });
 
+test('Escape and the browser Back button close Settings', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // Escape, the desktop habit.
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByText('Done')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.board')).toBeVisible();
+
+  // Back, which used to leave the site entirely.
+  await page.getByLabel('Settings').first().click();
+  await expect(page.getByText('Done')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('.board')).toBeVisible();
+
+  // One more step back leaves the game for the menu. (The menu is matched by
+  // its container: once a game has been left there is a CONTINUE card, and
+  // "TWO PLAYERS" then names both that card and the button below it.)
+  await page.goBack();
+  await expect(page.locator('.menu')).toBeVisible();
+});
+
+test('Escape does not walk out of a game', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('TWO PLAYERS').click();
+  await expect(page.locator('.board')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.board')).toBeVisible();
+});
+
+test('the browser chrome takes the colour of the table top', async ({ page }) => {
+  const colour = () => page.locator('meta[name="theme-color"]').getAttribute('content');
+
+  await page.goto('/');
+  // Wood: the top of its table gradient, not the near-black it used to hold.
+  expect((await colour())?.toLowerCase()).toBe('#6b4024');
+
+  await page.getByLabel('Settings').first().click();
+  await page.getByRole('radio', { name: 'Sand' }).click();
+  await expect.poll(async () => (await colour())?.toLowerCase()).toBe('#f0e0c2');
+  await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+});
+
 test('switching to French translates the interface', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Settings').first().click();

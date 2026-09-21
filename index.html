@@ -5,7 +5,11 @@
     <!-- user-scalable=no keeps a double-tap on a pit from zooming the board.
          maximum-scale is paired with it because iOS Safari ignores the former. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#1a100a" />
+    <!-- The colour a mobile browser paints its address bar with, and the top
+         of the table gradient (--table-1, wood), so the page appears to start
+         at the top of the screen rather than under the browser's chrome.
+         App.tsx rewrites it whenever the theme changes. -->
+    <meta name="theme-color" content="#6b4024" />
     <meta name="description" content="Awalé — the classic African seed-sowing strategy game of the oware family." />
     <meta name="color-scheme" content="dark" />
     <title>Awalé — The strategy. The culture. The legacy.</title>

@@ -19,6 +19,9 @@ import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
 import { useBackButton } from './lib/useBackButton.ts';
+import { useBrowserBack } from './lib/useBrowserBack.ts';
+import { useEscapeKey } from './lib/useEscapeKey.ts';
+import { isNative } from './lib/platform.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
 import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
@@ -69,8 +72,22 @@ export default function App() {
   // Theme and language are document-level: the theme swaps CSS tokens, and
   // <html lang> matters for screen readers and hyphenation.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', settings.theme);
-    document.documentElement.setAttribute('lang', settings.language);
+    const root = document.documentElement;
+    root.setAttribute('data-theme', settings.theme);
+    root.setAttribute('lang', settings.language);
+
+    // The browser paints its own furniture — the address bar on mobile web,
+    // the status bar in an installed shell — and CSS cannot reach it. Left at
+    // the one value in index.html it stays dark brown above a pale sand table,
+    // which reads as the background starting below the address bar rather than
+    // at the top of the screen. Feed it the colour the table actually starts
+    // with, read back from the theme so there is still one source of truth.
+    const top = getComputedStyle(root).getPropertyValue('--table-1').trim();
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (top && meta) meta.setAttribute('content', top);
+    // Same reason, for the chrome the colour does not cover: text and scroll
+    // bars in the browser's own UI. Sand is the only light theme.
+    root.style.colorScheme = settings.theme === 'sand' ? 'light' : 'dark';
   }, [settings.theme, settings.language]);
 
   const showToast = useCallback((msg: string) => {
@@ -169,12 +186,14 @@ export default function App() {
   );
 
   /**
-   * Android's back button. It has to mean "one screen back", not "quit" —
-   * quitting out of a game in progress is exactly what store reviewers flag.
-   * Only the menu exits, and only on Android; iOS has no such button and
-   * forbids a programmatic exit anyway.
+   * What "back" means, wherever it is pressed: Android's hardware button, the
+   * browser's Back button, Escape on a desktop keyboard. One screen back, not
+   * "quit" — quitting out of a game in progress is exactly what store
+   * reviewers flag. Only the menu exits, and only on Android; iOS has no such
+   * button and forbids a programmatic exit anyway, and on the web the browser
+   * leaves the site by itself.
    */
-  useBackButton(() => {
+  const goBack = () => {
     switch (screen.name) {
       case 'menu': void exitApp(); return;
       case 'game': leaveGame(); return;
@@ -185,7 +204,21 @@ export default function App() {
       case 'challenge': setScreen({ name: 'challenges' }); return;
       default: setScreen({ name: 'menu' });
     }
-  });
+  };
+
+  useBackButton(goBack);
+
+  // The same meaning for the web: the browser's Back button, and the back
+  // swipe that goes with it, step one screen back instead of leaving the site.
+  // Not on native, where the button above already has it and both would fire.
+  useBrowserBack(!isNative() && screen.name !== 'menu', goBack);
+
+  // Escape closes the panels that sit ON something else. It stops there on
+  // purpose: Escape out of a game would be a keystroke away from a lost board.
+  useEscapeKey(
+    screen.name === 'settings' || screen.name === 'learn' || screen.name === 'signIn',
+    goBack,
+  );
 
   return (
     <div className="app">
