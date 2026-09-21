@@ -202,10 +202,7 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
         aria-label={t(legal ? 'a11y.pitPlayable' : 'a11y.pit', params)}
       >
         <span className="pit-bowl">
-          {/* The bowl is packed for one more seed so the ghost — the seed that
-              would land here — slots in beside the ones already in it. */}
-          <Seeds pit={pit} count={count} total={target ? count + 1 : count} />
-          {target && <Seeds pit={pit} count={count + 1} from={count} total={count + 1} ghost />}
+          <Seeds pit={pit} count={count} />
         </span>
         {showCounts && <span className="pit-count" aria-hidden>{count}</span>}
       </button>

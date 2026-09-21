@@ -322,8 +322,9 @@ test('hovering your own pit marks the hole its last seed lands in', async ({ pag
   await page.locator('[data-pit="0"]').hover();
   await expect(page.locator('.pit-target')).toHaveCount(1);
   await expect(page.locator('[data-pit="4"]')).toHaveClass(/pit-target/);
-  // One ghost seed shows the arrival in place.
-  await expect(page.locator('.seed-ghost')).toHaveCount(1);
+  // The mark is only a mark: the target pit is not redrawn with the seed that
+  // would arrive, it still shows the four it really holds.
+  await expect(page.locator('[data-pit="4"] .seed')).toHaveCount(4);
 
   // A preview is a peek, not a move: the board has not changed.
   await expect(page.locator('[data-pit="0"]')).toHaveAttribute('aria-label', /4 seeds/);
