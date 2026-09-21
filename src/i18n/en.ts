@@ -137,7 +137,6 @@ export const en = {
   'tutorial.next': 'NEXT',
   'tutorial.prev': 'Back',
   'tutorial.replay': 'Replay step',
-  'tutorial.tapToContinue': 'Tap the card to continue.',
   'tutorial.playNow': 'PLAY A GAME',
   'tutorial.playNowSub': 'An easy first game · {level}',
   'tutorial.toChallenges': 'Go to Challenges →',
@@ -205,10 +204,15 @@ export const en = {
   'settings.noAccount': 'There are no accounts and nothing is sent anywhere — clearing your browser data clears this too.',
 
   // ---- profile ---------------------------------------------------------
+  'profile.brand': 'PROFILE',
   'profile.title': 'Profile',
+  'profile.lead': 'The name and face other players see — and the account behind them.',
+  'profile.sectionIdentity': 'Name and avatar',
+  'profile.sectionAccount': 'Account',
   'profile.name': 'Display name',
   'profile.namePlaceholder': 'Your name',
   'profile.avatar': 'Avatar',
+  'profile.rank': 'Rank',
 
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATS',

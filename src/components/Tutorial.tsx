@@ -281,7 +281,8 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     if (awaiting === 'move') {
       return s.kind === 'freePlay' ? t('tutorial.yourTurnCapture') : t('tutorial.yourTurnTap');
     }
-    if (canAdvance) return t('tutorial.tapToContinue');
+    // Nothing when the card is only waiting to be advanced: the NEXT button
+    // right below it already says so.
     return null;
   })();
 

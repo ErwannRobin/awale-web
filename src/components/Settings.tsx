@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import { LANGUAGES } from '../i18n/index.ts';
 import { useSettings } from '../lib/useSettings.ts';
@@ -6,7 +5,7 @@ import { updateSettings, type SpeedName, type ThemeName } from '../lib/settings.
 import { resetStats } from '../lib/stats.ts';
 import { saveCompleted } from '../lib/progress.ts';
 import { clearSavedGame } from '../lib/saveGame.ts';
-import { loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey } from '../lib/profile.ts';
+import { defaultProfile, saveProfile } from '../lib/profile.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { enableReminders, disableReminders, remindersSupported } from '../lib/notifications.ts';
@@ -14,7 +13,6 @@ import { enableReminders, disableReminders, remindersSupported } from '../lib/no
 interface Props {
   onBack: () => void;
   onToast: (msg: string) => void;
-  onProfileChange: () => void;
   onDataReset: () => void;
 }
 
@@ -69,10 +67,9 @@ function Choice<T extends string>({ value, options, onChange, label }: {
   );
 }
 
-export default function Settings({ onBack, onToast, onProfileChange, onDataReset }: Props) {
+export default function Settings({ onBack, onToast, onDataReset }: Props) {
   const t = useT();
   const s = useSettings();
-  const [profile, setProfile] = useState(loadProfile);
 
   // Reminders are a native-shell feature; in a browser the row is absent
   // rather than present and dead.
@@ -102,12 +99,6 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
     if (!granted) onToast(t('settings.remindersDenied'));
   };
 
-  const commitProfile = (next: typeof profile) => {
-    setProfile(next);
-    saveProfile(next);
-    onProfileChange();
-  };
-
   const confirmReset = (run: () => void) => {
     if (!window.confirm(t('settings.confirmReset'))) return;
     run();
@@ -126,35 +117,6 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
       <div className="panel-body">
         <h2 className="learn-title">{t('settings.title')}</h2>
         <p className="learn-lead">{t('settings.lead')}</p>
-
-        <section className="set-section" aria-label={t('profile.title')}>
-          <h3 className="set-head">{t('profile.title')}</h3>
-          <Row label={t('profile.name')}>
-            <input
-              className="text-input"
-              value={profile.name}
-              maxLength={NAME_MAX}
-              placeholder={t('profile.namePlaceholder')}
-              onChange={e => commitProfile({ ...profile, name: e.target.value })}
-              aria-label={t('profile.name')}
-            />
-          </Row>
-          <Row label={t('profile.avatar')}>
-            <div className="avatar-picker" role="radiogroup" aria-label={t('profile.avatar')}>
-              {AVATARS.map(a => (
-                <button
-                  key={a}
-                  type="button"
-                  role="radio"
-                  aria-checked={profile.avatar === a}
-                  aria-label={a}
-                  className={`avatar avatar-pick avatar-${a} ${profile.avatar === a ? 'avatar-on' : ''}`}
-                  onClick={() => { commitProfile({ ...profile, avatar: a as AvatarKey }); feedback(); }}
-                />
-              ))}
-            </div>
-          </Row>
-        </section>
 
         <section className="set-section" aria-label={t('settings.sectionFeel')}>
           <h3 className="set-head">{t('settings.sectionFeel')}</h3>
@@ -259,8 +221,7 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
               resetStats();
               saveCompleted([]);
               clearSavedGame();
-              saveProfile({ name: '', avatar: 'clay' });
-              setProfile({ name: '', avatar: 'clay' });
+              saveProfile(defaultProfile());
             })}>
               {t('settings.resetAll')}
             </button>

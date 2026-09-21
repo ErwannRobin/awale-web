@@ -12,14 +12,13 @@ interface Props {
   onToast: (msg: string) => void;
   /** The signed-in account, or null when playing anonymously. */
   account: Session | null;
-  onSignOut: () => void;
 }
 
 /** How long to wait for the matchmaker before giving up and saying so. */
 const QUEUE_TIMEOUT_MS = 8000;
 
 export default function Online({
-  onStart, onBack, onToast, account, onSignOut,
+  onStart, onBack, onToast, account,
 }: Props) {
   const t = useT();
   const [joining, setJoining] = useState(false);
@@ -139,8 +138,9 @@ export default function Online({
         </div>
       )}
 
-      {/* Signing in lives on the player chip in the main menu, so this screen
-          only reports the account you already have — and lets you leave it. */}
+      {/* The account itself — signing in, signing out — lives on the profile
+          screen behind the player chip in the main menu. This screen only
+          reports which account you are about to play as. */}
       {authEnabled() && !joining && account && (
         <div className="menu-actions">
           <div className="info-card info-card-static">
@@ -152,9 +152,6 @@ export default function Online({
                   {account.user.name || t('common.player')}
                 </strong>
               </span>
-              <button className="ctrl" onClick={() => { tap(); onSignOut(); }}>
-                {t('signIn.signOut')}
-              </button>
             </span>
           </div>
         </div>

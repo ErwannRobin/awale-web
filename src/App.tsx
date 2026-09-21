@@ -8,6 +8,7 @@ import Game from './components/Game.tsx';
 import Online from './components/Online.tsx';
 import OnlineGame from './components/OnlineGame.tsx';
 import SignIn from './components/SignIn.tsx';
+import ProfileScreen from './components/Profile.tsx';
 import SettingsScreen from './components/Settings.tsx';
 import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
@@ -35,8 +36,10 @@ type Screen =
   | { name: 'records' }
   | { name: 'game'; mode: 'ai' | 'local'; level: number; key: number; resume: SavedGame | null }
   | { name: 'online' }
-  // Sign-in is reached from the online screen and from the player chip on the
-  // menu, so like Learn and Settings it carries where to go back to.
+  // The player chip on the menu: who you are, and the account behind you.
+  | { name: 'profile' }
+  // Sign-in is reached from the profile screen, so like Learn and Settings it
+  // carries where to go back to.
   | { name: 'signIn'; back: Screen }
   | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
@@ -201,18 +204,11 @@ export default function App() {
   const goBackTo = (target: Screen) => () => nav.back(target);
 
   /**
-   * The player chip at the top of the menu.
-   *
-   * Signed out, it goes to sign-in: the chip is the account, and that is the
-   * only thing there is to do with one you do not have yet. Signed in, there
-   * is nothing to sign into, so it opens the profile in Settings — and a build
-   * with no server configured has no sign-in at all.
+   * The player chip at the top of the menu: your name, your face, your
+   * account. Settings — the gear beside it — is about how the game behaves,
+   * which is a different question, so the two screens are separate.
    */
-  const openAccount = () => nav.go(
-    onlineEnabled() && !account
-      ? { name: 'signIn', back: { name: 'menu' } }
-      : { name: 'settings', back: { name: 'menu' } },
-  );
+  const openProfile = () => nav.go({ name: 'profile' });
 
   /**
    * Android's back button, which the native shell hands to us instead of
@@ -266,7 +262,7 @@ export default function App() {
           onChallenges={() => nav.go({ name: 'challenges' })}
           onOnline={() => nav.go({ name: 'online' })}
           onSettings={() => nav.go({ name: 'settings', back: { name: 'menu' } })}
-          onProfile={openAccount}
+          onProfile={openProfile}
           onStats={() => nav.go({ name: 'stats' })}
           onRecords={() => nav.go({ name: 'records' })}
         />
@@ -278,6 +274,16 @@ export default function App() {
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
           account={account}
+        />
+      )}
+
+      {screen.name === 'profile' && (
+        <ProfileScreen
+          stats={stats}
+          account={account}
+          onBack={() => nav.back({ name: 'menu' })}
+          onProfileChange={() => setProfile(loadProfile())}
+          onSignIn={() => nav.go({ name: 'signIn', back: { name: 'profile' } })}
           onSignOut={() => {
             clearSession();
             setAccount(null);
@@ -317,7 +323,6 @@ export default function App() {
         <SettingsScreen
           onBack={goBackTo(screen.back)}
           onToast={showToast}
-          onProfileChange={() => setProfile(loadProfile())}
           onDataReset={() => {
             setCompleted(loadCompleted());
             refreshStats();
