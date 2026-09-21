@@ -126,7 +126,8 @@ ok('the bottom rank has a next', rankFor(0).next !== null);
   eq('whitespace is collapsed and trimmed', mod.sanitiseName('  Ama   Serwaa  '), 'Ama Serwaa');
   eq('long names are capped', mod.sanitiseName('x'.repeat(80)).length, mod.NAME_MAX);
   store.set('awale.profile.v1', '{"name":42,"avatar":"rainbow"}');
-  eq('a bogus profile falls back', mod.loadProfile(), { name: '', avatar: 'clay' });
+  eq('a bogus profile falls back', mod.loadProfile(),
+     { name: '', avatar: 'clay', country: 'ZZ', countrySource: 'auto' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

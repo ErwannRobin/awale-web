@@ -26,6 +26,12 @@ export interface Settings {
    * prompt. See lib/notifications.ts.
    */
   reminders: boolean;
+  /**
+   * Count finished games towards the world table — one line per game (level
+   * and country, nothing else, no identifier). Off means the game is counted
+   * locally only and the Worker never hears about it. See lib/worldStats.ts.
+   */
+  shareStats: boolean;
 }
 
 /** Animation tempo multiplier. `instant` skips the sowing animation entirely. */
@@ -57,6 +63,7 @@ export function defaultSettings(): Settings {
     showCounts: true,
     language: detectLanguage(),
     reminders: false,
+    shareStats: true,
   };
 }
 
@@ -79,6 +86,7 @@ function coerce(raw: unknown): Settings {
     showCounts: bool(o.showCounts, d.showCounts),
     language: o.language === 'fr' || o.language === 'en' ? o.language : d.language,
     reminders: bool(o.reminders, d.reminders),
+    shareStats: bool(o.shareStats, d.shareStats),
   };
 }
 

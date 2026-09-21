@@ -8,6 +8,7 @@ import type { SavedGame } from '../lib/saveGame.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
+import { reportGame } from '../lib/worldStats.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
 import { GearIcon } from './Icons.tsx';
@@ -108,11 +109,19 @@ export default function Game({
     if (!rated) return;
     const me = setup?.humanPlayer ?? 0;
     const outcome: Outcome = winner === 'draw' ? 'draw' : winner === me ? 'win' : 'loss';
+    // The country as it stands right now. Read here rather than carried in from
+    // the start of the game, and never read again afterwards: this is the one
+    // moment the game is attributed, so changing country later moves nothing.
+    const country = loadProfile().country;
     const before = loadStats();
     const next = applyResult(before, {
-      level, outcome, you: scores[me], them: scores[1 - me],
+      level, outcome, you: scores[me], them: scores[1 - me], country,
     });
     saveStats(next);
+    // The same game, counted once in the world table. Fire and forget: no part
+    // of finishing a game waits on the network, and a failure is simply a game
+    // the table never hears about.
+    void reportGame({ level, country });
     setRatingDelta({ before: before.rating, after: next.rating });
     onStatsChange?.();
 

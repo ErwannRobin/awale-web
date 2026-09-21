@@ -113,7 +113,9 @@ test('settings change the board and persist', async ({ page }) => {
 
   // Turning off seed counts must actually remove the badges.
   await page.getByRole('switch', { name: 'Show seed counts' }).click();
-  await page.getByText('Done').click();
+  // By role, not by text: the country picker holds 250 names, and "Indonesia"
+  // contains "Done".
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByText('TWO PLAYERS').click();
   await expect(page.locator('.pit-count')).toHaveCount(0);
 
@@ -127,7 +129,7 @@ test('switching to French translates the interface', async ({ page }) => {
   await page.getByRole('radio', { name: 'Français' }).click();
 
   await expect(page.getByText('Réglages').first()).toBeVisible();
-  await page.getByText('Terminé').click();
+  await page.getByRole('button', { name: 'Terminé' }).click();
   await expect(page.getByText('DEUX JOUEURS')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 });

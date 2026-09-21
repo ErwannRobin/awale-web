@@ -13,7 +13,7 @@ import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
 import type { GameSetup } from './lib/useGame.ts';
 import { loadCompleted, saveCompleted } from './lib/progress.ts';
-import { loadProfile } from './lib/profile.ts';
+import { applyDetectedCountry, loadProfile } from './lib/profile.ts';
 import { clearSession, loadSession, refreshSession, type Session } from './lib/auth.ts';
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
@@ -22,6 +22,7 @@ import { useBackButton } from './lib/useBackButton.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
 import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
+import { detectCountry } from './lib/worldStats.ts';
 import { normaliseRoomCode } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
 
@@ -89,6 +90,21 @@ export default function App() {
     if (!stored) return;
     let live = true;
     void refreshSession(stored).then(next => { if (live) setAccount(next); });
+    return () => { live = false; };
+  }, []);
+
+  // Where the player is, worked out once per launch from the request's own IP
+  // at the edge — see lib/worldStats.ts. A player who has picked a country
+  // keeps it: `applyDetectedCountry` leaves a manual choice alone, so this
+  // effect is a no-op for them rather than a fight they lose every launch.
+  useEffect(() => {
+    let live = true;
+    void detectCountry().then(code => {
+      if (!live || !code) return;
+      // Read the stored profile rather than the state: this lands after a
+      // paint, and `applyDetectedCountry` writes, which a state updater must not.
+      setProfile(applyDetectedCountry(loadProfile(), code));
+    });
     return () => { live = false; };
   }, []);
 

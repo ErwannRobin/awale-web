@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import { LANGUAGES } from '../i18n/index.ts';
 import { useSettings } from '../lib/useSettings.ts';
@@ -6,7 +6,12 @@ import { updateSettings, type SpeedName, type ThemeName } from '../lib/settings.
 import { resetStats } from '../lib/stats.ts';
 import { saveCompleted } from '../lib/progress.ts';
 import { clearSavedGame } from '../lib/saveGame.ts';
-import { loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey } from '../lib/profile.ts';
+import {
+  chooseCountry, defaultProfile, loadProfile, saveProfile,
+  AVATARS, NAME_MAX, type AvatarKey,
+} from '../lib/profile.ts';
+import { countriesByName, countryFlag, UNKNOWN_COUNTRY } from '../lib/country.ts';
+import { worldStatsEnabled } from '../lib/worldStats.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { enableReminders, disableReminders, remindersSupported } from '../lib/notifications.ts';
@@ -74,6 +79,10 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
   const s = useSettings();
   const [profile, setProfile] = useState(loadProfile);
 
+  // Built once per language: 250 names out of `Intl.DisplayNames`, sorted by
+  // the same locale's collator, is not work to redo on every keystroke.
+  const countries = useMemo(() => countriesByName(s.language), [s.language]);
+
   // Reminders are a native-shell feature; in a browser the row is absent
   // rather than present and dead.
   const canRemind = remindersSupported();
@@ -108,6 +117,19 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
     onProfileChange();
   };
 
+  /**
+   * Picking a country pins it: detection never overrides it again.
+   *
+   * Games already played are not moved — they were counted under the country
+   * that was set at the time, here and in the world table alike. Only the next
+   * game counts towards the new one.
+   */
+  const commitCountry = (code: string) => {
+    setProfile(chooseCountry(profile, code));
+    onProfileChange();
+    feedback();
+  };
+
   const confirmReset = (run: () => void) => {
     if (!window.confirm(t('settings.confirmReset'))) return;
     run();
@@ -138,6 +160,21 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
               onChange={e => commitProfile({ ...profile, name: e.target.value })}
               aria-label={t('profile.name')}
             />
+          </Row>
+          <Row label={t('profile.country')} help={t('profile.countryHelp')}>
+            <select
+              className="text-input"
+              value={profile.country}
+              aria-label={t('profile.country')}
+              onChange={e => commitCountry(e.target.value)}
+            >
+              <option value={UNKNOWN_COUNTRY}>
+                {`🌍 ${t('profile.countryUnknown')}`}
+              </option>
+              {countries.map(c => (
+                <option key={c.code} value={c.code}>{`${countryFlag(c.code)} ${c.name}`}</option>
+              ))}
+            </select>
           </Row>
           <Row label={t('profile.avatar')}>
             <div className="avatar-picker" role="radiogroup" aria-label={t('profile.avatar')}>
@@ -236,6 +273,15 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
 
         <section className="set-section" aria-label={t('settings.sectionData')}>
           <h3 className="set-head">{t('settings.sectionData')}</h3>
+          {worldStatsEnabled() && (
+            <Row label={t('settings.shareStats')} help={t('settings.shareStatsHelp')}>
+              <Toggle
+                on={s.shareStats}
+                label={t('settings.shareStats')}
+                onChange={v => set('shareStats', v)}
+              />
+            </Row>
+          )}
           <p className="set-help set-help-block">{t('settings.noAccount')}</p>
           <div className="set-actions">
             <button className="ctrl" onClick={() => confirmReset(() => resetStats())}>
@@ -248,8 +294,7 @@ export default function Settings({ onBack, onToast, onProfileChange, onDataReset
               resetStats();
               saveCompleted([]);
               clearSavedGame();
-              saveProfile({ name: '', avatar: 'clay' });
-              setProfile({ name: '', avatar: 'clay' });
+              setProfile(saveProfile(defaultProfile()));
             })}>
               {t('settings.resetAll')}
             </button>
