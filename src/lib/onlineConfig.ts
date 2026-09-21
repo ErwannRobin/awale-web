@@ -78,7 +78,9 @@ export function clearJoinCode(): void {
     const url = new URL(location.href);
     if (!url.searchParams.has('join')) return;
     url.searchParams.delete('join');
-    history.replaceState(null, '', url.toString());
+    // Keep whatever state the entry holds: this rewrites the address only, and
+    // the screen stack (lib/navigation.ts) lives in that state.
+    history.replaceState(history.state, '', url.toString());
   } catch { /* older WebView */ }
 }
 

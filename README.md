@@ -40,6 +40,13 @@ of the oware / mancala family.
 - **English and French**, auto-detected and overridable.
 - **Offline** — a service worker caches the whole game; it is installable from
   the browser.
+- **Back goes back** — every screen gets a browser history entry of its own, so
+  the desktop Back button, the mobile back gesture (including Safari's edge
+  swipe on iOS) and Android's back button in the packaged app all mean *one
+  screen back*, exactly like the on-screen ←. Back out of Settings mid-game and
+  the board is where you left it. The iOS shell has no such gesture of its own —
+  Apple's convention is the on-screen arrow — so there it is the web build that
+  gains it.
 
 There is **no leaderboard**. Online games are unrated: your rating measures you
 against the four AI levels on this device, and a stranger cannot move it. A
@@ -63,7 +70,8 @@ npm install
 npm run dev                # dev server, exposed on the LAN so a phone can load it
 npm run build              # typecheck + production build
 npm run lint               # ESLint
-npm test                   # engine, layout, AI, state, online and self-play suites
+npm test                   # engine, layout, navigation, AI, state, online and
+                           # self-play suites
 npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
                            # dev match server, and plays a game in two browsers)
 npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
@@ -89,6 +97,8 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/native.ts` | Native bootstrap: Preferences, status bar, lifecycle |
 | `src/lib/notifications.ts` | The local play reminder |
 | `src/lib/review.ts` | When to ask for a store rating |
+| `src/lib/navigation.ts` | The screen stack, kept in browser history |
+| `src/lib/useScreenHistory.ts` | That stack as React state — the app's only way to change screen |
 | `src/lib/useBackButton.ts` | Android's back button |
 | `src/lib/progress.ts` | Challenge unlock progress |
 | `src/lib/protocol.ts` | The wire format, and every message validated on arrival |
