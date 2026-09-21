@@ -30,14 +30,16 @@ eq('owner 11', owner(11), 1);
 // capture: last seed lands making an opponent pit 2 or 3
 {
   //                0  1  2  3  4  5  6  7  8  9 10 11
-  const pits =    [ 0, 0, 0, 0, 0, 2, 1, 1, 0, 0, 0, 0];
+  const pits =    [ 0, 0, 0, 0, 0, 2, 1, 1, 1, 0, 0, 0];
   const scores = [0, 0];
-  // pit 5 (South) has 2 -> sows into 6 (->2) and 7 (->2); last=7 in opp row, both 2 => capture both
+  // pit 5 (South) has 2 -> sows into 6 (->2) and 7 (->2); last=7 in opp row, both 2 => capture both.
+  // Pit 8 keeps its seed, so North is not starved and the capture stands.
   const r = distribute(pits, scores, 5);
   eq('capture scores South', scores[0], 4);
   eq('capture emptied 7', pits[7], 0);
   eq('capture emptied 6', pits[6], 0);
   eq('capture order last-first', r.captured, [7, 6]);
+  eq('capture leaves North a seed', pits[8], 1);
 }
 
 // grand-slam prevention: a move capturing ALL opponent seeds is illegal when an alternative exists
@@ -87,6 +89,23 @@ eq('owner 11', owner(11), 1);
   const r = distribute(pits, scores, 5);
   eq('cap: at most 4 pits', r.captured.length, 4);
   eq('cap: score 8', scores[0], 8);
+}
+
+// grand slam with no alternative: the move is legal, but NOTHING is captured —
+// the whole capture is cancelled, not trimmed to leave one pit behind.
+{
+  //               0  1  2  3  4  5  6  7  8  9 10 11
+  const pits =   [ 0, 0, 0, 0, 2, 1, 1, 0, 0, 0, 0, 0];
+  const scores = [0, 0];
+  // Both South moves sweep North's only seeds, so there is no alternative:
+  eq('forced grandslam: pit 5 legal', isValid(pits, 5), true);
+  eq('forced grandslam: pit 4 legal', isValid(pits, 4), true);
+  // pit 5 sows into 6 -> becomes 2, which would be the whole North row.
+  const r = distribute(pits, scores, 5);
+  eq('forced grandslam: nothing captured', r.captured, []);
+  eq('forced grandslam: no score', scores, [0, 0]);
+  eq('forced grandslam: seeds stay put', pits, [0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0]);
+  eq('forced grandslam: game continues', r.running, true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -61,7 +61,8 @@ counterclockwise, skipping the pit you started from. If your last seed lands in 
 opponent pit that then holds 2 or 3 seeds you capture it, sweeping backward through
 adjacent 2/3 pits up to four in a row. You must feed a starving opponent when you
 can, and you may not capture *every* one of their seeds if another move exists
-(the grand-slam rule). First to 25 seeds wins.
+(the grand-slam rule); when no other move exists the move is played but captures
+nothing at all. First to 25 seeds wins.
 
 ## Develop
 

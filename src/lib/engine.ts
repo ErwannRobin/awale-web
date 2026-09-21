@@ -48,7 +48,15 @@ export function distribute(pits: number[], scores: number[], i: number): MoveRes
   while (j >= 0 && Math.floor(j / 6) === other && (pits[j] === 2 || pits[j] === 3)) { j--; attacked++; }
   const captured: number[] = [];
   const firstKept = last - Math.min(attacked, 4);   // captures are CAPPED at 4 pits per move
-  for (let k = last; k > firstKept; k--) { scores[me] += pits[k]; pits[k] = 0; captured.push(k); }
+  // Grand slam: a capture that would sweep the opponent's row clean is cancelled
+  // in full — not trimmed to leave one pit behind. `isValid` already forbids such
+  // a move when another one exists, so we only get here when the player had no
+  // other choice: the move is played, the seeds stay where the sowing left them.
+  let leftBehind = 0;
+  for (let k = other * 6; k < other * 6 + 6; k++) if (k <= firstKept || k > last) leftBehind += pits[k];
+  if (leftBehind > 0) {
+    for (let k = last; k > firstKept; k--) { scores[me] += pits[k]; pits[k] = 0; captured.push(k); }
+  }
   return { running: !endGame(pits, scores, i), sowed, captured };
 }
 

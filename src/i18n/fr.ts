@@ -107,7 +107,7 @@ export const fr: Record<keyof typeof en, string> = {
   'learn.3.h': 'La capture',
   'learn.3.b': 'Si votre dernière graine tombe dans un trou adverse qui contient alors exactement 2 ou 3 graines, vous la capturez. La capture remonte aussi les trous précédents tant qu’ils contiennent 2 ou 3 graines — jusqu’à quatre trous consécutifs.',
   'learn.4.h': 'Nourrir l’adversaire',
-  'learn.4.b': 'Si l’adversaire n’a plus de graines, vous devez jouer un coup qui atteint son camp pour lui en donner. Un coup qui capturerait absolument toutes ses graines (un « grand chelem ») est interdit s’il existe un autre coup.',
+  'learn.4.b': 'Si l’adversaire n’a plus de graines, vous devez jouer un coup qui atteint son camp pour lui en donner. Un coup qui capturerait absolument toutes ses graines (un « grand chelem ») est interdit s’il existe un autre coup. Si c’est votre seul coup, vous le jouez mais ne capturez rien : toutes les graines restent sur le plateau.',
   'learn.5.h': 'La victoire',
   'learn.5.b': 'Le premier à capturer 25 graines ou plus gagne. Si un joueur ne peut plus jouer, chacun garde les graines restées de son côté. À égalité, la partie est nulle.',
 
