@@ -21,8 +21,10 @@
 // header. If ElevenLabs has moved on, the script prints the server's error body
 // verbatim — that response says what changed. MODEL_ID and OUTPUT_FORMAT are
 // overridable by environment variable so a change needs no code edit.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 
 const KEY = process.env.ELEVENLABS_API_KEY;
 const ENDPOINT = process.env.ELEVENLABS_ENDPOINT ?? 'https://api.elevenlabs.io/v1/sound-generation';
@@ -46,6 +48,16 @@ interface Spec {
    * clips that are not on that per-seed cadence (the capture scoop).
    */
   maxMs?: number;
+  /**
+   * Pitch-shift down by this many semitones, duration preserved (ffmpeg
+   * asetrate+atempo). Asking the model to sound "deep" in the prompt text
+   * measurably did NOT lower its spectral content (checked: a "low-pitched
+   * wooden thud" clip came back with a HIGHER zero-crossing rate than the
+   * original, i.e. brighter, not deeper) — so getting deeper reliably means
+   * shifting it after the fact rather than asking for it. Requires ffmpeg on
+   * PATH; skipped with a warning if it's missing, never a hard failure.
+   */
+  pitchDown?: number;
 }
 
 // Close-mic, dry, no music: anything atmospheric fights the game's own pacing,
@@ -70,13 +82,30 @@ const SPECS: Spec[] = [
     peak: 0.8,
     maxMs: 300,
   })),
-  // The capture: a handful swept up and poured into the store.
-  ...[1, 2].map(i => ({
-    name: `scoop-${i}`,
+  // The capture: a handful swept up and poured into the store. Capped like the
+  // drops — a capture sweep is 260ms per pit (130ms on "fast"), so a clip that
+  // runs 2+ seconds (measured: this is what duration_seconds actually gave us
+  // uncapped) drags well past the animation it's supposed to land inside.
+  {
+    name: 'scoop-1',
     text: `A hand sweeps about ten dried seeds out of a carved wooden bowl and pours them into another wooden bowl. Wooden scrape, then seeds tumbling and settling. ${DRY}`,
-    seconds: 1.5,
+    seconds: 1.0,
     peak: 0.9,
-  })),
+    maxMs: 950,
+  },
+  {
+    name: 'scoop-2',
+    // A distinct take from scoop-1: heavier and quicker, real seed material
+    // (dense, hard, small — nothing that could read as beads, coins or
+    // water). Asking the model itself for "deep, low-pitched" did not
+    // actually lower the spectral content (measured), so depth comes from
+    // pitchDown below, not from the wording.
+    text: `A single quick handful of about fifteen small hard dried seeds, like dried beans or tamarind seeds, gathered and dropped all at once into a wooden bowl. One wooden thud as the mass lands together, with a brief dense clack of seeds knocking against each other. No scraping, no long tail, no ringing, no music. ${DRY}`,
+    seconds: 0.7,
+    peak: 0.9,
+    maxMs: 750,
+    pitchDown: 5,
+  },
   {
     name: 'tap-1',
     text: `A single soft fingertip tap on a polished wooden board. Very short and quiet. ${DRY}`,
@@ -170,6 +199,46 @@ function wav(pcm: Int16Array): Buffer {
   return Buffer.concat([header, Buffer.from(pcm.buffer, pcm.byteOffset, dataBytes)]);
 }
 
+let ffmpegChecked = false;
+let ffmpegOk = false;
+
+/**
+ * Shift `pcm` down by `semitones`, keeping duration the same: resample to a
+ * lower rate (asetrate — this is what actually moves the pitch) then stretch
+ * tempo back to compensate (atempo), so the clip neither speeds up nor gets
+ * longer. Returns `pcm` unchanged if ffmpeg isn't on PATH.
+ */
+function pitchShift(pcm: Int16Array, semitones: number): Int16Array {
+  if (!ffmpegChecked) {
+    ffmpegChecked = true;
+    ffmpegOk = spawnSync('ffmpeg', ['-version']).status === 0;
+    if (!ffmpegOk) console.warn('  (ffmpeg not found on PATH — pitchDown skipped)');
+  }
+  if (!ffmpegOk) return pcm;
+
+  const rate = Math.pow(2, -semitones / 12);
+  const inFile = join(tmpdir(), `gen-sounds-${process.pid}-in.wav`);
+  const outFile = join(tmpdir(), `gen-sounds-${process.pid}-out.wav`);
+  writeFileSync(inFile, wav(pcm));
+  try {
+    const r = spawnSync('ffmpeg', [
+      '-y', '-i', inFile,
+      '-af', `asetrate=${SAMPLE_RATE * rate},aresample=${SAMPLE_RATE},atempo=${1 / rate}`,
+      outFile,
+    ]);
+    if (r.status !== 0) {
+      console.warn(`  (ffmpeg pitch shift failed, using unshifted clip: ${r.stderr?.toString().slice(-300)})`);
+      return pcm;
+    }
+    const bytes = readFileSync(outFile);
+    // Skip the 44-byte WAV header ffmpeg wrote.
+    return new Int16Array(bytes.buffer, bytes.byteOffset + 44, Math.floor((bytes.length - 44) / 2));
+  } finally {
+    try { unlinkSync(inFile); } catch { /* best effort cleanup */ }
+    try { unlinkSync(outFile); } catch { /* best effort cleanup */ }
+  }
+}
+
 if (!KEY) {
   console.error('ELEVENLABS_API_KEY is not set.');
   process.exit(1);
@@ -186,7 +255,12 @@ mkdirSync(OUT_DIR, { recursive: true });
 let failed = 0;
 for (const spec of todo) {
   try {
-    const pcm = clean(await generate(spec), spec.peak, spec.maxMs);
+    let pcm = clean(await generate(spec), spec.peak, spec.maxMs);
+    if (spec.pitchDown) {
+      // Re-clean after the shift: resampling can leave a little edge silence
+      // or drift the peak, and this re-normalises and re-fades for free.
+      pcm = clean(pitchShift(pcm, spec.pitchDown), spec.peak, spec.maxMs);
+    }
     const file = join(OUT_DIR, `${spec.name}.wav`);
     writeFileSync(file, wav(pcm));
     const ms = Math.round((pcm.length / SAMPLE_RATE) * 1000);
