@@ -1,7 +1,12 @@
 // Generates the seed-sound pack with the ElevenLabs sound-effects API.
 //
-//   ELEVENLABS_API_KEY=... npm run sounds:generate
-//   ELEVENLABS_API_KEY=... npm run sounds:generate -- drop-1 scoop-1   # only these
+//   cp .env.example .env && $EDITOR .env   # once — put the key in ELEVENLABS_API_KEY=
+//   npm run sounds:generate
+//   npm run sounds:generate -- drop-1 scoop-1   # only these
+//
+// npm run sounds:generate loads .env automatically (Node's
+// --env-file-if-exists, no dependency); .env is gitignored. Passing the key
+// inline still works too: ELEVENLABS_API_KEY=... npm run sounds:generate.
 //
 // Output goes to public/sounds/v1/*.wav — fixed names, read by src/lib/sound.ts.
 // The version in the path is deliberate: the service worker caches by URL, so a

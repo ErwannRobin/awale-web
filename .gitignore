@@ -10,3 +10,8 @@ test-results
 
 # wrangler's local state (workerd, DO storage, build cache)
 .wrangler
+
+# API keys for local tooling (e.g. ELEVENLABS_API_KEY for scripts/gen-sounds.ts).
+# See .env.example.
+.env
+.env.local

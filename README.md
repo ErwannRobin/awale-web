@@ -68,7 +68,8 @@ npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
                            # dev match server, and plays a game in two browsers)
 npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
 
-ELEVENLABS_API_KEY=... npm run sounds:generate   # regenerate the seed sample pack
+npm run sounds:generate    # regenerate the seed sample pack — needs an
+                           # ELEVENLABS_API_KEY in .env, see the Sound section
 ```
 
 CI runs all of these on every push (`.github/workflows/ci.yml`).
@@ -147,11 +148,18 @@ Two layers, in `src/lib/sound.ts`:
 Everything runs through one bus — gain, compressor, soft limiter — which is
 what lets the levels be loud without clipping when sounds overlap.
 
-To regenerate the pack you need an [ElevenLabs](https://elevenlabs.io) key:
+To regenerate the pack you need an [ElevenLabs](https://elevenlabs.io) key.
+Copy `.env.example` to `.env` and put it in `ELEVENLABS_API_KEY=` there — `.env`
+is gitignored, and `npm run sounds:generate` loads it automatically (Node's
+`--env-file-if-exists`, no dependency). Or pass it inline instead:
 
 ```bash
-ELEVENLABS_API_KEY=... npm run sounds:generate            # all clips
-ELEVENLABS_API_KEY=... npm run sounds:generate -- scoop-1 # just one
+cp .env.example .env && $EDITOR .env      # once — key lives here from now on
+
+npm run sounds:generate                                   # all clips
+npm run sounds:generate -- scoop-1                        # just one
+
+ELEVENLABS_API_KEY=... npm run sounds:generate             # or skip .env entirely
 ```
 
 The prompts, durations and normalisation live in `scripts/gen-sounds.ts`, so a
