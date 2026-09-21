@@ -19,6 +19,10 @@ import {
   PROTOCOL_VERSION, makeRoomCode, normaliseRoomCode, parseClientMsg,
   type ServerMsg,
 } from '../src/lib/protocol.ts';
+import {
+  addCountryGame, rankCountries, sanitiseLevel, type CountryTally,
+} from '../src/lib/countryStats.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY } from '../src/lib/country.ts';
 import type { Seat } from '../src/lib/rules.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -30,6 +34,20 @@ interface Conn {
   token: string;
   seat: Seat | null;
 }
+
+/**
+ * The world table, for a laptop. Same shape as the Durable Object's, same pure
+ * fold, and just as forgetful as the rooms around it — it dies with the process.
+ *
+ * There is no edge here to say which country a request came from, so `/geo`
+ * answers with `DEV_COUNTRY` if you set one and "unknown" otherwise. That is
+ * the honest answer for a machine talking to itself, and it exercises the same
+ * path a real player behind Tor takes.
+ */
+const DEV_COUNTRY = normaliseCountry(process.env.DEV_COUNTRY ?? UNKNOWN_COUNTRY);
+let countries: Record<string, CountryTally> = {};
+let gamesCounted = 0;
+let countedAt = 0;
 
 const rooms = new Map<string, RoomState>();
 const conns = new Map<string, Set<Conn>>();
@@ -82,6 +100,34 @@ function http(request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(200, { ...cors, 'content-type': 'text/plain' }).end('ok');
     return;
   }
+  if (url.pathname === '/geo') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify({ country: DEV_COUNTRY }));
+    return;
+  }
+  if (url.pathname === '/stats/countries') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({
+      total: gamesCounted,
+      updatedAt: countedAt,
+      countries: rankCountries(countries),
+    }));
+    return;
+  }
+  if (url.pathname === '/stats/game' && request.method === 'POST') {
+    readJson(request, body => {
+      const claimed = normaliseCountry(body.country);
+      const country = claimed === UNKNOWN_COUNTRY ? DEV_COUNTRY : claimed;
+      const level = sanitiseLevel(Number(body.level));
+      countries = addCountryGame(countries, country, level);
+      gamesCounted++;
+      countedAt = Date.now();
+      response.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        .end(JSON.stringify({ ok: true, country, level }));
+    }, () => {
+      response.writeHead(400, cors).end('bad json');
+    });
+    return;
+  }
   if (url.pathname === '/queue' && request.method === 'POST') {
     const now = Date.now();
     let body: { code: string; role: 'created' | 'joined' };
@@ -102,6 +148,26 @@ function http(request: IncomingMessage, response: ServerResponse): void {
     return;
   }
   response.writeHead(404, cors).end('not found');
+}
+
+/** Body in, parsed object out — a request body is a stream in Node, not a promise. */
+function readJson(
+  request: IncomingMessage,
+  ok: (body: Record<string, unknown>) => void,
+  bad: () => void,
+): void {
+  let raw = '';
+  request.on('data', chunk => { raw += chunk; if (raw.length > 4096) request.destroy(); });
+  request.on('end', () => {
+    try {
+      const parsed = JSON.parse(raw || '{}') as unknown;
+      if (!parsed || typeof parsed !== 'object') { bad(); return; }
+      ok(parsed as Record<string, unknown>);
+    } catch {
+      bad();
+    }
+  });
+  request.on('error', bad);
 }
 
 const server = createServer(http);

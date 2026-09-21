@@ -1,15 +1,43 @@
 # The server
 
 One Cloudflare Worker serves the whole of Awalé: the game itself, and the rooms
-people play it in. It holds nothing but games in progress — no accounts, no
-database, no history. A room lives for as long as two people are in it.
+people play it in. It holds games in progress and a handful of counters — no
+accounts, no database of players, no history of games. A room lives for as long
+as two people are in it.
 
 ```
-GET  /room/:code   WebSocket upgrade into that room
-POST /queue        quick match — a code to sit in, or one to walk into
-GET  /health       is anybody home
-everything else    the built web app, from the ASSETS binding
+GET  /room/:code       WebSocket upgrade into that room
+POST /queue            quick match — a code to sit in, or one to walk into
+GET  /geo              which country this request came from
+POST /stats/game       count one finished game: a level and a country
+GET  /stats/countries  the world table
+GET  /health           is anybody home
+everything else        the built web app, from the ASSETS binding
 ```
+
+## Countries, without an IP address
+
+Cloudflare resolves the country while it is handling the request, so
+`request.cf.country` is the whole of the geolocation here: no third-party
+lookup, and the IP is never read, stored, or forwarded. `/geo` hands the browser
+those two letters and nothing else; `XX` and `T1` (proxy, Tor) come back as
+`ZZ`, "country unknown", which is a bucket rather than a dropped game.
+
+`/stats/game` takes `{ level, country }`. The country in the body wins when it
+is a real code — a player may say where they are from — and the request's own
+country is the fallback. Both are clamped and validated; nothing else in the
+body is read.
+
+What the `Stats` object keeps is counters: a world total, and `{ games, byLevel }`
+per country. There is no row per game and no identifier, which is also why a
+player who changes country leaves their old games behind: the counter they went
+into has no idea who they were, and nothing ever goes back to move them.
+
+The endpoint is open, and nothing stops somebody calling it in a loop — the
+price of an anonymous counter is that it can be padded. That is a trade this
+game can afford (the number is a curiosity, not a prize); the thing worth
+protecting, and what is actually protected, is that there is nothing personal in
+there to leak.
 
 **One Worker, not two.** That is not about saving money; it is what makes the
 two halves agree. Same origin means the browser finds the match server without
@@ -38,12 +66,14 @@ field, and why each socket carries its own identity in `serializeAttachment`.
 | `src/index.ts` | The router, the matchmaker, and the fall-through to the app |
 | `src/room.ts` | One room: sockets in, sockets out, storage, the walkout alarm |
 | `src/lobby.ts` | Quick match — one waiting code at a time |
+| `src/stats.ts` | The world table: games per country, per difficulty |
 | `dev-server.ts` | The same rooms over `ws`, on a laptop |
 
-None of them contain a rule of awalé. The rules live in
-[`../src/lib/roomCore.ts`](../src/lib/roomCore.ts) and
-[`../src/lib/rules.ts`](../src/lib/rules.ts), which are pure and shared with the
-browser — so the client and the server cannot disagree about what a move does,
+None of them contain a rule of awalé, and none of them count anything by hand.
+The rules live in [`../src/lib/roomCore.ts`](../src/lib/roomCore.ts) and
+[`../src/lib/rules.ts`](../src/lib/rules.ts), and the counters in
+[`../src/lib/countryStats.ts`](../src/lib/countryStats.ts) — all pure, and all
+shared with the browser — so the client and the server cannot disagree about what a move does,
 and `../test/online.test.ts` can play whole matches with no cloud account.
 
 ## Deploying

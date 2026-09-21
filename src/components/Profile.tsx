@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
-import { loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey } from '../lib/profile.ts';
+import {
+  chooseCountry, loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey,
+} from '../lib/profile.ts';
+import { countriesByName, countryFlag, UNKNOWN_COUNTRY } from '../lib/country.ts';
+import { useSettings } from '../lib/useSettings.ts';
 import { rankFor, type Stats } from '../lib/stats.ts';
 import { authEnabled, renameAccount, type Session } from '../lib/auth.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
@@ -42,6 +46,11 @@ export default function Profile({
   const t = useT();
   const [profile, setProfile] = useState(loadProfile);
   const rank = rankFor(stats.rating);
+  const { language } = useSettings();
+
+  // Built once per language: 250 names out of `Intl.DisplayNames`, sorted by
+  // the same locale's collator, is not work to redo on every keystroke.
+  const countries = useMemo(() => countriesByName(language), [language]);
 
   const feedback = () => { primeAudio(); playTap(); hapticTap(); };
 
@@ -49,6 +58,19 @@ export default function Profile({
     setProfile(next);
     saveProfile(next);
     onProfileChange();
+  };
+
+  /**
+   * Picking a country pins it: detection never overrides it again.
+   *
+   * Games already played are not moved — they were counted under the country
+   * that was set at the time, here and in the world table alike. Only the next
+   * game counts towards the new one.
+   */
+  const commitCountry = (code: string) => {
+    setProfile(chooseCountry(profile, code));
+    onProfileChange();
+    feedback();
   };
 
   // The name above is local storage and always the source of truth; signed
@@ -91,6 +113,21 @@ export default function Profile({
               onBlur={e => { void syncAccountName(e.target.value); }}
               aria-label={t('profile.name')}
             />
+          </Row>
+          <Row label={t('profile.country')} help={t('profile.countryHelp')}>
+            <select
+              className="text-input"
+              value={profile.country}
+              aria-label={t('profile.country')}
+              onChange={e => commitCountry(e.target.value)}
+            >
+              <option value={UNKNOWN_COUNTRY}>
+                {`🌍 ${t('profile.countryUnknown')}`}
+              </option>
+              {countries.map(c => (
+                <option key={c.code} value={c.code}>{`${countryFlag(c.code)} ${c.name}`}</option>
+              ))}
+            </select>
           </Row>
           <Row label={t('profile.avatar')}>
             <div className="avatar-picker" role="radiogroup" aria-label={t('profile.avatar')}>

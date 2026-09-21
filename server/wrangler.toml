@@ -51,6 +51,12 @@ new_sqlite_classes = ["Identity"]
 tag = "v3"
 new_sqlite_classes = ["Leaderboard"]
 
+# The world table: games played, per country, per difficulty. A new tag rather
+# than an edit to an earlier one, for exactly the reason spelled out above.
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["Stats"]
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
@@ -66,6 +72,10 @@ class_name = "Identity"
 [[durable_objects.bindings]]
 name = "LEADERBOARD"
 class_name = "Leaderboard"
+
+[[durable_objects.bindings]]
+name = "STATS"
+class_name = "Stats"
 
 [vars]
 # Origins allowed to call /queue from a *different* site. The game itself is

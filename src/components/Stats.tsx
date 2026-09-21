@@ -1,13 +1,44 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
-import type { StringKey } from '../i18n/index.ts';
+import type { StringKey, Translate } from '../i18n/index.ts';
 import { loadStats, rankFor, winRate, LEVEL_COUNT } from '../lib/stats.ts';
+import { rankCountries, type CountryRow, type CountryTable } from '../lib/countryStats.ts';
+import { countryFlag, countryName, UNKNOWN_COUNTRY } from '../lib/country.ts';
+import { fetchCountryTable, worldStatsEnabled } from '../lib/worldStats.ts';
+import { useSettings } from '../lib/useSettings.ts';
 import { CHALLENGES } from '../lib/challenges.ts';
 
 interface Props {
   completed: number[];
   onBack: () => void;
   onLeaderboard: () => void;
+}
+
+/** Enough of the world table to be a picture, not a directory. */
+const WORLD_ROWS = 10;
+
+/** "1×3 · 4×2": which difficulties those games were played at. */
+const levelSplit = (byLevel: number[]): string =>
+  byLevel.map((n, i) => (n > 0 ? `${i + 1}×${n}` : null)).filter(Boolean).join(' · ');
+
+/** A country: flag, name, how its games split across the levels, and the total. */
+function CountryRows({ rows, t, locale }: { rows: CountryRow[]; t: Translate; locale: string }) {
+  return (
+    <div className="level-table">
+      {rows.map(row => (
+        <div className="level-row" key={row.code}>
+          <span className="level-badge level-badge-sm">{countryFlag(row.code)}</span>
+          <span className="level-row-name">
+            {row.code === UNKNOWN_COUNTRY
+              ? t('stats.countryUnknown')
+              : countryName(row.code, locale) || row.code}
+          </span>
+          <span className="level-row-detail">{levelSplit(row.byLevel)}</span>
+          <span className="level-row-rate">{t('stats.countryRow', { games: row.games })}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Tile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -22,9 +53,23 @@ function Tile({ label, value, sub }: { label: string; value: string | number; su
 
 export default function Stats({ completed, onBack, onLeaderboard }: Props) {
   const t = useT();
+  const { language, shareStats } = useSettings();
   const stats = useMemo(() => loadStats(), []);
   const rank = rankFor(stats.rating);
   const levelName = (i: number) => t(`level.${i + 1}.name` as StringKey);
+
+  const mine = useMemo(() => rankCountries(stats.byCountry), [stats.byCountry]);
+
+  // The world table is somebody else's server, so the screen renders without
+  // it and fills the section in if and when it answers. No spinner, no layout
+  // that jumps: the section simply is not there until there is something in it.
+  const [world, setWorld] = useState<CountryTable | null>(null);
+  useEffect(() => {
+    if (!worldStatsEnabled()) return;
+    let live = true;
+    void fetchCountryTable().then(table => { if (live) setWorld(table); });
+    return () => { live = false; };
+  }, []);
 
   return (
     <div className="screen">
@@ -80,6 +125,9 @@ export default function Stats({ completed, onBack, onLeaderboard }: Props) {
               <Tile label={t('stats.bestMargin')} value={stats.bestMargin} />
             </div>
 
+            <h3 className="set-head">{t('stats.byCountry')}</h3>
+            <CountryRows rows={mine} t={t} locale={language} />
+
             <h3 className="set-head">{t('stats.byLevel')}</h3>
             <div className="level-table">
               {Array.from({ length: LEVEL_COUNT }, (_, i) => {
@@ -98,6 +146,26 @@ export default function Stats({ completed, onBack, onLeaderboard }: Props) {
                 );
               })}
             </div>
+          </>
+        )}
+
+        {world && (
+          <>
+            <h3 className="set-head">{t('stats.world')}</h3>
+            <p className="set-help set-help-block">
+              {t('stats.worldLead')}
+              {!shareStats && ` ${t('stats.worldOff')}`}
+            </p>
+            {world.countries.length === 0 ? (
+              <p className="empty-note">{t('stats.worldEmpty')}</p>
+            ) : (
+              <>
+                <CountryRows rows={world.countries.slice(0, WORLD_ROWS)} t={t} locale={language} />
+                <p className="set-help set-help-block">
+                  {t('stats.worldTotal', { games: world.total })}
+                </p>
+              </>
+            )}
           </>
         )}
 

@@ -202,7 +202,9 @@ export const en = {
   'settings.resetAll': 'Reset everything',
   'settings.resetDone': 'Reset done',
   'settings.confirmReset': 'This cannot be undone. Reset?',
-  'settings.noAccount': 'There are no accounts and nothing is sent anywhere — clearing your browser data clears this too.',
+  'settings.shareStats': 'Count my games worldwide',
+  'settings.shareStatsHelp': 'Sends the difficulty and your country when a game ends — nothing else, and nothing that identifies you. Your own record is kept either way.',
+  'settings.noAccount': 'There are no accounts, and your record stays on this device — clearing your browser data clears it too.',
 
   // ---- profile ---------------------------------------------------------
   'profile.brand': 'PROFILE',
@@ -215,6 +217,9 @@ export const en = {
   'profile.avatar': 'Avatar',
   'profile.rank': 'Rank',
   'profile.account': 'Signed in as',
+  'profile.country': 'Country',
+  'profile.countryHelp': 'Detected from your connection, and yours to change. Games you have already played stay counted under the country you played them from.',
+  'profile.countryUnknown': 'Not set',
 
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATS',
@@ -235,6 +240,14 @@ export const en = {
   'stats.seeds': 'Seeds captured',
   'stats.bestMargin': 'Best margin',
   'stats.byLevel': 'By difficulty',
+  'stats.byCountry': 'By country',
+  'stats.countryRow': '{games} played',
+  'stats.countryUnknown': 'No country',
+  'stats.world': 'Around the world',
+  'stats.worldLead': 'Games everyone has played, counted by country and difficulty.',
+  'stats.worldTotal': '{games} games counted worldwide',
+  'stats.worldEmpty': 'No games counted yet.',
+  'stats.worldOff': 'Counting is off — turn on “Count my games worldwide” in Settings to take part.',
   'stats.challenges': 'Challenges solved',
   'stats.noneAtLevel': 'not played',
   'stats.levelRow': '{wins}W · {losses}L · {draws}D',

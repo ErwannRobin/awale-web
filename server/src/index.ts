@@ -4,6 +4,9 @@
 //   GET  /room/:code   WebSocket upgrade into that room's Durable Object
 //   POST /queue        quick match: a code to sit in, or one to walk into
 //   POST /auth/*       signing in with a phone number, via phone-verif.com
+//   GET  /geo          which country this request came from
+//   POST /stats/game   count one finished game: a level and a country
+//   GET  /stats/countries  the world table
 //   GET  /health       is anybody home
 //   everything else    the game itself, from the ASSETS binding
 //
@@ -18,6 +21,8 @@
 // a signed-in player's seat is proved by a token nobody else can forge, and
 // everyone else plays exactly as before, anonymously.
 import { normaliseRoomCode } from '../../src/lib/protocol.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY } from '../../src/lib/country.ts';
+import { sanitiseLevel } from '../../src/lib/countryStats.ts';
 import { handleAuth, type AuthEnv } from './auth.ts';
 import type { QueueReply } from './lobby.ts';
 import type { RoomProbe } from './room.ts';
@@ -26,11 +31,14 @@ export { Room } from './room.ts';
 export { Lobby } from './lobby.ts';
 export { Identity } from './identity.ts';
 export { Leaderboard } from './leaderboard.ts';
+export { Stats } from './stats.ts';
 
 export interface Env extends AuthEnv {
   ROOM: DurableObjectNamespace;
   LOBBY: DurableObjectNamespace;
   LEADERBOARD: DurableObjectNamespace;
+  /** The world table. Absent on an older deploy, which simply has no stats. */
+  STATS?: DurableObjectNamespace;
   /** The built web app. Present in a deploy; absent under `wrangler dev` if
    *  the app has not been built yet, which is a warning, not a crash. */
   ASSETS?: Fetcher;
@@ -98,6 +106,58 @@ async function joinable(code: string, env: Env): Promise<boolean> {
   }
 }
 
+/**
+ * Which country this request came from.
+ *
+ * Cloudflare has already worked it out by the time we see the request, from an
+ * IP we never have to read, store, or send anywhere — `request.cf.country` (and
+ * the `CF-IPCountry` header behind it) is the whole of the geolocation in this
+ * codebase. `XX` and `T1` mean an anonymising proxy or Tor, which is a country
+ * we do not know rather than one we can guess at.
+ */
+function requestCountry(request: Request): string {
+  const cf = (request as { cf?: { country?: string } }).cf;
+  const raw = cf?.country ?? request.headers.get('cf-ipcountry') ?? '';
+  return normaliseCountry(raw);
+}
+
+/** The Stats object, or null on a deploy that predates the binding. */
+function statsObject(env: Env): DurableObjectStub | null {
+  if (!env.STATS) return null;
+  return env.STATS.get(env.STATS.idFromName('global'));
+}
+
+/**
+ * Count one finished game.
+ *
+ * The country comes from the body when the player has one set, and from the
+ * edge otherwise. Taking the body at its word is deliberate: a player may say
+ * where they are from, including a country they are not currently sitting in,
+ * and these are play counts rather than anything worth defending. The level is
+ * clamped, the country has to be a real code, and nothing else is read.
+ */
+async function countGame(request: Request, env: Env): Promise<Response> {
+  const stats = statsObject(env);
+  if (!stats) return new Response('stats are not enabled', { status: 503 });
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = await request.json() as Record<string, unknown>;
+  } catch {
+    return new Response('bad json', { status: 400 });
+  }
+
+  const claimed = normaliseCountry(body.country);
+  const country = claimed === UNKNOWN_COUNTRY ? requestCountry(request) : claimed;
+  const level = sanitiseLevel(typeof body.level === 'number' ? body.level : Number(body.level));
+
+  const response = await stats.fetch(
+    `https://stats/count?country=${country}&level=${level}`,
+    { method: 'POST' },
+  );
+  return new Response(response.body, { status: response.status, headers: response.headers });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -110,6 +170,42 @@ export default {
     // Sign-in, before the room routes: `/auth/*` is never a room code.
     const auth = await handleAuth(request, env, cors);
     if (auth) return auth;
+
+    if (url.pathname === '/geo') {
+      return Response.json(
+        { country: requestCountry(request) },
+        // Never cached: two players behind the same CDN node are not
+        // necessarily in the same country, and this answer is per-request.
+        { headers: { ...cors, 'cache-control': 'no-store' } },
+      );
+    }
+
+    if (url.pathname === '/stats/game') {
+      if (request.method !== 'POST') {
+        return new Response('use POST', { status: 405, headers: cors });
+      }
+      const counted = await countGame(request, env);
+      return new Response(counted.body, {
+        status: counted.status,
+        headers: { ...cors, 'content-type': counted.headers.get('content-type') ?? 'text/plain' },
+      });
+    }
+
+    if (url.pathname === '/stats/countries') {
+      const stats = statsObject(env);
+      if (!stats) return Response.json({ total: 0, updatedAt: 0, countries: [] }, { headers: cors });
+      const table = await stats.fetch('https://stats/table');
+      return new Response(table.body, {
+        status: table.status,
+        headers: {
+          ...cors,
+          'content-type': 'application/json',
+          // A table that is a minute stale is still a true picture, and this
+          // is the one route a crowd could all ask for at once.
+          'cache-control': 'public, max-age=60',
+        },
+      });
+    }
 
     if (url.pathname === '/health') {
       return new Response('ok', { headers: { ...cors, 'content-type': 'text/plain' } });
