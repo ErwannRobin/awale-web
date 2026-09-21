@@ -91,7 +91,7 @@ export const en = {
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture: land your last seed in an opponent pit that then holds 2 or 3 seeds.',
-  'tip.2': 'A capture can sweep up to four pits in a row — all holding 2 or 3.',
+  'tip.2': 'A capture sweeps backward through every pit in a row holding 2 or 3.',
   'tip.3': 'If your opponent is starving, you must play a move that feeds them.',
   'tip.4': "You may not capture every one of your opponent's seeds if another move exists.",
   'tip.5': "Loading a pit with many seeds keeps it out of your opponent's capture range.",
@@ -106,7 +106,7 @@ export const en = {
   'learn.2.h': 'Sowing',
   'learn.2.b': 'On your turn pick one of your non-empty pits and scatter all of its seeds one by one into the following pits, moving counterclockwise. The pit you lifted from is skipped if you loop all the way around.',
   'learn.3.h': 'Capturing',
-  'learn.3.b': "If your last seed lands in an opponent's pit that then holds exactly 2 or 3 seeds, you capture it. Capture also sweeps backward through the pits just before it while they too hold 2 or 3 — up to four pits in a row.",
+  'learn.3.b': "If your last seed lands in an opponent's pit that then holds exactly 2 or 3 seeds, you capture it. Capture also sweeps backward through the pits just before it, for as long as they too hold 2 or 3.",
   'learn.4.h': 'Feed your opponent',
   'learn.4.b': 'If the opponent has no seeds, you must play a move that reaches their side to give them some. A move that would capture every last one of their seeds (a "grand slam") is not allowed if any other move exists. If it is your only move, you play it but capture nothing: every seed stays on the board.',
   'learn.5.h': 'Winning',

@@ -72,23 +72,37 @@ eq('owner 11', owner(11), 1);
   eq('endgame own row folded', scores[0], 5);
 }
 
-// capture cap: at most 4 pits per move
+// the sweep stops at the last sown pit when that pit holds no capture
 {
   //               0  1  2  3  4  5  6  7  8  9 10 11
   const pits =   [ 0, 0, 0, 0, 0, 6, 1, 1, 1, 1, 1, 0];
   const scores = [0, 0];
   // pit 5 has 6 -> sows 6,7,8,9,10 (each ->2) and 11 (->1). last=11 (holds 1, no capture start).
   const r = distribute(pits, scores, 5);
-  eq('cap: last no-capture stops', r.captured.length, 0);
+  eq('sweep: last no-capture stops', r.captured.length, 0);
 }
+
+// no cap: the sweep runs the whole 2/3 chain, five pits here
 {
   //               0  1  2  3  4  5  6  7  8  9 10 11
-  const pits =   [ 0, 0, 0, 0, 0, 5, 1, 1, 1, 1, 1, 0];
+  const pits =   [ 0, 0, 0, 0, 0, 5, 1, 1, 1, 1, 1, 3];
   const scores = [0, 0];
-  // pit 5 has 5 -> sows 6,7,8,9,10 each ->2. last=10, sweep back while 2/3, capped at 4.
+  // pit 5 has 5 -> sows 6,7,8,9,10 each ->2. last=10, the chain runs back to 6.
+  // Pit 11 still holds 3, so this is not a grand slam and the whole chain is taken.
   const r = distribute(pits, scores, 5);
-  eq('cap: at most 4 pits', r.captured.length, 4);
-  eq('cap: score 8', scores[0], 8);
+  eq('sweep: five pits', r.captured, [10, 9, 8, 7, 6]);
+  eq('sweep: score 10', scores[0], 10);
+  eq('sweep: row emptied', pits.slice(6, 11), [0, 0, 0, 0, 0]);
+}
+
+// same shape without the spare pit: sweeping the chain would starve North, so
+// this is a grand slam and it is refused while South has another move.
+{
+  //               0  1  2  3  4  5  6  7  8  9 10 11
+  const pits =   [ 0, 0, 0, 0, 2, 5, 1, 1, 1, 1, 1, 0];
+  eq('five-pit sweep is a grand slam', attacksAllSeeds(pits, 5), true);
+  eq('five-pit grand slam illegal', isValid(pits, 5), false);
+  eq('alternative stays legal', isValid(pits, 4), true);
 }
 
 // grand slam with no alternative: the move is legal, but NOTHING is captured —

@@ -60,7 +60,7 @@ Twelve pits in a circle, six per player, four seeds each (48 total). On your tur
 you lift all the seeds from one of your non-empty pits and sow them one by one
 counterclockwise, skipping the pit you started from. If your last seed lands in an
 opponent pit that then holds 2 or 3 seeds you capture it, sweeping backward through
-adjacent 2/3 pits up to four in a row. You must feed a starving opponent when you
+every adjacent pit that also holds 2 or 3. You must feed a starving opponent when you
 can, and you may not capture *every* one of their seeds if another move exists
 (the grand-slam rule); when no other move exists the move is played but captures
 nothing at all. First to 25 seeds wins.

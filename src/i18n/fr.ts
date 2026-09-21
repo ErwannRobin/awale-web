@@ -92,7 +92,7 @@ export const fr: Record<keyof typeof en, string> = {
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture : votre dernière graine doit tomber dans un trou adverse qui contient alors 2 ou 3 graines.',
-  'tip.2': 'Une capture peut balayer jusqu’à quatre trous consécutifs — tous à 2 ou 3 graines.',
+  'tip.2': 'Une capture balaie en arrière tous les trous consécutifs à 2 ou 3 graines.',
   'tip.3': 'Si votre adversaire est affamé, vous devez jouer un coup qui le nourrit.',
   'tip.4': 'Vous ne pouvez pas capturer toutes les graines adverses s’il existe un autre coup.',
   'tip.5': 'Charger un trou de nombreuses graines le met hors de portée des captures adverses.',
@@ -107,7 +107,7 @@ export const fr: Record<keyof typeof en, string> = {
   'learn.2.h': 'Le semis',
   'learn.2.b': 'À votre tour, prenez toutes les graines d’un de vos trous non vides et déposez-les une par une dans les trous suivants, dans le sens antihoraire. Le trou de départ est sauté si vous faites le tour complet.',
   'learn.3.h': 'La capture',
-  'learn.3.b': 'Si votre dernière graine tombe dans un trou adverse qui contient alors exactement 2 ou 3 graines, vous la capturez. La capture remonte aussi les trous précédents tant qu’ils contiennent 2 ou 3 graines — jusqu’à quatre trous consécutifs.',
+  'learn.3.b': 'Si votre dernière graine tombe dans un trou adverse qui contient alors exactement 2 ou 3 graines, vous la capturez. La capture remonte aussi les trous précédents tant qu’ils contiennent 2 ou 3 graines.',
   'learn.4.h': 'Nourrir l’adversaire',
   'learn.4.b': 'Si l’adversaire n’a plus de graines, vous devez jouer un coup qui atteint son camp pour lui en donner. Un coup qui capturerait absolument toutes ses graines (un « grand chelem ») est interdit s’il existe un autre coup. Si c’est votre seul coup, vous le jouez mais ne capturez rien : toutes les graines restent sur le plateau.',
   'learn.5.h': 'La victoire',
