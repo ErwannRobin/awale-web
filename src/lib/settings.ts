@@ -13,6 +13,8 @@ export type Language = 'en' | 'fr';
 
 export interface Settings {
   sound: boolean;
+  /** Ambiance loop, separate from sound effects — some players want one but not the other. */
+  music: boolean;
   haptics: boolean;
   speed: SpeedName;
   theme: ThemeName;
@@ -50,6 +52,7 @@ function detectLanguage(): Language {
 export function defaultSettings(): Settings {
   return {
     sound: true,
+    music: true,
     haptics: true,
     speed: 'normal',
     theme: 'wood',
@@ -72,6 +75,7 @@ function coerce(raw: unknown): Settings {
   const bool = (v: unknown, fb: boolean) => (typeof v === 'boolean' ? v : fb);
   return {
     sound: bool(o.sound, d.sound),
+    music: bool(o.music, d.music),
     haptics: bool(o.haptics, d.haptics),
     speed: SPEEDS.includes(o.speed as SpeedName) ? (o.speed as SpeedName) : d.speed,
     theme: THEMES.includes(o.theme as ThemeName) ? (o.theme as ThemeName) : d.theme,

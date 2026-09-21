@@ -169,6 +169,8 @@ export const fr: Record<keyof typeof en, string> = {
   'settings.sectionData': 'Vos données',
   'settings.sound': 'Effets sonores',
   'settings.soundHelp': 'Chute des graines, captures et fin de partie.',
+  'settings.music': 'Musique d’ambiance',
+  'settings.musicHelp': 'Une boucle de djembé pendant la partie.',
   'settings.haptics': 'Vibrations',
   'settings.hapticsHelp': 'Tous les appareils et navigateurs ne le prennent pas en charge.',
   'settings.speed': 'Vitesse d’animation',

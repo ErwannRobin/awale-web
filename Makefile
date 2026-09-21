@@ -22,7 +22,7 @@ VITE_ONLINE_URL ?=
 
 .PHONY: help install install-web install-server dev dev-server dev-online \
         build build-prod preview lint typecheck test test-e2e test-challenges \
-        test-server check verify deploy tail sync open-android open-ios \
+        test-server check verify sound deploy tail sync open-android open-ios \
         run-android run-ios clean distclean
 
 ## help: list the targets
@@ -111,6 +111,13 @@ check: lint build test
 
 ## verify: everything CI runs, end-to-end suites included
 verify: check test-server test-challenges test-e2e
+
+## sound: regenerate one sound clip with ElevenLabs, e.g. `make sound NAME=scoop-2`
+sound: install-web
+ifndef NAME
+	$(error usage: make sound NAME=<clip-name>, e.g. NAME=scoop-2 — see scripts/gen-sounds.ts for the list)
+endif
+	npm run sounds:generate -- $(NAME)
 
 # --- deploying -------------------------------------------------------------
 

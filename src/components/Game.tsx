@@ -5,7 +5,7 @@ import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
 import { loadStats, saveStats, applyResult, type Outcome } from '../lib/stats.ts';
 import type { SavedGame } from '../lib/saveGame.ts';
-import { playTap } from '../lib/sound.ts';
+import { playTap, playMusic, stopMusic } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
 import { maybeRequestReview } from '../lib/review.ts';
@@ -102,6 +102,9 @@ export default function Game({
   // then. See lib/review.ts for the rules on top of the OS throttle.
   const reviewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(reviewTimer.current), []);
+
+  // Ambiance loop for the duration of the board, on then off.
+  useEffect(() => { playMusic(); return stopMusic; }, []);
 
   // Rated free play folds the result into the local record and rating.
   const onFinish = useCallback((winner: Winner, scores: number[]) => {

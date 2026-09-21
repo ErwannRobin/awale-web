@@ -133,8 +133,9 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
     const disp = [...pre]; disp[pit] = 0; setPits([...disp]);
 
     res.sowed.forEach((idx, k) => at(sowMs * (k + 1), () => {
+      const before = disp[idx];   // how full the pit was before this seed landed
       disp[idx]++; setActivePit(idx); setPits([...disp]);
-      if (factor > 0) playSow(k);
+      if (factor > 0) playSow(k, before);
     }));
     const afterSow = sowMs * (res.sowed.length + 1);
     res.captured.forEach((cap, k) => at(afterSow + capMs * k, () => {
@@ -142,7 +143,10 @@ export default function Tutorial({ onExit, onChallenges, onPlay }: Props) {
       disp[cap] = 0; setPits([...disp]);
       setScores(prev => { const ns = [...prev]; ns[mover] += sown[cap]; return ns; });
     }));
-    if (res.captured.length > 0) at(afterSow, () => { playCapture(res.captured.length); hapticCapture(); });
+    if (res.captured.length > 0) at(afterSow, () => {
+      playCapture(res.captured.length, res.captured.reduce((sum, c) => sum + sown[c], 0));
+      hapticCapture();
+    });
 
     const end = afterSow + capMs * res.captured.length + 240 * factor;
     at(end, () => {
