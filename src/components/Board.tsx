@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import Seeds from './Seeds.tsx';
 import type { GameState } from '../lib/useGame.ts';
 import { boardLayout } from '../lib/layout.ts';
-import { previewMove, type MovePreview } from '../lib/preview.ts';
+import { landingPit } from '../lib/preview.ts';
 import { useOrientation } from '../lib/useOrientation.ts';
 import { useSettings } from '../lib/useSettings.ts';
 import { hapticTap } from '../lib/haptics.ts';
@@ -21,13 +21,7 @@ const LONG_PRESS_MS = 320;
 const SLOP_PX = 12;
 
 // End-store seed pile (captured seeds visibly accumulate).
-function Store({
-  count, side, label, incoming,
-}: {
-  count: number; side: 'near' | 'far'; label: string;
-  /** Seeds the previewed move would drop in here. */
-  incoming?: number;
-}) {
+function Store({ count, side, label }: { count: number; side: 'near' | 'far'; label: string }) {
   const pile = Math.min(count, 30);
   const dots = [];
   for (let i = 0; i < pile; i++) {
@@ -47,10 +41,9 @@ function Store({
     );
   }
   return (
-    <div className={`store store-${side}${incoming ? ' store-preview' : ''}`} aria-label={label}>
+    <div className={`store store-${side}`} aria-label={label}>
       <div className="store-hollow" aria-hidden>{dots}</div>
       <div className="store-count">{count}</div>
-      {!!incoming && <div className="store-gain" aria-hidden>+{incoming}</div>}
     </div>
   );
 }
@@ -72,16 +65,16 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
 
   // ---- move preview ------------------------------------------------------
   // Hovering (mouse) or holding (touch) a playable pit answers the question a
-  // beginner asks every turn: where do these seeds end up? The preview is
-  // derived, never stored in the game state — it can go stale but never wrong.
-  const [preview, setPreview] = useState<MovePreview | null>(null);
+  // beginner asks every turn: where does my last seed land? Just that pit —
+  // sketching the whole sowing turns a glance into arithmetic. The preview is
+  // derived, never stored in the game state.
+  const [preview, setPreview] = useState<{ source: number; target: number } | null>(null);
 
   const showPreview = useCallback((pit: number | null) => {
     setPreview(prev => {
-      if (pit === null) return prev === null ? prev : null;
-      if (!isLegal(pit)) return prev === null ? prev : null;
+      if (pit === null || !isLegal(pit)) return prev === null ? prev : null;
       if (prev?.source === pit) return prev;
-      return previewMove(state.pits, pit);
+      return { source: pit, target: landingPit(state.pits, pit) };
     });
   }, [isLegal, state.pits]);
 
@@ -159,8 +152,7 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
 
   const renderPit = (pit: number, rowSide: 'far' | 'near') => {
     const legal = isLegal(pit);
-    const gain = preview?.gain[pit] ?? 0;
-    const taken = preview?.captured.includes(pit) ?? false;
+    const target = preview?.target === pit;
     const cls = [
       'pit',
       `pit-${rowSide}`,
@@ -168,22 +160,14 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
       state.activePit === pit ? 'pit-active' : '',
       state.capturing.includes(pit) ? 'pit-capturing' : '',
       state.hintPit === pit ? 'pit-hint' : '',
-      preview ? 'pit-previewing' : '',
-      preview?.source === pit ? 'pit-preview-source' : '',
-      gain > 0 ? 'pit-preview-sow' : '',
-      taken ? 'pit-preview-capture' : '',
-      preview && preview.last === pit ? 'pit-preview-last' : '',
+      target ? 'pit-target' : '',
     ].join(' ');
     const count = state.pits[pit];
-    const after = preview ? preview.after[pit] : count;
     const params = {
       seat: rowSide === 'near' ? t('a11y.seatYours') : t('a11y.seatOpp'),
       index: (pit % 6) + 1,
       count,
     };
-    // `count` is what is in the bowl; during a preview the real seeds are
-    // packed for the post-sow total so the ghosts slot in beside them.
-    const shownCount = preview?.source === pit ? 0 : count;
     return (
       <button
         key={pit}
@@ -202,27 +186,22 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
         aria-label={t(legal ? 'a11y.pitPlayable' : 'a11y.pit', params)}
       >
         <span className="pit-bowl">
-          <Seeds pit={pit} count={shownCount} total={after} />
-          {gain > 0 && <Seeds pit={pit} count={after} from={count} total={after} ghost />}
+          {/* The bowl is packed for one more seed so the ghost — the seed that
+              would land here — slots in beside the ones already in it. */}
+          <Seeds pit={pit} count={count} total={target ? count + 1 : count} />
+          {target && <Seeds pit={pit} count={count + 1} from={count} total={count + 1} ghost />}
         </span>
-        {gain > 0 && (
-          <span className={`pit-gain${taken ? ' pit-gain-capture' : ''}`} aria-hidden>
-            {taken ? `↑${after}` : `+${gain}`}
-          </span>
-        )}
         {showCounts && <span className="pit-count" aria-hidden>{count}</span>}
       </button>
     );
   };
 
-  const nearGain = preview && preview.mover === viewpoint ? preview.capturedSeeds : 0;
   const nearStore = (
-    <Store key="near" count={state.scores[viewpoint]} side="near" incoming={nearGain}
+    <Store key="near" count={state.scores[viewpoint]} side="near"
            label={t('a11y.yourStore', { count: state.scores[viewpoint] })} />
   );
   const farStore = (
     <Store key="far" count={state.scores[opp]} side="far"
-           incoming={preview && preview.mover === opp ? preview.capturedSeeds : 0}
            label={t('a11y.oppStore', { count: state.scores[opp] })} />
   );
 
