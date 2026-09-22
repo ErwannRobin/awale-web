@@ -67,6 +67,10 @@ console.assert(
   Math.abs(drawWinner - 1200) < Math.abs(winnerRating - 1200),
   'Rating change after draw should be less than after win',
 );
+console.assert(
+  Math.abs(drawWinner - 1200) === Math.abs(drawLoser - 1200),
+  'Equal opponents should move by the same amount after a draw',
+);
 
 // Test new player K-factor
 const { winner: newPlayerWin } = calculateNewRatings(

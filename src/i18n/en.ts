@@ -219,7 +219,8 @@ export const en = {
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATS',
   'stats.title': 'Your record',
-  'stats.lead': 'Local to this device. Your rating measures you against the four AI levels — there is no online ladder yet.',
+  'stats.lead': 'Local to this device. Your rating measures you against the four AI levels — for how you stack up against other players, see the global leaderboard.',
+  'stats.viewLeaderboard': 'View global leaderboard',
   'stats.empty': 'No games yet. Play one and this fills up.',
   'stats.peak': 'Peak',
   'stats.nextRank': '{points} to {rank}',
@@ -241,7 +242,8 @@ export const en = {
   // ---- records ---------------------------------------------------------
   'records.brand': 'RECORDS',
   'records.title': 'Your best games',
-  'records.lead': 'Your own results, ranked. A global leaderboard needs an online service, which this build does not have.',
+  'records.lead': 'Your own results, ranked. Sign in and play rated matches to also appear on the global leaderboard.',
+  'records.viewLeaderboard': 'View global leaderboard',
   'records.empty': 'Win a game and it shows up here.',
   'records.recent': 'Recent games',
   'records.vs': 'vs {level}',

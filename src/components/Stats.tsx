@@ -7,6 +7,7 @@ import { CHALLENGES } from '../lib/challenges.ts';
 interface Props {
   completed: number[];
   onBack: () => void;
+  onLeaderboard: () => void;
 }
 
 function Tile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -19,7 +20,7 @@ function Tile({ label, value, sub }: { label: string; value: string | number; su
   );
 }
 
-export default function Stats({ completed, onBack }: Props) {
+export default function Stats({ completed, onBack, onLeaderboard }: Props) {
   const t = useT();
   const stats = useMemo(() => loadStats(), []);
   const rank = rankFor(stats.rating);
@@ -36,6 +37,7 @@ export default function Stats({ completed, onBack }: Props) {
       <div className="panel-body">
         <h2 className="learn-title">{t('stats.title')}</h2>
         <p className="learn-lead">{t('stats.lead')}</p>
+        <button className="pill" onClick={onLeaderboard}>{t('stats.viewLeaderboard')}</button>
 
         <div className="rank-card">
           <div className="rank-badge">{stats.rating}</div>

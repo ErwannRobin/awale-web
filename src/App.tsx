@@ -335,10 +335,19 @@ export default function App() {
       )}
 
       {screen.name === 'stats' && (
-        <StatsScreen completed={completed} onBack={() => nav.back({ name: 'menu' })} />
+        <StatsScreen
+          completed={completed}
+          onBack={() => nav.back({ name: 'menu' })}
+          onLeaderboard={() => nav.go({ name: 'leaderboard' })}
+        />
       )}
 
-      {screen.name === 'records' && <Records onBack={() => nav.back({ name: 'menu' })} />}
+      {screen.name === 'records' && (
+        <Records
+          onBack={() => nav.back({ name: 'menu' })}
+          onLeaderboard={() => nav.go({ name: 'leaderboard' })}
+        />
+      )}
 
       {screen.name === 'leaderboard' && (
         <Leaderboard onBack={() => nav.back({ name: 'menu' })} />

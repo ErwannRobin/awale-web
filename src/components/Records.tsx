@@ -4,7 +4,7 @@ import type { StringKey } from '../i18n/index.ts';
 import { useSettings } from '../lib/useSettings.ts';
 import { loadStats, type GameRecord } from '../lib/stats.ts';
 
-interface Props { onBack: () => void }
+interface Props { onBack: () => void; onLeaderboard: () => void }
 
 const OUTCOME_KEY = { win: 'records.win', loss: 'records.loss', draw: 'records.draw' } as const;
 
@@ -35,7 +35,7 @@ function RecordRow({ r, rank, locale }: { r: GameRecord; rank?: number; locale: 
   );
 }
 
-export default function Records({ onBack }: Props) {
+export default function Records({ onBack, onLeaderboard }: Props) {
   const t = useT();
   const stats = useMemo(() => loadStats(), []);
   const { language: locale } = useSettings();
@@ -60,6 +60,7 @@ export default function Records({ onBack }: Props) {
       <div className="panel-body">
         <h2 className="learn-title">{t('records.title')}</h2>
         <p className="learn-lead">{t('records.lead')}</p>
+        <button className="pill" onClick={onLeaderboard}>{t('records.viewLeaderboard')}</button>
 
         {best.length === 0 ? (
           <p className="empty-note">{t('records.empty')}</p>

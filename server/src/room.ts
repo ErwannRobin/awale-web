@@ -36,12 +36,6 @@ interface SocketTag {
   seat: Seat | null;
 }
 
-/** `AuthEnv` plus the leaderboard binding, needed only to post a rated
- *  game's result once it ends. */
-interface RoomEnv extends AuthEnv {
-  LEADERBOARD: DurableObjectNamespace;
-}
-
 export class Room implements DurableObject {
   private cached: RoomState | null = null;
 
@@ -49,9 +43,9 @@ export class Room implements DurableObject {
 
   // Kept for two reasons: verifying the session token on `hello`, and
   // posting rating updates to Identity/Leaderboard once a rated game ends.
-  private readonly env: RoomEnv;
+  private readonly env: AuthEnv;
 
-  constructor(state: DurableObjectState, env: RoomEnv) {
+  constructor(state: DurableObjectState, env: AuthEnv) {
     this.state = state;
     this.env = env;
   }
