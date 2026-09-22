@@ -29,6 +29,7 @@ export const en = {
   'menu.recordsSub': 'Your best games',
   'menu.ranks': 'Rank',
   'menu.stats': 'Stats',
+  'menu.leaderboard': 'Leaderboard',
 
   // ---- difficulty ------------------------------------------------------
   'level.1.name': 'Novice',
@@ -325,6 +326,20 @@ export const en = {
   'signIn.privacyTitle': 'Your number is never shown to anyone',
   'signIn.privacyBody': 'It proves you are you, once. The game stores a display name and nothing else — no number, no contacts, no messages.',
   'online.errVersion': 'This version of the game is too old for that room. Reload to update.',
+
+  // ---- leaderboard ------------------------------------------------------
+  'leaderboard.title': 'Leaderboard',
+  'leaderboard.loading': 'Loading leaderboard...',
+  'leaderboard.error': 'Failed to load leaderboard',
+  'leaderboard.retry': 'Retry',
+  'leaderboard.totalPlayers': '{count} players',
+  'leaderboard.updatedAt': 'Updated: {time}',
+  'leaderboard.rank': 'Rank',
+  'leaderboard.name': 'Name',
+  'leaderboard.rating': 'Rating',
+  'leaderboard.games': 'Games',
+  'leaderboard.wins': 'Wins',
+  'leaderboard.notAvailable': 'Leaderboard requires online play to be enabled',
 
   // ---- errors ----------------------------------------------------------
   'error.title': 'Something broke',

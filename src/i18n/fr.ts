@@ -30,6 +30,7 @@ export const fr: Record<keyof typeof en, string> = {
   'menu.recordsSub': 'Vos meilleures parties',
   'menu.ranks': 'Rang',
   'menu.stats': 'Statistiques',
+  'menu.leaderboard': 'Classement',
 
   // ---- difficulty ------------------------------------------------------
   'level.1.name': 'Novice',
@@ -324,6 +325,20 @@ export const fr: Record<keyof typeof en, string> = {
   'signIn.privacyTitle': 'Votre numéro n’est jamais montré à personne',
   'signIn.privacyBody': 'Il prouve votre identité, une fois. Le jeu ne conserve qu’un nom affiché — ni numéro, ni contacts, ni messages.',
   'online.errVersion': 'Cette version du jeu est trop ancienne pour ce salon. Rechargez la page.',
+
+  // ---- leaderboard ------------------------------------------------------
+  'leaderboard.title': 'Classement',
+  'leaderboard.loading': 'Chargement du classement...',
+  'leaderboard.error': 'Échec du chargement du classement',
+  'leaderboard.retry': 'Réessayer',
+  'leaderboard.totalPlayers': '{count} joueurs',
+  'leaderboard.updatedAt': 'Mis à jour: {time}',
+  'leaderboard.rank': 'Rang',
+  'leaderboard.name': 'Nom',
+  'leaderboard.rating': 'Classement',
+  'leaderboard.games': 'Parties',
+  'leaderboard.wins': 'Victoires',
+  'leaderboard.notAvailable': 'Le classement nécessite que le jeu en ligne soit activé',
 
   // ---- errors ----------------------------------------------------------
   'error.title': 'Quelque chose a cassé',
