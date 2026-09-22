@@ -330,9 +330,11 @@ export const fr: Record<keyof typeof en, string> = {
 
   // ---- leaderboard ------------------------------------------------------
   'leaderboard.title': 'Classement',
+  'leaderboard.lead': 'Classement mondial des parties en ligne classées, tous joueurs confondus.',
   'leaderboard.loading': 'Chargement du classement...',
   'leaderboard.error': 'Échec du chargement du classement',
   'leaderboard.retry': 'Réessayer',
+  'leaderboard.empty': 'Aucun joueur classé pour le moment.',
   'leaderboard.totalPlayers': '{count} joueurs',
   'leaderboard.updatedAt': 'Mis à jour: {time}',
   'leaderboard.rank': 'Rang',

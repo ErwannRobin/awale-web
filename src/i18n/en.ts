@@ -331,9 +331,11 @@ export const en = {
 
   // ---- leaderboard ------------------------------------------------------
   'leaderboard.title': 'Leaderboard',
+  'leaderboard.lead': 'Global rankings for rated online matches, across every player.',
   'leaderboard.loading': 'Loading leaderboard...',
   'leaderboard.error': 'Failed to load leaderboard',
   'leaderboard.retry': 'Retry',
+  'leaderboard.empty': 'No ranked players yet.',
   'leaderboard.totalPlayers': '{count} players',
   'leaderboard.updatedAt': 'Updated: {time}',
   'leaderboard.rank': 'Rank',
