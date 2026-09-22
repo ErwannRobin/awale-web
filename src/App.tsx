@@ -12,6 +12,7 @@ import ProfileScreen from './components/Profile.tsx';
 import SettingsScreen from './components/Settings.tsx';
 import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
+import Leaderboard from './components/Leaderboard.tsx';
 import type { GameSetup } from './lib/useGame.ts';
 import { loadCompleted, saveCompleted } from './lib/progress.ts';
 import { loadProfile } from './lib/profile.ts';
@@ -43,6 +44,7 @@ type Screen =
   | { name: 'signIn'; back: Screen }
   | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
+  | { name: 'leaderboard' }
   // Help and Settings are reachable mid-game, so they carry the screen to
   // return to. Without that, tapping ⚙ during a game would drop the board.
   | { name: 'learn'; back: Screen }
@@ -265,6 +267,7 @@ export default function App() {
           onProfile={openProfile}
           onStats={() => nav.go({ name: 'stats' })}
           onRecords={() => nav.go({ name: 'records' })}
+          onLeaderboard={() => nav.go({ name: 'leaderboard' })}
         />
       )}
 
@@ -336,6 +339,10 @@ export default function App() {
       )}
 
       {screen.name === 'records' && <Records onBack={() => nav.back({ name: 'menu' })} />}
+
+      {screen.name === 'leaderboard' && (
+        <Leaderboard onBack={() => nav.back({ name: 'menu' })} />
+      )}
 
       {screen.name === 'tutorial' && (
         <Tutorial

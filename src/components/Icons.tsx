@@ -118,3 +118,11 @@ export const GearIcon = () => (
     />
   </Icon>
 );
+
+/** Back / Previous. */
+export const BackIcon = () => (
+  <Icon>
+    <path d="M19.2 12 12 5.8 4.8 12" />
+    <path d="M12 5.8v12.4" />
+  </Icon>
+);

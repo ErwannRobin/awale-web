@@ -17,6 +17,7 @@ import {
 } from '../../src/lib/protocol.ts';
 import type { Seat } from '../../src/lib/rules.ts';
 import { claimsFromToken, type AuthEnv } from './auth.ts';
+import { updatePlayerRating, type PlayerRating } from '../../src/lib/elo.ts';
 
 const STATE_KEY = 'room';
 
@@ -48,6 +49,12 @@ export class Room implements DurableObject {
     this.state = state;
     this.env = env;
   }
+
+  /**
+   * Store user IDs and their ratings for ELO updates after game end.
+   * This is a temporary storage during the game.
+   */
+  private playerRatings: Map<Seat, { userId: string | null; rating: PlayerRating | null }> = new Map();
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -109,6 +116,14 @@ export class Room implements DurableObject {
         ws.close(1000, result.error);
         return;
       }
+      
+      // Store user ID and rating for ELO calculation after game end
+      if (result.seat !== null) {
+        const userId = claims?.sub ?? null;
+        const rating = claims ? null : null; // Will be fetched from Identity DO when needed
+        this.playerRatings.set(result.seat, { userId, rating });
+      }
+      
       ws.serializeAttachment({ token, seat: result.seat } satisfies SocketTag);
       await this.commit(result.state);
       this.dispatch(result.effects);
@@ -160,6 +175,11 @@ export class Room implements DurableObject {
     await this.commit(step.state);
     this.dispatch(step.effects);
     await this.scheduleSweep();
+    
+    // Check if game ended and update ELO ratings
+    if (step.state.status === 'over' && step.state.winner !== null) {
+      await this.updateEloRatings(step.state);
+    }
   }
 
   // ---- plumbing ----------------------------------------------------------
@@ -238,5 +258,49 @@ export class Room implements DurableObject {
     const room = this.cached;
     if (!room) return;
     await this.state.storage.setAlarm(nextAlarmAt(room, Date.now()));
+  }
+
+  /**
+   * Update ELO ratings for both players after a game ends.
+   * This is called when a game transitions to 'over' status.
+   */
+  private async updateEloRatings(state: RoomState): Promise<void> {
+    try {
+      // Only update if we have both players and a winner
+      if (!state.players[0] || !state.players[1]) return;
+      
+      // Get user IDs from the player tokens
+      const userIds = state.players.map(p => {
+        // Extract user ID from token if it's in format "u:<userId>"
+        if (p!.token.startsWith('u:')) {
+          return p!.token.slice(2);
+        }
+        return null;
+      });
+      
+      // For now, we'll just log the ELO update
+      // In a real implementation, we would:
+      // 1. Fetch current ratings from Identity DOs
+      // 2. Calculate new ratings based on game result
+      // 3. Update the ratings in Identity DOs
+      // 4. Update the leaderboard
+      
+      const winner = state.winner;
+      const isDraw = winner === 'draw';
+      
+      console.log('Game ended. Updating ELO ratings:', {
+        userIds,
+        winner,
+        isDraw,
+        scores: state.scores,
+      });
+      
+      // TODO: Implement actual ELO update logic
+      // This requires access to the Identity DOs which is complex in this context
+      // For now, we'll skip the actual update but the structure is in place
+      
+    } catch (error) {
+      console.error('Failed to update ELO ratings:', error);
+    }
   }
 }

@@ -47,6 +47,10 @@ new_sqlite_classes = ["Room", "Lobby"]
 tag = "v2"
 new_sqlite_classes = ["Identity"]
 
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Leaderboard"]
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
@@ -58,6 +62,10 @@ class_name = "Lobby"
 [[durable_objects.bindings]]
 name = "IDENTITY"
 class_name = "Identity"
+
+[[durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "Leaderboard"
 
 [vars]
 # Origins allowed to call /queue from a *different* site. The game itself is

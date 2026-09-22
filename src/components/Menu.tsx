@@ -30,6 +30,7 @@ interface Props {
   onProfile: () => void;
   onStats: () => void;
   onRecords: () => void;
+  onLeaderboard: () => void;
 }
 
 function Diamond() {
@@ -39,7 +40,7 @@ function Diamond() {
 export default function Menu({
   profile, stats, completed, saved,
   onPlayAI, onPlayLocal, onQuickMatch, onContinue, onOnline,
-  onTutorial, onChallenges, onSettings, onProfile, onStats, onRecords,
+  onTutorial, onChallenges, onSettings, onProfile, onStats, onRecords, onLeaderboard,
 }: Props) {
   const t = useT();
   const [pickAI, setPickAI] = useState(false);
@@ -62,6 +63,9 @@ export default function Menu({
           </span>
         </button>
         <div className="menu-top-right">
+          <button className="icon-btn" onClick={go(onLeaderboard)} aria-label={t('menu.leaderboard')}>
+            <GlobeIcon />
+          </button>
           <button className="icon-btn" onClick={go(onRecords)} aria-label={t('menu.records')}>
             <TrophyIcon />
           </button>

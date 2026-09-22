@@ -21,14 +21,17 @@ import { normaliseRoomCode } from '../../src/lib/protocol.ts';
 import { handleAuth, type AuthEnv } from './auth.ts';
 import type { QueueReply } from './lobby.ts';
 import type { RoomProbe } from './room.ts';
+import type { LeaderboardResponse } from './leaderboard.ts';
 
 export { Room } from './room.ts';
 export { Lobby } from './lobby.ts';
 export { Identity } from './identity.ts';
+export { Leaderboard } from './leaderboard.ts';
 
 export interface Env extends AuthEnv {
   ROOM: DurableObjectNamespace;
   LOBBY: DurableObjectNamespace;
+  LEADERBOARD: DurableObjectNamespace;
   /** The built web app. Present in a deploy; absent under `wrangler dev` if
    *  the app has not been built yet, which is a warning, not a crash. */
   ASSETS?: Fetcher;
@@ -119,6 +122,11 @@ export default {
       }
       const reply = await queue(env);
       return Response.json(reply, { headers: cors });
+    }
+
+    if (url.pathname === '/leaderboard') {
+      const leaderboard = env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'));
+      return leaderboard.fetch(new Request(request.url, request));
     }
 
     const match = /^\/room\/([^/]+)$/.exec(url.pathname);

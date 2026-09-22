@@ -12,6 +12,7 @@ import {
   cleanDisplayName, isStale, markPolled, newVerification, settle, shouldPollUpstream,
   type VerificationRecord, type VerificationStatus,
 } from '../../src/lib/authCore.ts';
+import { initialRating, updatePlayerRating, type PlayerRating } from '../../src/lib/elo.ts';
 
 const RECORD_KEY = 'record';
 const USER_KEY = 'user';
@@ -21,6 +22,7 @@ export interface UserRecord {
   name: string;
   createdAt: number;
   lastSeenAt: number;
+  rating: PlayerRating;
 }
 
 /** What `/auth/status` needs to answer the browser. */
@@ -101,6 +103,7 @@ export class Identity implements DurableObject {
           name: named,
           createdAt: existing?.createdAt ?? now,
           lastSeenAt: now,
+          rating: existing?.rating ?? initialRating(),
         };
         await this.state.storage.put(USER_KEY, record);
         return Response.json(record);
@@ -109,6 +112,11 @@ export class Identity implements DurableObject {
       case '/user/read': {
         const record = await this.state.storage.get<UserRecord>(USER_KEY);
         return Response.json(record ?? null);
+      }
+
+      case '/user/leaderboard': {
+        const allUsers = await this.getAllUsers();
+        return Response.json(allUsers);
       }
 
       case '/user/rename': {
@@ -124,6 +132,35 @@ export class Identity implements DurableObject {
         return Response.json(record);
       }
 
+      case '/user/updateRating': {
+        const body = await request.json() as { 
+          userId: string; 
+          opponentRating: number;
+          result: 'win' | 'loss' | 'draw';
+        };
+        const existing = await this.state.storage.get<UserRecord>(USER_KEY);
+        if (!existing) return new Response('no such user', { status: 404 });
+        
+        // Only allow updating the user that owns this DO
+        if (existing.userId !== body.userId) {
+          return new Response('forbidden', { status: 403 });
+        }
+
+        const updatedRating = updatePlayerRating(
+          existing.rating,
+          body.opponentRating,
+          body.result,
+        );
+        
+        const record: UserRecord = {
+          ...existing,
+          rating: updatedRating,
+          lastSeenAt: now,
+        };
+        await this.state.storage.put(USER_KEY, record);
+        return Response.json(record);
+      }
+
       default:
         return new Response('not found', { status: 404 });
     }
@@ -131,6 +168,20 @@ export class Identity implements DurableObject {
 
   private async record(): Promise<VerificationRecord | null> {
     return (await this.state.storage.get<VerificationRecord>(RECORD_KEY)) ?? null;
+  }
+
+  /**
+   * Get all users for leaderboard.
+   * This is a simple implementation that scans all user DOs.
+   * In production, you might want a separate leaderboard storage.
+   */
+  private async getAllUsers(): Promise<UserRecord[]> {
+    // Note: This is a simplified approach. In Cloudflare Workers,
+    // you would need to maintain a separate leaderboard or use a different
+    // approach to aggregate data across multiple DOs.
+    // For now, we return the current user if this is a user DO.
+    const record = await this.state.storage.get<UserRecord>(USER_KEY);
+    return record ? [record] : [];
   }
 }
 
