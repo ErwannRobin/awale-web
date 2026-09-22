@@ -141,9 +141,9 @@ export async function claimsFromToken(
 
 // --- the identity store ----------------------------------------------------
 
-const stub = (env: AuthEnv, name: string) => env.IDENTITY.get(env.IDENTITY.idFromName(name));
+export const stub = (env: AuthEnv, name: string) => env.IDENTITY.get(env.IDENTITY.idFromName(name));
 
-const post = async <T>(
+export const post = async <T>(
   target: DurableObjectStub, path: string, body?: unknown,
 ): Promise<T> => {
   const response = await target.fetch(`https://identity${path}`, {

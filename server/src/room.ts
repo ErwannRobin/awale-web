@@ -16,8 +16,8 @@ import {
   type ServerMsg,
 } from '../../src/lib/protocol.ts';
 import type { Seat } from '../../src/lib/rules.ts';
-import { claimsFromToken, type AuthEnv } from './auth.ts';
-import { updatePlayerRating, type PlayerRating } from '../../src/lib/elo.ts';
+import { claimsFromToken, post, stub, type AuthEnv } from './auth.ts';
+import type { UserRecord } from './identity.ts';
 
 const STATE_KEY = 'room';
 
@@ -36,25 +36,25 @@ interface SocketTag {
   seat: Seat | null;
 }
 
+/** `AuthEnv` plus the leaderboard binding, needed only to post a rated
+ *  game's result once it ends. */
+interface RoomEnv extends AuthEnv {
+  LEADERBOARD: DurableObjectNamespace;
+}
+
 export class Room implements DurableObject {
   private cached: RoomState | null = null;
 
   private readonly state: DurableObjectState;
 
-  // Kept for one reason: verifying the session token on `hello`. The rules
-  // themselves still know nothing about accounts.
-  private readonly env: AuthEnv;
+  // Kept for two reasons: verifying the session token on `hello`, and
+  // posting rating updates to Identity/Leaderboard once a rated game ends.
+  private readonly env: RoomEnv;
 
-  constructor(state: DurableObjectState, env: AuthEnv) {
+  constructor(state: DurableObjectState, env: RoomEnv) {
     this.state = state;
     this.env = env;
   }
-
-  /**
-   * Store user IDs and their ratings for ELO updates after game end.
-   * This is a temporary storage during the game.
-   */
-  private playerRatings: Map<Seat, { userId: string | null; rating: PlayerRating | null }> = new Map();
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -116,14 +116,7 @@ export class Room implements DurableObject {
         ws.close(1000, result.error);
         return;
       }
-      
-      // Store user ID and rating for ELO calculation after game end
-      if (result.seat !== null) {
-        const userId = claims?.sub ?? null;
-        const rating = claims ? null : null; // Will be fetched from Identity DO when needed
-        this.playerRatings.set(result.seat, { userId, rating });
-      }
-      
+
       ws.serializeAttachment({ token, seat: result.seat } satisfies SocketTag);
       await this.commit(result.state);
       this.dispatch(result.effects);
@@ -140,6 +133,12 @@ export class Room implements DurableObject {
     const step = command(room, tag.token, msg, now);
     await this.commit(step.state);
     this.dispatch(step.effects);
+
+    // A move or a resign can end the game directly, with no alarm involved —
+    // the alarm's own check below only catches the abandoned-opponent path.
+    if (room.status === 'playing' && step.state.status === 'over' && step.state.winner !== null) {
+      await this.updateEloRatings(step.state);
+    }
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
@@ -261,46 +260,57 @@ export class Room implements DurableObject {
   }
 
   /**
-   * Update ELO ratings for both players after a game ends.
-   * This is called when a game transitions to 'over' status.
+   * Update ELO ratings for both players after a rated game ends.
+   *
+   * Only games between two signed-in players are rated — a token that did
+   * not come from `claimsFromToken` never gets the `u:` prefix `hello` gives
+   * it, so an anonymous seat on either side skips this entirely.
    */
   private async updateEloRatings(state: RoomState): Promise<void> {
+    const [p0, p1] = state.players;
+    if (!p0 || !p1 || state.winner === null) return;
+
+    const id0 = userIdFromToken(p0.token);
+    const id1 = userIdFromToken(p1.token);
+    if (id0 === null || id1 === null) return;
+
+    const result0: MatchResult = state.winner === 'draw' ? 'draw' : state.winner === 0 ? 'win' : 'loss';
+    const result1: MatchResult = state.winner === 'draw' ? 'draw' : state.winner === 1 ? 'win' : 'loss';
+
     try {
-      // Only update if we have both players and a winner
-      if (!state.players[0] || !state.players[1]) return;
-      
-      // Get user IDs from the player tokens
-      const userIds = state.players.map(p => {
-        // Extract user ID from token if it's in format "u:<userId>"
-        if (p!.token.startsWith('u:')) {
-          return p!.token.slice(2);
-        }
-        return null;
-      });
-      
-      // For now, we'll just log the ELO update
-      // In a real implementation, we would:
-      // 1. Fetch current ratings from Identity DOs
-      // 2. Calculate new ratings based on game result
-      // 3. Update the ratings in Identity DOs
-      // 4. Update the leaderboard
-      
-      const winner = state.winner;
-      const isDraw = winner === 'draw';
-      
-      console.log('Game ended. Updating ELO ratings:', {
-        userIds,
-        winner,
-        isDraw,
-        scores: state.scores,
-      });
-      
-      // TODO: Implement actual ELO update logic
-      // This requires access to the Identity DOs which is complex in this context
-      // For now, we'll skip the actual update but the structure is in place
-      
+      const [user0, user1] = await Promise.all([
+        post<UserRecord | null>(stub(this.env, `user:${id0}`), '/user/read'),
+        post<UserRecord | null>(stub(this.env, `user:${id1}`), '/user/read'),
+      ]);
+      // Neither side has signed in for a game yet, so there is no rating to
+      // update. `/user/seen` on sign-in is what creates the record.
+      if (!user0 || !user1) return;
+
+      const [updated0, updated1] = await Promise.all([
+        post<UserRecord>(stub(this.env, `user:${id0}`), '/user/updateRating', {
+          userId: id0, opponentRating: user1.rating.rating, result: result0,
+        }),
+        post<UserRecord>(stub(this.env, `user:${id1}`), '/user/updateRating', {
+          userId: id1, opponentRating: user0.rating.rating, result: result1,
+        }),
+      ]);
+
+      const leaderboard = this.env.LEADERBOARD.get(this.env.LEADERBOARD.idFromName('global'));
+      await Promise.all([updated0, updated1].map(u => leaderboard.fetch('https://leaderboard/leaderboard/update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: u.userId, name: u.name, rating: u.rating }),
+      })));
     } catch (error) {
       console.error('Failed to update ELO ratings:', error);
     }
   }
+}
+
+type MatchResult = 'win' | 'loss' | 'draw';
+
+/** `hello` gives a signed-in seat's token the shape `u:<userId>`; an
+ *  anonymous seat's token never has it. */
+function userIdFromToken(token: string): string | null {
+  return token.startsWith('u:') ? token.slice(2) : null;
 }

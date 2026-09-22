@@ -53,7 +53,7 @@ export class Leaderboard implements DurableObject {
     switch (url.pathname) {
       case '/leaderboard': {
         if (request.method === 'GET') {
-          return await this.getLeaderboard(now);
+          return await this.getLeaderboard();
         }
         return new Response('Method not allowed', { status: 405 });
       }
@@ -81,7 +81,7 @@ export class Leaderboard implements DurableObject {
     }
   }
 
-  private async getLeaderboard(now: number): Promise<Response> {
+  private async getLeaderboard(): Promise<Response> {
     const data = await this.loadData();
     const entries = Array.from(data.entries.values());
     const sorted = sortByRating(

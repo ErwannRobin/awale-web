@@ -21,7 +21,6 @@ import { normaliseRoomCode } from '../../src/lib/protocol.ts';
 import { handleAuth, type AuthEnv } from './auth.ts';
 import type { QueueReply } from './lobby.ts';
 import type { RoomProbe } from './room.ts';
-import type { LeaderboardResponse } from './leaderboard.ts';
 
 export { Room } from './room.ts';
 export { Lobby } from './lobby.ts';
