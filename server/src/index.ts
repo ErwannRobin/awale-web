@@ -125,7 +125,10 @@ export default {
 
     if (url.pathname === '/leaderboard') {
       const leaderboard = env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'));
-      return leaderboard.fetch(new Request(request.url, request));
+      const reply = await leaderboard.fetch(new Request(request.url, request));
+      const headers = new Headers(reply.headers);
+      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+      return new Response(reply.body, { status: reply.status, headers });
     }
 
     const match = /^\/room\/([^/]+)$/.exec(url.pathname);
