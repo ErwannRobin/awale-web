@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
-import type { StringKey } from '../i18n/index.ts';
 import { onlineBaseUrl } from '../lib/onlineConfig.ts';
-import { BackIcon } from './Icons.tsx';
 
 interface LeaderboardPlayer {
   userId: string;
@@ -45,7 +43,7 @@ export default function Leaderboard({ onBack }: Props) {
       }
 
       const response = await fetch(`${base}/leaderboard`);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -53,7 +51,7 @@ export default function Leaderboard({ onBack }: Props) {
       const data = await response.json() as LeaderboardResponse;
       setPlayers(data.players);
       setLastUpdated(new Date(data.updatedAt).toLocaleString());
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : t('leaderboard.error') as string);
     } finally {
@@ -66,68 +64,51 @@ export default function Leaderboard({ onBack }: Props) {
   }, []);
 
   return (
-    <div className="screen leaderboard">
-      <div className="leaderboard-header">
-        <button className="icon-btn" onClick={onBack} aria-label={t('common.back') as StringKey}>
-          <BackIcon />
-        </button>
-        <h1>{t('leaderboard.title')}</h1>
-        <div className="header-spacer" />
-      </div>
+    <div className="screen">
+      <header className="game-top">
+        <button className="round-btn" onClick={onBack} aria-label={t('common.back')}>←</button>
+        <div className="brand">◇ {t('leaderboard.title')} ◇</div>
+        <span style={{ width: 44 }} />
+      </header>
 
-      {loading ? (
-        <div className="leaderboard-loading">
-          <div className="spinner" />
-          <p>{t('leaderboard.loading')}</p>
-        </div>
-      ) : error ? (
-        <div className="leaderboard-error">
-          <p>{error}</p>
-          <button className="pill" onClick={fetchLeaderboard}>
-            {t('leaderboard.retry')}
-          </button>
-        </div>
-      ) : (
-        <div className="leaderboard-content">
-          <div className="leaderboard-stats">
-            <span>{t('leaderboard.totalPlayers', { count: players.length })}</span>
-            <span className="leaderboard-updated">
+      <div className="panel-body">
+        <h2 className="learn-title">{t('leaderboard.title')}</h2>
+        <p className="learn-lead">{t('leaderboard.lead')}</p>
+
+        {loading ? (
+          <p className="empty-note">{t('leaderboard.loading')}</p>
+        ) : error ? (
+          <>
+            <p className="empty-note">{error}</p>
+            <button className="pill" onClick={fetchLeaderboard}>
+              <span className="pill-body"><span className="pill-title">{t('leaderboard.retry')}</span></span>
+            </button>
+          </>
+        ) : players.length === 0 ? (
+          <p className="empty-note">{t('leaderboard.empty')}</p>
+        ) : (
+          <>
+            <h3 className="set-head">{t('leaderboard.totalPlayers', { count: players.length })}</h3>
+            <div className="rec-list">
+              {players.map(player => (
+                <div key={player.userId} className="rec-row">
+                  <span className="rec-rank">{player.position}</span>
+                  <span className="rec-body">
+                    <span className="rec-score">{player.name}</span>
+                    <span className="rec-meta">
+                      {t('leaderboard.games')}: {player.gamesPlayed} · {t('leaderboard.wins')}: {player.wins}
+                    </span>
+                  </span>
+                  <span className="rec-delta">{player.rating}</span>
+                </div>
+              ))}
+            </div>
+            <p className="stat-sub" style={{ textAlign: 'center', marginTop: 10 }}>
               {t('leaderboard.updatedAt', { time: lastUpdated })}
-            </span>
-          </div>
-
-          <div className="leaderboard-list">
-            <table className="leaderboard-table">
-              <thead>
-                <tr>
-                  <th className="rank">{t('leaderboard.rank')}</th>
-                  <th className="name">{t('leaderboard.name')}</th>
-                  <th className="rating">{t('leaderboard.rating')}</th>
-                  <th className="games">{t('leaderboard.games')}</th>
-                  <th className="wins">{t('leaderboard.wins')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map(player => (
-                  <tr key={player.userId} className="leaderboard-row">
-                    <td className="rank">{player.position}</td>
-                    <td className="name">{player.name}</td>
-                    <td className="rating">
-                      <span className="rating-value">{player.rating}</span>
-                    </td>
-                    <td className="games">{player.gamesPlayed}</td>
-                    <td className="wins">
-                      <span className="win-rate">
-                        {player.wins}/{player.gamesPlayed}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
