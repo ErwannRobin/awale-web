@@ -417,6 +417,10 @@ async function me(
   const claims = await claimsFromBearer(env, request.headers.get('Authorization'));
   if (!claims) return new Response('unauthorised', { status: 401, headers: cors });
   const user = await post<UserRecord | null>(stub(env, `user:${claims.sub}`), '/user/read');
+  // `refreshSession` calls this once at startup for every stored session, so it
+  // is also the catch-up path for an account that signed in before the
+  // leaderboard existed, or before this registration was added.
+  if (user) await registerOnLeaderboard(env, user);
   return Response.json(
     { user: { id: claims.sub, name: user?.name ?? claims.name }, expiresAt: claims.exp },
     { headers: cors },
