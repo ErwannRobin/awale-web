@@ -158,15 +158,18 @@ export class Leaderboard implements DurableObject {
 
     const body = await request.json() as UpdateRequest;
 
-    if (!body.userId || !body.name) {
+    if (!body.userId) {
       return new Response('Missing required fields', { status: 400 });
     }
 
     const data = await this.loadData();
 
+    // A freshly signed-in player has no display name yet — that is chosen
+    // later, on the profile screen — so this cannot require one without
+    // silently dropping every brand-new account from the board.
     const entry: LeaderboardEntry = {
       userId: body.userId,
-      name: body.name,
+      name: body.name || 'Player',
       rating: body.rating.rating,
       gamesPlayed: body.rating.gamesPlayed,
       wins: body.rating.wins,
