@@ -218,7 +218,8 @@ export const fr: Record<keyof typeof en, string> = {
   // ---- stats -----------------------------------------------------------
   'stats.brand': 'STATISTIQUES',
   'stats.title': 'Votre bilan',
-  'stats.lead': 'Local à cet appareil. Votre classement vous situe face aux quatre niveaux de l’IA — il n’y a pas encore de classement en ligne.',
+  'stats.lead': 'Local à cet appareil. Votre classement vous situe face aux quatre niveaux de l’IA — pour vous comparer aux autres joueurs, voyez le classement mondial.',
+  'stats.viewLeaderboard': 'Voir le classement mondial',
   'stats.empty': 'Aucune partie pour l’instant. Jouez-en une et tout se remplit.',
   'stats.peak': 'Record',
   'stats.nextRank': '{points} avant {rank}',
@@ -240,7 +241,8 @@ export const fr: Record<keyof typeof en, string> = {
   // ---- records ---------------------------------------------------------
   'records.brand': 'RECORDS',
   'records.title': 'Vos meilleures parties',
-  'records.lead': 'Vos propres résultats, classés. Un classement mondial demande un service en ligne, que cette version n’a pas.',
+  'records.lead': 'Vos propres résultats, classés. Connectez-vous et jouez des parties classées pour aussi apparaître dans le classement mondial.',
+  'records.viewLeaderboard': 'Voir le classement mondial',
   'records.empty': 'Gagnez une partie et elle apparaîtra ici.',
   'records.recent': 'Parties récentes',
   'records.vs': 'contre {level}',

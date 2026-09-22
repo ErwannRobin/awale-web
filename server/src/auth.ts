@@ -23,6 +23,7 @@ const DEFAULT_API_BASE = 'https://api.phone-verif.com';
 
 export interface AuthEnv {
   IDENTITY: DurableObjectNamespace;
+  LEADERBOARD: DurableObjectNamespace;
   PHONE_VERIF_API_KEY?: string;
   /** Optional: sign sessions with this instead of deriving from the API key. */
   AUTH_SESSION_SECRET?: string;
@@ -142,6 +143,26 @@ export async function claimsFromToken(
 // --- the identity store ----------------------------------------------------
 
 export const stub = (env: AuthEnv, name: string) => env.IDENTITY.get(env.IDENTITY.idFromName(name));
+
+/**
+ * Every signed-in player belongs on the leaderboard, not just the ones who
+ * happen to finish a rated game — otherwise a player who signs in and never
+ * plays is invisible even though they have an account and a starting rating.
+ *
+ * Best-effort: a hiccup here must never fail a sign-in.
+ */
+async function registerOnLeaderboard(env: AuthEnv, user: UserRecord): Promise<void> {
+  try {
+    const leaderboard = env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'));
+    await leaderboard.fetch('https://leaderboard/leaderboard/update', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: user.userId, name: user.name, rating: user.rating }),
+    });
+  } catch (error) {
+    console.error('Failed to register on leaderboard:', error);
+  }
+}
 
 export const post = async <T>(
   target: DurableObjectStub, path: string, body?: unknown,
@@ -286,6 +307,7 @@ async function status(
   const user = await post<UserRecord>(stub(env, `user:${view.userId}`), '/user/seen', {
     userId: view.userId,
   });
+  await registerOnLeaderboard(env, user);
   const token = await mintToken(claimsFor(user.userId, user.name), await sessionKey(env));
   const reply: StatusReply = {
     status: 'verified',
@@ -395,6 +417,10 @@ async function me(
   const claims = await claimsFromBearer(env, request.headers.get('Authorization'));
   if (!claims) return new Response('unauthorised', { status: 401, headers: cors });
   const user = await post<UserRecord | null>(stub(env, `user:${claims.sub}`), '/user/read');
+  // `refreshSession` calls this once at startup for every stored session, so it
+  // is also the catch-up path for an account that signed in before the
+  // leaderboard existed, or before this registration was added.
+  if (user) await registerOnLeaderboard(env, user);
   return Response.json(
     { user: { id: claims.sub, name: user?.name ?? claims.name }, expiresAt: claims.exp },
     { headers: cors },
@@ -416,6 +442,7 @@ async function rename(
   const user = await post<UserRecord>(stub(env, `user:${claims.sub}`), '/user/seen', {
     userId: claims.sub, name,
   });
+  await registerOnLeaderboard(env, user);
   // The name lives in the token, so a rename mints a fresh one rather than
   // leaving the player's own screen a version behind.
   const token = await mintToken(claimsFor(user.userId, user.name), await sessionKey(env));

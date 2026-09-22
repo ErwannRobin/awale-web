@@ -3,7 +3,7 @@ import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
 import { loadProfile, saveProfile, AVATARS, NAME_MAX, type AvatarKey } from '../lib/profile.ts';
 import { rankFor, type Stats } from '../lib/stats.ts';
-import { authEnabled, type Session } from '../lib/auth.ts';
+import { authEnabled, renameAccount, type Session } from '../lib/auth.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 
@@ -13,6 +13,7 @@ interface Props {
   account: Session | null;
   onBack: () => void;
   onProfileChange: () => void;
+  onAccountChange: (next: Session) => void;
   onSignIn: () => void;
   onSignOut: () => void;
 }
@@ -36,7 +37,7 @@ function Row({ label, help, children }: { label: string; help?: string; children
  * lives here and nowhere else, because that is what an account is.
  */
 export default function Profile({
-  stats, account, onBack, onProfileChange, onSignIn, onSignOut,
+  stats, account, onBack, onProfileChange, onAccountChange, onSignIn, onSignOut,
 }: Props) {
   const t = useT();
   const [profile, setProfile] = useState(loadProfile);
@@ -48,6 +49,22 @@ export default function Profile({
     setProfile(next);
     saveProfile(next);
     onProfileChange();
+  };
+
+  // The name above is local storage and always the source of truth; signed
+  // in, it is also what the account — and the leaderboard — shows, so an
+  // edit needs to reach the server too. On blur rather than on every
+  // keystroke: renaming mints a fresh token, and nobody needs that per key.
+  const syncAccountName = async (name: string) => {
+    if (!account) return;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === account.user.name) return;
+    try {
+      onAccountChange(await renameAccount(account, trimmed));
+    } catch {
+      // Offline or server trouble: the local name is already saved, and the
+      // next edit (or the next app launch) tries the sync again.
+    }
   };
 
   return (
@@ -71,6 +88,7 @@ export default function Profile({
               maxLength={NAME_MAX}
               placeholder={t('profile.namePlaceholder')}
               onChange={e => commitProfile({ ...profile, name: e.target.value })}
+              onBlur={e => { void syncAccountName(e.target.value); }}
               aria-label={t('profile.name')}
             />
           </Row>

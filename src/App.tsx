@@ -16,7 +16,7 @@ import Leaderboard from './components/Leaderboard.tsx';
 import type { GameSetup } from './lib/useGame.ts';
 import { loadCompleted, saveCompleted } from './lib/progress.ts';
 import { loadProfile } from './lib/profile.ts';
-import { clearSession, loadSession, refreshSession, type Session } from './lib/auth.ts';
+import { clearSession, loadSession, refreshSession, renameAccount, type Session } from './lib/auth.ts';
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
@@ -127,7 +127,15 @@ export default function App() {
     const stored = loadSession();
     if (!stored) return;
     let live = true;
-    void refreshSession(stored).then(next => { if (live) setAccount(next); });
+    void refreshSession(stored).then(async next => {
+      if (!next) { if (live) setAccount(next); return; }
+      // Catches an account that signed in before this name sync existed, or
+      // whose first sign-in raced a network hiccup on the rename call.
+      if (!next.user.name && profile.name) {
+        try { next = await renameAccount(next, profile.name); } catch { /* try again next launch */ }
+      }
+      if (live) setAccount(next);
+    });
     return () => { live = false; };
   }, []);
 
@@ -285,6 +293,7 @@ export default function App() {
           account={account}
           onBack={() => nav.back({ name: 'menu' })}
           onProfileChange={() => setProfile(loadProfile())}
+          onAccountChange={setAccount}
           onSignIn={() => nav.go({ name: 'signIn', back: { name: 'profile' } })}
           onSignOut={() => {
             clearSession();
@@ -296,12 +305,24 @@ export default function App() {
 
       {screen.name === 'signIn' && (
         <SignIn
-          onSignedIn={(session, isNew) => {
-            setAccount(session);
+          onSignedIn={async (session, isNew) => {
+            // A brand-new account has no name of its own; if the player
+            // already picked one locally before ever signing in, carry it
+            // over rather than leaving the account nameless everywhere that
+            // reads it — the leaderboard included.
+            let signedIn = session;
+            if (!session.user.name && profile.name) {
+              try {
+                signedIn = await renameAccount(session, profile.name);
+              } catch {
+                // Sign-in already succeeded; a failed sync here is not fatal.
+              }
+            }
+            setAccount(signedIn);
             nav.back(screen.back);
-            showToast(isNew || !session.user.name
+            showToast(isNew || !signedIn.user.name
               ? t('signIn.welcome')
-              : t('signIn.welcomeBack', { name: session.user.name }));
+              : t('signIn.welcomeBack', { name: signedIn.user.name }));
           }}
           onBack={goBackTo(screen.back)}
           onToast={showToast}
@@ -335,10 +356,19 @@ export default function App() {
       )}
 
       {screen.name === 'stats' && (
-        <StatsScreen completed={completed} onBack={() => nav.back({ name: 'menu' })} />
+        <StatsScreen
+          completed={completed}
+          onBack={() => nav.back({ name: 'menu' })}
+          onLeaderboard={() => nav.go({ name: 'leaderboard' })}
+        />
       )}
 
-      {screen.name === 'records' && <Records onBack={() => nav.back({ name: 'menu' })} />}
+      {screen.name === 'records' && (
+        <Records
+          onBack={() => nav.back({ name: 'menu' })}
+          onLeaderboard={() => nav.go({ name: 'leaderboard' })}
+        />
+      )}
 
       {screen.name === 'leaderboard' && (
         <Leaderboard onBack={() => nav.back({ name: 'menu' })} />
