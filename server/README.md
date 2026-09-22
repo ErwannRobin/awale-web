@@ -91,6 +91,28 @@ no screens — which is the shape CI builds, and a perfectly good shape to ship 
 you would rather not run a server. The native shell needs a real URL rather than
 `same-origin`: it loads from `capacitor:`, so there is no origin to borrow.
 
+### Previewing a branch
+
+`dev-server.ts` is a mock — rooms in a `Map`, no auth, no leaderboard. To test
+against the real thing (Durable Objects, sign-in, everything) without touching
+production, `wrangler preview` (open beta) deploys this branch to its own URL
+with its own, isolated Durable Object state:
+
+```bash
+cd server && npm run preview   # wrangler preview; prints the branch's URL
+```
+
+Point the app at that URL instead of `:8787`:
+
+```bash
+VITE_ONLINE_URL=wss://<the-preview-url> npm run dev   # from the repository root
+```
+
+`ALLOWED_ORIGINS` is empty by default (see *Before making it public*, below),
+so the preview already accepts the cross-origin call from Vite's `localhost`.
+`npx wrangler preview delete` tears it down; each `npm run preview` afterwards
+makes a new one.
+
 ### Before making it public
 
 `ALLOWED_ORIGINS` in `wrangler.toml` only matters if you also host the front end
