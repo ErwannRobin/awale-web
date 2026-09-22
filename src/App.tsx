@@ -293,6 +293,7 @@ export default function App() {
           account={account}
           onBack={() => nav.back({ name: 'menu' })}
           onProfileChange={() => setProfile(loadProfile())}
+          onAccountChange={setAccount}
           onSignIn={() => nav.go({ name: 'signIn', back: { name: 'profile' } })}
           onSignOut={() => {
             clearSession();
