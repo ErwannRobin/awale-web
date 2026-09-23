@@ -22,8 +22,8 @@ VITE_ONLINE_URL ?=
 
 .PHONY: help install install-web install-server dev dev-server dev-online \
         build build-prod preview lint typecheck test test-e2e test-challenges \
-        test-server check verify sound deploy tail sync open-android open-ios \
-        run-android run-ios clean distclean
+        test-server check verify sound deploy preview-worker preview-worker-delete \
+        tail sync open-android open-ios run-android run-ios clean distclean
 
 ## help: list the targets
 help:
@@ -124,6 +124,14 @@ endif
 ## deploy: build and push the Worker (site and rooms) to Cloudflare
 deploy: build-prod install-server
 	cd $(SERVER_DIR) && npm run deploy
+
+## preview-worker: deploy this branch to its own Worker Preview URL (real Durable Objects, isolated from prod)
+preview-worker: install-server
+	cd $(SERVER_DIR) && npm run preview
+
+## preview-worker-delete: tear down this branch's Worker Preview
+preview-worker-delete: install-server
+	cd $(SERVER_DIR) && npx wrangler preview delete
 
 ## tail: stream live Worker logs
 tail: install-server
