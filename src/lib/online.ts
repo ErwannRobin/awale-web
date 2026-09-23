@@ -3,6 +3,7 @@
 // It owns the conversation with the server and nothing else. It does not draw,
 // animate, or keep a board — the board stays in `useGame`, which replays the
 // moves the server confirms. The two talk through the callbacks below.
+import { isCountryCode, type CountryCode } from './country.ts';
 import {
   PROTOCOL_VERSION, parseServerMsg, stateHash,
   type ClientMsg, type ErrorCode, type OverReason, type RoomSnapshot,
@@ -35,6 +36,10 @@ export interface SessionCallbacks {
   change(view: OnlineView): void;
 }
 
+/** A country worth sending, or null: `ZZ` is simply left out of the hello. */
+const countryOf = (raw: string | undefined): CountryCode | null =>
+  (isCountryCode(raw) ? raw.toUpperCase() as CountryCode : null);
+
 export interface SessionOptions {
   factory: TransportFactory;
   /** Proves which seat is yours across a reconnect. Persisted by the caller. */
@@ -48,6 +53,8 @@ export interface SessionOptions {
    */
   auth?: string;
   name: string;
+  /** Where the player says they play from; sent so the other side sees the flag. */
+  country?: string;
   callbacks: SessionCallbacks;
 }
 
@@ -134,6 +141,7 @@ export class OnlineSession {
         token: this.opts.token,
         name: this.opts.name,
         ...(this.opts.auth ? { auth: this.opts.auth } : {}),
+        ...(countryOf(this.opts.country) ? { country: countryOf(this.opts.country)! } : {}),
       });
       // Stay "connecting" until the welcome lands: an open socket that has not
       // been seated yet is not a game.

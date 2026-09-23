@@ -7,16 +7,18 @@
 // it is. That is what this file is for.
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 
-async function freshPlayer(context: BrowserContext, name: string): Promise<Page> {
-  await context.addInitScript(([display]) => {
+async function freshPlayer(context: BrowserContext, name: string, country = 'ZZ'): Promise<Page> {
+  await context.addInitScript(([display, where]) => {
     try {
       localStorage.setItem('awale.settings.v1', JSON.stringify({
         sound: false, haptics: false, speed: 'instant',
         theme: 'wood', leftHanded: false, showCounts: true, language: 'en',
       }));
-      localStorage.setItem('awale.profile.v1', JSON.stringify({ name: display, avatar: 'olive' }));
+      localStorage.setItem('awale.profile.v1', JSON.stringify({
+        name: display, avatar: 'olive', country: where, countrySource: 'manual',
+      }));
     } catch { /* private mode */ }
-  }, [name]);
+  }, [name, country]);
   return context.newPage();
 }
 
@@ -78,6 +80,46 @@ test('two browsers play the same game over a websocket', async ({ browser }) => 
     await expect(second.locator('.over-title')).toContainText('You win');
     await expect(first.locator('.over-card')).toBeVisible();
     await expect(first.locator('.over-note')).toContainText('You resigned');
+  } finally {
+    await one.close();
+    await two.close();
+  }
+});
+
+test('a game between two countries is a round of their rivalry', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama', 'CI');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByText('INVITE A FRIEND').click();
+    const code = await host.locator('.room-code').innerText();
+
+    const guest = await freshPlayer(two, 'Marie', 'FR');
+    await guest.goto(`/?join=${code}`);
+    await expect(host.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+
+    // Each side sees where the other plays from.
+    await expect(host.getByText('🇫🇷 Marie').first()).toBeVisible();
+    await expect(guest.getByText('🇨🇮 Ama').first()).toBeVisible();
+
+    await host.getByRole('button', { name: /Resign/ }).click();
+    await host.getByRole('button', { name: /Tap again to resign/ }).click();
+    await expect(guest.locator('.over-card')).toBeVisible({ timeout: 15_000 });
+
+    // The head-to-head the game just changed. Other runs share the dev
+    // server, so the exact score is not asserted — only that it is there.
+    await expect(guest.locator('.over-rivalry')).toContainText('All-time:', { timeout: 15_000 });
+
+    // And the nations ranking has both countries on it, France ahead.
+    await guest.getByText('BACK TO MENU').click();
+    await guest.getByLabel('Stats').click();
+    await guest.getByRole('tab', { name: 'Nations' }).click();
+    await expect(guest.locator('.rec-row').filter({ hasText: 'France' })).toBeVisible();
+    await expect(guest.locator('.rival-card')).toBeVisible();
   } finally {
     await one.close();
     await two.close();

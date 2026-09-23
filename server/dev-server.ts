@@ -19,6 +19,11 @@ import {
   PROTOCOL_VERSION, makeRoomCode, normaliseRoomCode, parseClientMsg,
   type ServerMsg,
 } from '../src/lib/protocol.ts';
+import {
+  addCountryGame, addHeadToHead, addPvpMatch, rankCountries, rankNations, rivalryKey,
+  sanitiseLevel, sanitiseOutcome, type CountryTally, type HeadToHead,
+} from '../src/lib/countryStats.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY } from '../src/lib/country.ts';
 import type { Seat } from '../src/lib/rules.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -29,6 +34,45 @@ interface Conn {
   ws: WebSocket;
   token: string;
   seat: Seat | null;
+}
+
+/**
+ * The world table, for a laptop. Same shape as the Durable Object's, same pure
+ * fold, and just as forgetful as the rooms around it — it dies with the process.
+ *
+ * There is no edge here to say which country a request came from, so `/geo`
+ * answers with `DEV_COUNTRY` if you set one and "unknown" otherwise. That is
+ * the honest answer for a machine talking to itself, and it exercises the same
+ * path a real player behind Tor takes.
+ */
+const DEV_COUNTRY = normaliseCountry(process.env.DEV_COUNTRY ?? UNKNOWN_COUNTRY);
+let countries: Record<string, CountryTally> = {};
+let gamesCounted = 0;
+let pvpCounted = 0;
+let countedAt = 0;
+const rivalries = new Map<string, HeadToHead>();
+
+/**
+ * Online games, counted for the nations ranking.
+ *
+ * The one place this file is deliberately looser than production: there are
+ * no accounts here, so no game is "rated", and counting only rated games would
+ * leave the nations screen empty forever on a laptop. Every finished game
+ * counts instead, so the screens and the Playwright suite have something real
+ * to show.
+ */
+function countOnlineGame(room: RoomState): void {
+  const [p0, p1] = room.players;
+  if (!p0 || !p1 || room.winner === null) return;
+  const winner = room.winner === 'draw' ? 'draw' : room.winner === 0 ? 'a' : 'b';
+  countries = addPvpMatch(countries, p0.country, p1.country, winner);
+  const pair = rivalryKey(p0.country, p1.country);
+  if (pair) {
+    const next = addHeadToHead(rivalries.get(pair), p0.country, p1.country, winner);
+    if (next) rivalries.set(pair, next);
+  }
+  pvpCounted++;
+  countedAt = Date.now();
 }
 
 const rooms = new Map<string, RoomState>();
@@ -68,7 +112,7 @@ function dispatch(code: string, effects: Effect[]): void {
 const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, GET, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, authorization',
 };
 
 function http(request: IncomingMessage, response: ServerResponse): void {
@@ -80,6 +124,58 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   }
   if (url.pathname === '/health') {
     response.writeHead(200, { ...cors, 'content-type': 'text/plain' }).end('ok');
+    return;
+  }
+  if (url.pathname === '/geo') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify({ country: DEV_COUNTRY }));
+    return;
+  }
+  if (url.pathname === '/stats/countries') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({
+      total: gamesCounted,
+      pvpTotal: pvpCounted,
+      updatedAt: countedAt,
+      countries: rankCountries(countries),
+      rivalries: [...rivalries.values()],
+    }));
+    return;
+  }
+  if (url.pathname === '/stats/nations') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({
+      // No accounts here, so no people half: players and ratings stay at zero.
+      nations: rankNations(rankCountries(countries), []),
+      rivalries: [...rivalries.values()],
+      pvpTotal: pvpCounted,
+      updatedAt: countedAt,
+    }));
+    return;
+  }
+  if (url.pathname === '/stats/rivalry') {
+    const pair = rivalryKey(url.searchParams.get('a'), url.searchParams.get('b'));
+    response.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify(pair ? rivalries.get(pair) ?? null : null));
+    return;
+  }
+  if (url.pathname === '/stats/game' && request.method === 'POST') {
+    readJson(request, body => {
+      const claimed = normaliseCountry(body.country);
+      const country = claimed === UNKNOWN_COUNTRY ? DEV_COUNTRY : claimed;
+      const level = sanitiseLevel(Number(body.level));
+      const outcome = sanitiseOutcome(body.outcome);
+      if (body.world === false) {
+        response.writeHead(200, { ...cors, 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: true, country, level, outcome }));
+        return;
+      }
+      countries = addCountryGame(countries, country, level, outcome);
+      gamesCounted++;
+      countedAt = Date.now();
+      response.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        .end(JSON.stringify({ ok: true, country, level, outcome }));
+    }, () => {
+      response.writeHead(400, cors).end('bad json');
+    });
     return;
   }
   if (url.pathname === '/queue' && request.method === 'POST') {
@@ -102,6 +198,26 @@ function http(request: IncomingMessage, response: ServerResponse): void {
     return;
   }
   response.writeHead(404, cors).end('not found');
+}
+
+/** Body in, parsed object out — a request body is a stream in Node, not a promise. */
+function readJson(
+  request: IncomingMessage,
+  ok: (body: Record<string, unknown>) => void,
+  bad: () => void,
+): void {
+  let raw = '';
+  request.on('data', chunk => { raw += chunk; if (raw.length > 4096) request.destroy(); });
+  request.on('end', () => {
+    try {
+      const parsed = JSON.parse(raw || '{}') as unknown;
+      if (!parsed || typeof parsed !== 'object') { bad(); return; }
+      ok(parsed as Record<string, unknown>);
+    } catch {
+      bad();
+    }
+  });
+  request.on('error', bad);
 }
 
 const server = createServer(http);
@@ -137,7 +253,7 @@ function attach(code: string, ws: WebSocket): void {
         ws.close();
         return;
       }
-      const result = join(room, msg.token, msg.name, now);
+      const result = join(room, msg.token, msg.name, now, msg.country);
       if (result.error) {
         send(ws, { t: 'err', code: result.error });
         ws.close();
@@ -156,6 +272,7 @@ function attach(code: string, ws: WebSocket): void {
     }
     const step = command(room, conn.token, msg, now);
     rooms.set(code, step.state);
+    if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
     dispatch(code, step.effects);
   });
 
@@ -179,6 +296,7 @@ setInterval(() => {
   for (const [code, room] of rooms) {
     const step = sweep(room, now);
     if (step.effects.length > 0) {
+      if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
       rooms.set(code, step.state);
       dispatch(code, step.effects);
     }

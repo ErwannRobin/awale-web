@@ -13,10 +13,11 @@ import SettingsScreen from './components/Settings.tsx';
 import StatsScreen from './components/Stats.tsx';
 import Records from './components/Records.tsx';
 import Leaderboard from './components/Leaderboard.tsx';
+import PlayerProfile from './components/PlayerProfile.tsx';
 import type { GameSetup } from './lib/useGame.ts';
 import { loadCompleted, saveCompleted } from './lib/progress.ts';
-import { loadProfile } from './lib/profile.ts';
-import { clearSession, loadSession, refreshSession, renameAccount, type Session } from './lib/auth.ts';
+import { applyDetectedCountry, loadProfile } from './lib/profile.ts';
+import { clearSession, loadSession, refreshSession, syncProfile, type Session } from './lib/auth.ts';
 import { loadStats } from './lib/stats.ts';
 import { loadSavedGame, clearSavedGame, type SavedGame } from './lib/saveGame.ts';
 import { useSettings } from './lib/useSettings.ts';
@@ -26,6 +27,7 @@ import { useEscapeKey } from './lib/useEscapeKey.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
 import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
+import { detectCountry } from './lib/worldStats.ts';
 import { normaliseRoomCode } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
 
@@ -45,6 +47,8 @@ type Screen =
   | { name: 'onlineGame'; room: string }
   | { name: 'challenge'; index: number }
   | { name: 'leaderboard' }
+  // A player's public profile; `userId` null is your own.
+  | { name: 'player'; userId: string | null }
   // Help and Settings are reachable mid-game, so they carry the screen to
   // return to. Without that, tapping ⚙ during a game would drop the board.
   | { name: 'learn'; back: Screen }
@@ -129,15 +133,47 @@ export default function App() {
     let live = true;
     void refreshSession(stored).then(async next => {
       if (!next) { if (live) setAccount(next); return; }
-      // Catches an account that signed in before this name sync existed, or
-      // whose first sign-in raced a network hiccup on the rename call.
-      if (!next.user.name && profile.name) {
-        try { next = await renameAccount(next, profile.name); } catch { /* try again next launch */ }
-      }
+      // Catches an account that signed in before this sync existed, or whose
+      // first sign-in raced a network hiccup — and keeps the account's country
+      // and avatar in step with this device's once per launch.
+      next = await pushProfile(next);
       if (live) setAccount(next);
     });
     return () => { live = false; };
   }, []);
+
+  // Where the player is, worked out once per launch from the request's own IP
+  // at the edge — see lib/worldStats.ts. A player who has picked a country
+  // keeps it: `applyDetectedCountry` leaves a manual choice alone, so this
+  // effect is a no-op for them rather than a fight they lose every launch.
+  useEffect(() => {
+    let live = true;
+    void detectCountry().then(code => {
+      if (!live || !code) return;
+      // Read the stored profile rather than the state: this lands after a
+      // paint, and `applyDetectedCountry` writes, which a state updater must not.
+      setProfile(applyDetectedCountry(loadProfile(), code));
+    });
+    return () => { live = false; };
+  }, []);
+
+  // A signed-in player's country and avatar follow the local profile: the
+  // leaderboard, the nations ranking and the public profile all read them from
+  // the account. Keyed on the values, so a launch or an unrelated re-render
+  // sends nothing.
+  const accountId = account?.user.id ?? null;
+  const synced = useRef<string>('');
+  useEffect(() => {
+    const session = loadSession();
+    if (!accountId || !session) return;
+    const key = `${accountId}|${profile.country}|${profile.avatar}`;
+    if (synced.current === '' ) { synced.current = key; return; }
+    if (synced.current === key) return;
+    synced.current = key;
+    void syncProfile(session, { country: profile.country, avatar: profile.avatar })
+      .then(setAccount)
+      .catch(() => { /* offline: the next launch syncs again */ });
+  }, [accountId, profile.country, profile.avatar]);
 
   const refreshStats = useCallback(() => setStats(loadStats()), []);
   const refreshSaved = useCallback(() => setSaved(loadSavedGame()), []);
@@ -221,6 +257,27 @@ export default function App() {
   const openProfile = () => nav.go({ name: 'profile' });
 
   /**
+   * Hand the account everything this device knows about the player: the
+   * name (when the account has none), the country, the avatar, and — taken
+   * only by an account with no record yet — the record played here before
+   * signing in. Never fails a sign-in: on any trouble the session is kept.
+   */
+  const pushProfile = async (session: Session): Promise<Session> => {
+    const local = loadProfile();
+    const record = loadStats();
+    try {
+      return await syncProfile(session, {
+        ...(!session.user.name && local.name ? { name: local.name } : {}),
+        country: local.country,
+        avatar: local.avatar,
+        ...(record.games > 0 ? { ai: record } : {}),
+      });
+    } catch {
+      return session;
+    }
+  };
+
+  /**
    * Android's back button, which the native shell hands to us instead of
    * letting the WebView act on it — and, through `useEscapeKey` below, the
    * Escape key. Both run the very same moves as the on-screen ←, so a screen
@@ -281,6 +338,8 @@ export default function App() {
 
       {screen.name === 'online' && (
         <Online
+          myCountry={profile.country}
+          onNations={() => nav.go({ name: 'stats' })}
           onStart={room => nav.go({ name: 'onlineGame', room })}
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
@@ -294,6 +353,7 @@ export default function App() {
           onBack={() => nav.back({ name: 'menu' })}
           onProfileChange={() => setProfile(loadProfile())}
           onAccountChange={setAccount}
+          onViewPublic={() => nav.go({ name: 'player', userId: null })}
           onSignIn={() => nav.go({ name: 'signIn', back: { name: 'profile' } })}
           onSignOut={() => {
             clearSession();
@@ -310,14 +370,7 @@ export default function App() {
             // already picked one locally before ever signing in, carry it
             // over rather than leaving the account nameless everywhere that
             // reads it — the leaderboard included.
-            let signedIn = session;
-            if (!session.user.name && profile.name) {
-              try {
-                signedIn = await renameAccount(session, profile.name);
-              } catch {
-                // Sign-in already succeeded; a failed sync here is not fatal.
-              }
-            }
+            const signedIn = await pushProfile(session);
             setAccount(signedIn);
             nav.back(screen.back);
             showToast(isNew || !signedIn.user.name
@@ -357,9 +410,26 @@ export default function App() {
 
       {screen.name === 'stats' && (
         <StatsScreen
-          completed={completed}
+          myCountry={profile.country}
           onBack={() => nav.back({ name: 'menu' })}
           onLeaderboard={() => nav.go({ name: 'leaderboard' })}
+          onMyProfile={() => nav.go({ name: 'player', userId: null })}
+          onPlayer={userId => nav.go({ name: 'player', userId })}
+          onPlayOnline={() => nav.go({ name: 'online' })}
+          onPickCountry={openProfile}
+        />
+      )}
+
+      {screen.name === 'player' && (
+        <PlayerProfile
+          key={screen.userId ?? 'me'}
+          userId={screen.userId}
+          account={account}
+          profile={profile}
+          stats={stats}
+          completed={completed}
+          onBack={() => nav.back({ name: 'menu' })}
+          onEdit={openProfile}
         />
       )}
 
@@ -371,7 +441,12 @@ export default function App() {
       )}
 
       {screen.name === 'leaderboard' && (
-        <Leaderboard onBack={() => nav.back({ name: 'menu' })} />
+        <Leaderboard
+          onBack={() => nav.back({ name: 'menu' })}
+          onPlayer={userId => nav.go({ name: 'player', userId })}
+          myCountry={profile.country}
+          myId={account?.user.id ?? null}
+        />
       )}
 
       {screen.name === 'tutorial' && (

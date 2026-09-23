@@ -142,6 +142,28 @@ export async function renameAccount(session: Session, name: string): Promise<Ses
 }
 
 /**
+ * Tells the account who the player is: name, country, avatar — and, the first
+ * time, the record built on this device before signing in, so the public
+ * profile does not start from nothing. The server takes that record only while
+ * the account has none of its own.
+ *
+ * Returns the session to keep: a fresh one if the name changed (the name is in
+ * the token), the same one otherwise.
+ */
+export async function syncProfile(
+  session: Session,
+  profile: { name?: string; country?: string; avatar?: string; ai?: unknown },
+): Promise<Session> {
+  const response = await fetch(authUrl('/auth/profile'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...authHeaders(session) },
+    body: JSON.stringify(profile),
+  });
+  const body = await json<{ token?: string; user: Account }>(response);
+  return saveSession({ token: body.token ?? session.token, user: body.user });
+}
+
+/**
  * Confirms a stored session against the server, dropping it if it is not real.
  *
  * Runs once at startup. A token that fails here is one whose key has rotated or

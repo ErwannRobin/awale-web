@@ -10,6 +10,7 @@ import { useSettings } from '../lib/useSettings.ts';
 import { updateSettings } from '../lib/settings.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { loadProfile } from '../lib/profile.ts';
+import { reportGame } from '../lib/worldStats.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
 import { GearIcon } from './Icons.tsx';
@@ -26,6 +27,8 @@ interface Props {
   goal?: string;          // challenge goal text (shown instead of rotating tips)
   title?: string;         // e.g. "Challenge 3"
   oppName?: string;       // override opponent label
+  /** Extra lines for the game-over card, under the rating change. */
+  overExtra?: React.ReactNode;
   resume?: SavedGame | null;
   /** Free play saves itself so a refresh resumes; challenges do not. */
   persist?: boolean;
@@ -64,7 +67,7 @@ function PlayerCard({
 }
 
 export default function Game({
-  mode, level, setup, goal, title, oppName: oppOverride, resume, persist, rated,
+  mode, level, setup, goal, title, oppName: oppOverride, overExtra, resume, persist, rated,
   online, onExit, onNext, onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
@@ -114,11 +117,19 @@ export default function Game({
     if (!rated) return;
     const me = setup?.humanPlayer ?? 0;
     const outcome: Outcome = winner === 'draw' ? 'draw' : winner === me ? 'win' : 'loss';
+    // The country as it stands right now. Read here rather than carried in from
+    // the start of the game, and never read again afterwards: this is the one
+    // moment the game is attributed, so changing country later moves nothing.
+    const country = loadProfile().country;
     const before = loadStats();
     const next = applyResult(before, {
-      level, outcome, you: scores[me], them: scores[1 - me],
+      level, outcome, you: scores[me], them: scores[1 - me], country,
     });
     saveStats(next);
+    // The same game, counted once in the world table. Fire and forget: no part
+    // of finishing a game waits on the network, and a failure is simply a game
+    // the table never hears about.
+    void reportGame({ level, country, outcome, you: scores[me], them: scores[1 - me] });
     setRatingDelta({ before: before.rating, after: next.rating });
     onStatsChange?.();
 
@@ -421,6 +432,7 @@ export default function Game({
                 </span>
               </p>
             )}
+            {overExtra}
             {isChallenge && humanWon && !goNext && <p className="over-note">{t('game.nextUnlocked')}</p>}
             {overNote() && <p className="over-note">{overNote()}</p>}
             {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (

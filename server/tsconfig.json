@@ -13,5 +13,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src", "../src/lib/rules.ts", "../src/lib/engine.ts", "../src/lib/protocol.ts", "../src/lib/roomCore.ts"]
+  "include": ["src", "../src/lib/rules.ts", "../src/lib/engine.ts", "../src/lib/protocol.ts", "../src/lib/roomCore.ts", "../src/lib/country.ts"]
 }

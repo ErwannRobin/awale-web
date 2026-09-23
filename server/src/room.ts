@@ -19,6 +19,10 @@ import type { Seat } from '../../src/lib/rules.ts';
 import { claimsFromToken, post, stub, type AuthEnv } from './auth.ts';
 import type { UserRecord } from './identity.ts';
 
+/** The world table, where a rated game's two countries are counted. Optional:
+ *  a deploy without it still rates games. */
+type RoomEnv = AuthEnv & { STATS?: DurableObjectNamespace };
+
 const STATE_KEY = 'room';
 
 /** `WebSocket.OPEN`, spelled out: the Workers runtime and the DOM disagree on
@@ -43,9 +47,9 @@ export class Room implements DurableObject {
 
   // Kept for two reasons: verifying the session token on `hello`, and
   // posting rating updates to Identity/Leaderboard once a rated game ends.
-  private readonly env: AuthEnv;
+  private readonly env: RoomEnv;
 
-  constructor(state: DurableObjectState, env: AuthEnv) {
+  constructor(state: DurableObjectState, env: RoomEnv) {
     this.state = state;
     this.env = env;
   }
@@ -104,7 +108,7 @@ export class Room implements DurableObject {
       const token = claims ? `u:${claims.sub}` : msg.token;
       const name = claims?.name || msg.name;
 
-      const result = join(room, token, name, now);
+      const result = join(room, token, name, now, msg.country);
       if (result.error) {
         this.sendTo(ws, { t: 'err', code: result.error });
         ws.close(1000, result.error);
@@ -169,8 +173,9 @@ export class Room implements DurableObject {
     this.dispatch(step.effects);
     await this.scheduleSweep();
     
-    // Check if game ended and update ELO ratings
-    if (step.state.status === 'over' && step.state.winner !== null) {
+    // Only on the alarm that ended the game. Every later alarm finds the room
+    // already over, and rating the same game again would count it twice.
+    if (room.status === 'playing' && step.state.status === 'over' && step.state.winner !== null) {
       await this.updateEloRatings(step.state);
     }
   }
@@ -295,9 +300,29 @@ export class Room implements DurableObject {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ userId: u.userId, name: u.name, rating: u.rating }),
       })));
+
+      await this.countForNations(state);
     } catch (error) {
       console.error('Failed to update ELO ratings:', error);
     }
+  }
+
+  /**
+   * A rated game, counted for the two players' countries — the only result
+   * nation points are made of, because it is the only one this server saw
+   * played out between two accounts. The countries are the ones the seats
+   * carried when the game ended, so a player who moves later leaves this
+   * game where it was won.
+   */
+  private async countForNations(state: RoomState): Promise<void> {
+    const [p0, p1] = state.players;
+    if (!this.env.STATS || !p0 || !p1 || state.winner === null) return;
+    const winner = state.winner === 'draw' ? 'draw' : state.winner === 0 ? 'a' : 'b';
+    const q = new URLSearchParams({
+      a: p0.country ?? '', b: p1.country ?? '', winner,
+    });
+    const stats = this.env.STATS.get(this.env.STATS.idFromName('global'));
+    await stats.fetch(`https://stats/pvp?${q}`, { method: 'POST' });
   }
 }
 

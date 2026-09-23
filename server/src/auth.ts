@@ -151,13 +151,18 @@ export const stub = (env: AuthEnv, name: string) => env.IDENTITY.get(env.IDENTIT
  *
  * Best-effort: a hiccup here must never fail a sign-in.
  */
-async function registerOnLeaderboard(env: AuthEnv, user: UserRecord): Promise<void> {
+export async function registerOnLeaderboard(env: AuthEnv, user: UserRecord): Promise<void> {
   try {
     const leaderboard = env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'));
     await leaderboard.fetch('https://leaderboard/leaderboard/update', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, name: user.name, rating: user.rating }),
+      body: JSON.stringify({
+        userId: user.userId, name: user.name, rating: user.rating,
+        // Only when known: an update without them leaves the entry's as it was.
+        ...(user.country ? { country: user.country } : {}),
+        ...(user.avatar ? { avatar: user.avatar } : {}),
+      }),
     });
   } catch (error) {
     console.error('Failed to register on leaderboard:', error);
@@ -219,6 +224,8 @@ export async function handleAuth(
         return await me(request, env, cors);
       case '/auth/name':
         return await rename(request, env, cors);
+      case '/auth/profile':
+        return await profile(request, env, cors);
       default:
         return new Response('not found', { status: 404, headers: cors });
     }
@@ -427,7 +434,47 @@ async function me(
   );
 }
 
-/** Renaming is the one thing an account can do, and it needs the account. */
+/** Who the bearer of a valid token is, or null. For the routes outside `/auth/*`. */
+export async function bearerUserId(request: Request, env: AuthEnv): Promise<string | null> {
+  const claims = await claimsFromBearer(env, request.headers.get('Authorization'));
+  return claims?.sub ?? null;
+}
+
+/**
+ * Everything a player says about themselves at once: name, country, avatar,
+ * and — once, on an account with no record yet — the record they built on this
+ * device before signing in. The public profile and the nations ranking read
+ * the result; see `/user/profile` in identity.ts for what is accepted.
+ */
+async function profile(
+  request: Request, env: AuthEnv, cors: Record<string, string>,
+): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('use POST', { status: 405, headers: cors });
+  }
+  const claims = await claimsFromBearer(env, request.headers.get('Authorization'));
+  if (!claims) return new Response('unauthorised', { status: 401, headers: cors });
+
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const account = stub(env, `user:${claims.sub}`);
+  // `/user/seen` first: an account that signed in before this route existed
+  // may have no record yet, and a profile needs one to land on.
+  const existing = await post<UserRecord | null>(account, '/user/read');
+  if (!existing) await post(account, '/user/seen', { userId: claims.sub, name: claims.name });
+  const user = await post<UserRecord>(account, '/user/profile', body);
+  await registerOnLeaderboard(env, user);
+  const nameChanged = user.name !== claims.name;
+  // The name lives in the token, so a new one means a fresh token.
+  const token = nameChanged
+    ? await mintToken(claimsFor(user.userId, user.name), await sessionKey(env))
+    : null;
+  return Response.json(
+    { ...(token ? { token } : {}), user: { id: user.userId, name: user.name } },
+    { headers: cors },
+  );
+}
+
+/** Renaming needs the account. `/auth/profile` does the same and more. */
 async function rename(
   request: Request, env: AuthEnv, cors: Record<string, string>,
 ): Promise<Response> {

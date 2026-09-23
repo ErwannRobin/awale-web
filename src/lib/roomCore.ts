@@ -20,6 +20,7 @@ import {
   type ClientMsg, type ErrorCode, type OverReason,
   type PlayerView, type RoomSnapshot, type RoomStatus, type ServerMsg,
 } from './protocol.ts';
+import type { CountryKey } from './country.ts';
 
 /**
  * How long a disconnected player keeps their seat.
@@ -44,6 +45,8 @@ export interface PlayerSlot {
   token: string;
   name: string;
   online: boolean;
+  /** Where the player says they play from; absent when unknown. */
+  country?: CountryKey;
   /** When this seat last went offline; null while connected. */
   offlineSince: number | null;
 }
@@ -105,7 +108,7 @@ export function createRoom(code: string, now: number): RoomState {
 }
 
 const view = (p: PlayerSlot | null): PlayerView | null =>
-  (p ? { name: p.name, online: p.online } : null);
+  (p ? { name: p.name, online: p.online, ...(p.country ? { country: p.country } : {}) } : null);
 
 export function snapshot(state: RoomState): RoomSnapshot {
   return {
@@ -158,7 +161,9 @@ function touch(state: RoomState, now: number): RoomState {
  * room does not care how many sockets a seat has open; two tabs on one token
  * are one player, and both hear everything that seat hears.
  */
-export function join(state: RoomState, token: string, name: string, now: number): JoinResult {
+export function join(
+  state: RoomState, token: string, name: string, now: number, country?: CountryKey,
+): JoinResult {
   const existing = seatOf(state, token);
   const effects: Effect[] = [];
 
@@ -167,6 +172,7 @@ export function join(state: RoomState, token: string, name: string, now: number)
     players[existing] = {
       ...players[existing]!,
       name: name || players[existing]!.name,
+      ...(country ? { country } : {}),
       online: true,
       offlineSince: null,
     };
@@ -184,7 +190,10 @@ export function join(state: RoomState, token: string, name: string, now: number)
   }
 
   const players = [...state.players] as [PlayerSlot | null, PlayerSlot | null];
-  players[free] = { token, name: name || defaultName(free), online: true, offlineSince: null };
+  players[free] = {
+    token, name: name || defaultName(free), online: true, offlineSince: null,
+    ...(country ? { country } : {}),
+  };
   let next = touch({ ...state, players }, now);
 
   // The second player through the door starts the game.

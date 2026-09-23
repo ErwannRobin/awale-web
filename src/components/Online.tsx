@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
 import { makeRoomCode, normaliseRoomCode, CODE_LENGTH } from '../lib/protocol.ts';
 import { queueUrl } from '../lib/onlineConfig.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
+import { fetchNations, worldStatsEnabled, type NationsTable } from '../lib/worldStats.ts';
+import { useSettings } from '../lib/useSettings.ts';
+import { RivalCard } from './Rivalry.tsx';
 
 interface Props {
+  /** The player's country, for the rivalry nudge. */
+  myCountry: string;
+  /** The nations ranking, behind the nudge. */
+  onNations: () => void;
   onStart: (room: string) => void;
   onBack: () => void;
   onToast: (msg: string) => void;
@@ -14,8 +21,19 @@ interface Props {
 /** How long to wait for the matchmaker before giving up and saying so. */
 const QUEUE_TIMEOUT_MS = 8000;
 
-export default function Online({ onStart, onBack, onToast }: Props) {
+export default function Online({ myCountry, onNations, onStart, onBack, onToast }: Props) {
   const t = useT();
+  const { language } = useSettings();
+
+  // The moment a player chooses to play someone is the moment their nation's
+  // standing is worth a line: who is just ahead, and by how much.
+  const [nations, setNations] = useState<NationsTable | null>(null);
+  useEffect(() => {
+    if (!worldStatsEnabled()) return;
+    let live = true;
+    void fetchNations().then(v => { if (live) setNations(v); });
+    return () => { live = false; };
+  }, []);
   const [joining, setJoining] = useState(false);
   const [code, setCode] = useState('');
   const [searching, setSearching] = useState(false);
@@ -74,6 +92,15 @@ export default function Online({ onStart, onBack, onToast }: Props) {
         <h1 className="title">{t('online.title')}</h1>
         <p className="tagline">{t('online.tagline')}</p>
       </div>
+
+      {nations && nations.nations.length > 0 && (
+        <div className="rival-link">
+          <RivalCard nations={nations.nations} myCountry={myCountry} t={t} locale={language} />
+          <button type="button" className="ctrl" onClick={() => { tap(); onNations(); }}>
+            {t('rival.seeNations')}
+          </button>
+        </div>
+      )}
 
       {!joining ? (
         <div className="menu-actions">

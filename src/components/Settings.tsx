@@ -6,6 +6,7 @@ import { resetStats } from '../lib/stats.ts';
 import { saveCompleted } from '../lib/progress.ts';
 import { clearSavedGame } from '../lib/saveGame.ts';
 import { defaultProfile, saveProfile } from '../lib/profile.ts';
+import { worldStatsEnabled } from '../lib/worldStats.ts';
 import { playTap, primeAudio } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { enableReminders, disableReminders, remindersSupported } from '../lib/notifications.ts';
@@ -209,6 +210,15 @@ export default function Settings({ onBack, onToast, onDataReset }: Props) {
 
         <section className="set-section" aria-label={t('settings.sectionData')}>
           <h3 className="set-head">{t('settings.sectionData')}</h3>
+          {worldStatsEnabled() && (
+            <Row label={t('settings.shareStats')} help={t('settings.shareStatsHelp')}>
+              <Toggle
+                on={s.shareStats}
+                label={t('settings.shareStats')}
+                onChange={v => set('shareStats', v)}
+              />
+            </Row>
+          )}
           <p className="set-help set-help-block">{t('settings.noAccount')}</p>
           <div className="set-actions">
             <button className="ctrl" onClick={() => confirmReset(() => resetStats())}>

@@ -82,8 +82,13 @@ test('a full game against the AI finishes and is recorded', async ({ page }) => 
 
   await page.getByText('BACK TO MENU').click();
   await page.getByLabel('Stats').click();
+  // Stats is the world now; the game also landed in the worldwide AI count.
+  await expect(page.getByRole('tab', { name: 'vs AI' })).toBeVisible();
   await expect(page.locator('.stat-grid')).toBeVisible();
-  await expect(page.locator('.stat-tile').first()).toContainText('1');
+  // The player's own record lives on their profile.
+  await page.getByRole('button', { name: 'My profile' }).click();
+  await expect(page.locator('.stat-grid').last()).toBeVisible();
+  await expect(page.locator('.stat-tile').filter({ hasText: 'Played' }).first()).toContainText('1');
 });
 
 test('the board holds still while the coaching text changes', async ({ page }) => {
@@ -164,7 +169,9 @@ test('settings change the board and persist', async ({ page }) => {
 
   // Turning off seed counts must actually remove the badges.
   await page.getByRole('switch', { name: 'Show seed counts' }).click();
-  await page.getByText('Done').click();
+  // By role, not by text: the country picker holds 250 names, and "Indonesia"
+  // contains "Done".
+  await page.getByRole('button', { name: 'Done' }).click();
   await page.getByText('TWO PLAYERS').click();
   await expect(page.locator('.pit-count')).toHaveCount(0);
 
@@ -200,7 +207,8 @@ test('the player chip opens a profile screen, and the gear opens settings', asyn
   await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
   await page.getByLabel('Display name').fill('Ama');
   await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
-  await page.getByText('Done').click();
+  // By role, not text: the country picker lists "Indonesia", which contains "Done".
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('.chip-name')).toHaveText('Ama');
 
   // The gear: how the game behaves. The name lives on the other screen now.
@@ -228,7 +236,7 @@ test('switching to French translates the interface', async ({ page }) => {
   await page.getByRole('radio', { name: 'Français' }).click();
 
   await expect(page.getByText('Réglages').first()).toBeVisible();
-  await page.getByText('Terminé').click();
+  await page.getByRole('button', { name: 'Terminé' }).click();
   await expect(page.getByText('DEUX JOUEURS')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 });

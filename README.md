@@ -33,8 +33,18 @@ of the oware / mancala family.
 
 - **Rating and ranks** — a local Elo against the four AI levels, with six rank
   bands. Rated free play only; challenges and pass-and-play do not count.
-- **Stats and Records** — win rate, streaks, seeds captured, a per-difficulty
-  breakdown, your best wins and recent games.
+- **Public profiles** — every player on the leaderboard opens onto a profile:
+  country, online rating and record, and their record against the AI (win
+  rate, streaks, seeds captured, per-difficulty and per-country breakdown).
+  Yours is read from this device, everybody else's from the server.
+- **World stats** — the Stats screen is everybody's games, with AI games and
+  player-vs-player games kept apart, and a **Nations** ranking. See [Nations
+  and rivalries](#nations-and-rivalries).
+- **Records** — your best wins and recent games.
+- **Countries** — your country is detected from your connection at the edge and
+  can be changed at any time; finished games are counted per country and per
+  difficulty, here and in a world table. See [Countries and the world
+  table](#countries-and-the-world-table).
 - **Settings** — sound, vibration, animation speed (including *instant*), three
   board themes, seed-count badges, a left-handed layout, and language.
 - **English and French**, auto-detected and overridable.
@@ -49,10 +59,58 @@ of the oware / mancala family.
   gains it. On a desktop keyboard, Escape closes Settings, Help and sign-in;
   it stops there, so a stray key press cannot walk out of a game.
 
-There is **no leaderboard**. Online games are unrated: your rating measures you
-against the four AI levels on this device, and a stranger cannot move it. A
-global ladder needs accounts and a database, which this server deliberately does
-not have — so the trophy screen is *Records — your best games*.
+There are **two ratings**. The local one measures you against the four AI
+levels on this device. The online one is an Elo between signed-in players, and
+it is what the leaderboard ranks. Online games with an anonymous player are not
+rated. The world table is counters, not a ranking of people: it says how many
+games were played from each country, and never who played them.
+
+### Nations and rivalries
+
+**Nation points.** 3 for every rated online win against a player from another
+country, 1 for a draw. A game between two players from the same country is a
+*derby*: counted as played, never as won or lost. Only rated games score —
+both players signed in, and the board played out in a room the server ran — so
+the open `/stats/game` endpoint cannot push a nation up.
+
+**Head to head.** Every pair of countries keeps its own record (`CI–FR: 2–1, 1
+draw`), shown at the end of an online game between them and on the Nations tab.
+
+**The nudge.** The Stats and Online screens show your nation's place and the
+country directly in its way: *"Côte d'Ivoire is 3 points ahead of France — 2
+wins abroad take the place."* A leaderboard row opens that player's profile,
+and a nation's row opens its best player — somebody to go and beat.
+
+### Countries and the world table
+
+**Detection.** Cloudflare has already resolved the country by the time the
+Worker sees a request (`request.cf.country`), so `GET /geo` answers with two
+letters and no IP address is read, stored, or sent anywhere. The app asks once
+per launch.
+
+**Changing it.** The country lives in the profile (the player chip). Picking one pins
+it (`countrySource: 'manual'`) and detection never overrides it again — a player
+abroad, or behind a VPN, stays where they said they are.
+
+**Old games stay where they were played.** A finished game is attributed once,
+at the moment it ends, to the country that was set then; both the local record
+and the world table are cumulative counters that nothing ever goes back and
+re-attributes. Move to France today and yesterday's games are still Ivorian.
+
+**What is counted.** AI games, split by difficulty (0–3), by outcome and by
+country; rated online games per country, and head to head per pair of
+countries — totals, nothing per-game and nothing per-person. A game whose country is unknown
+lands in `ZZ` rather than being dropped, so the totals add up.
+
+**What leaves the device.** One `POST /stats/game` per finished rated game,
+carrying a level, the outcome, the score and a two-letter country code. Signed
+out, that is all: no name, no token, nothing that ties two games together.
+*Count my games worldwide* in Settings turns the world count off. Signed in,
+the same request also carries the session, so the game lands on your public
+profile (that part happens even with world counting off — the profile is the
+point of the account). On first sign-in, the record already on this device is
+sent once, and taken only by an account with no record yet. A build with no
+`VITE_ONLINE_URL` never sends anything at all.
 
 ## Rules
 
@@ -115,8 +173,11 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/useOnlineSession.ts` | Where the match meets the board |
 | `src/lib/onlineConfig.ts` | Server URL, seat token, invite links |
 | `src/lib/settings.ts` | User settings + change subscription |
-| `src/lib/stats.ts` | Elo rating, streaks, per-level tallies, ranks |
-| `src/lib/profile.ts` | Display name and avatar |
+| `src/lib/stats.ts` | Elo rating, streaks, per-level and per-country tallies, ranks |
+| `src/lib/profile.ts` | Display name, avatar, and the country games are counted under |
+| `src/lib/country.ts` | ISO country codes, flags, and localised names |
+| `src/lib/countryStats.ts` | The per-country counters — pure, shared with the Worker |
+| `src/lib/worldStats.ts` | Detect a country, count a game, read the world table |
 | `src/lib/saveGame.ts` | The resumable in-progress game |
 | `src/lib/sound.ts` | Web Audio effects — recorded seed samples, synthesised fallback |
 | `src/lib/haptics.ts` | Vibration feedback |
