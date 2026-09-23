@@ -36,6 +36,8 @@ export interface OnlineOptions {
   token: string;
   /** A signed session token when signed in; absent when playing anonymously. */
   auth?: string;
+  /** Where the player says they play from. */
+  country?: string;
   /** Injectable for tests; defaults to a real WebSocket. */
   factory?: TransportFactory;
 }
@@ -50,7 +52,7 @@ const startingView: OnlineView = {
 };
 
 export function useOnlineSession(
-  { room, name, token, auth, factory }: OnlineOptions,
+  { room, name, token, auth, country, factory }: OnlineOptions,
 ): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
   const sessionRef = useRef<OnlineSession | null>(null);
@@ -60,6 +62,8 @@ export function useOnlineSession(
   // sits in a ref rather than re-creating the session mid-game.
   const nameRef = useRef(name);
   nameRef.current = name;
+  const countryRef = useRef(country);
+  countryRef.current = country;
 
   useEffect(() => {
     const make = factory ?? webSocketTransport(roomSocketUrl(room));
@@ -68,6 +72,7 @@ export function useOnlineSession(
       token,
       auth,
       name: nameRef.current,
+      country: countryRef.current,
       callbacks: {
         change: next => setView(next),
 

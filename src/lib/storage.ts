@@ -30,9 +30,18 @@ function memoryStore(): KeyValueStore {
   };
 }
 
+/** Just what is used of `Storage`, so this file also compiles for the Worker,
+ *  which shares the stats code and has no `localStorage` at all. */
+interface WebStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
 function webStore(): KeyValueStore | null {
   try {
-    if (typeof localStorage === 'undefined') return null;
+    const localStorage = (globalThis as { localStorage?: WebStorage }).localStorage;
+    if (!localStorage) return null;
     const probe = '__awale_probe__';
     localStorage.setItem(probe, '1');
     localStorage.removeItem(probe);

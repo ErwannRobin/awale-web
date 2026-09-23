@@ -20,7 +20,8 @@ import {
   type ServerMsg,
 } from '../src/lib/protocol.ts';
 import {
-  addCountryGame, rankCountries, sanitiseLevel, type CountryTally,
+  addCountryGame, addHeadToHead, addPvpMatch, rankCountries, rankNations, rivalryKey,
+  sanitiseLevel, sanitiseOutcome, type CountryTally, type HeadToHead,
 } from '../src/lib/countryStats.ts';
 import { normaliseCountry, UNKNOWN_COUNTRY } from '../src/lib/country.ts';
 import type { Seat } from '../src/lib/rules.ts';
@@ -47,7 +48,32 @@ interface Conn {
 const DEV_COUNTRY = normaliseCountry(process.env.DEV_COUNTRY ?? UNKNOWN_COUNTRY);
 let countries: Record<string, CountryTally> = {};
 let gamesCounted = 0;
+let pvpCounted = 0;
 let countedAt = 0;
+const rivalries = new Map<string, HeadToHead>();
+
+/**
+ * Online games, counted for the nations ranking.
+ *
+ * The one place this file is deliberately looser than production: there are
+ * no accounts here, so no game is "rated", and counting only rated games would
+ * leave the nations screen empty forever on a laptop. Every finished game
+ * counts instead, so the screens and the Playwright suite have something real
+ * to show.
+ */
+function countOnlineGame(room: RoomState): void {
+  const [p0, p1] = room.players;
+  if (!p0 || !p1 || room.winner === null) return;
+  const winner = room.winner === 'draw' ? 'draw' : room.winner === 0 ? 'a' : 'b';
+  countries = addPvpMatch(countries, p0.country, p1.country, winner);
+  const pair = rivalryKey(p0.country, p1.country);
+  if (pair) {
+    const next = addHeadToHead(rivalries.get(pair), p0.country, p1.country, winner);
+    if (next) rivalries.set(pair, next);
+  }
+  pvpCounted++;
+  countedAt = Date.now();
+}
 
 const rooms = new Map<string, RoomState>();
 const conns = new Map<string, Set<Conn>>();
@@ -86,7 +112,7 @@ function dispatch(code: string, effects: Effect[]): void {
 const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, GET, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, authorization',
 };
 
 function http(request: IncomingMessage, response: ServerResponse): void {
@@ -108,9 +134,27 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   if (url.pathname === '/stats/countries') {
     response.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({
       total: gamesCounted,
+      pvpTotal: pvpCounted,
       updatedAt: countedAt,
       countries: rankCountries(countries),
+      rivalries: [...rivalries.values()],
     }));
+    return;
+  }
+  if (url.pathname === '/stats/nations') {
+    response.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({
+      // No accounts here, so no people half: players and ratings stay at zero.
+      nations: rankNations(rankCountries(countries), []),
+      rivalries: [...rivalries.values()],
+      pvpTotal: pvpCounted,
+      updatedAt: countedAt,
+    }));
+    return;
+  }
+  if (url.pathname === '/stats/rivalry') {
+    const pair = rivalryKey(url.searchParams.get('a'), url.searchParams.get('b'));
+    response.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify(pair ? rivalries.get(pair) ?? null : null));
     return;
   }
   if (url.pathname === '/stats/game' && request.method === 'POST') {
@@ -118,11 +162,17 @@ function http(request: IncomingMessage, response: ServerResponse): void {
       const claimed = normaliseCountry(body.country);
       const country = claimed === UNKNOWN_COUNTRY ? DEV_COUNTRY : claimed;
       const level = sanitiseLevel(Number(body.level));
-      countries = addCountryGame(countries, country, level);
+      const outcome = sanitiseOutcome(body.outcome);
+      if (body.world === false) {
+        response.writeHead(200, { ...cors, 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: true, country, level, outcome }));
+        return;
+      }
+      countries = addCountryGame(countries, country, level, outcome);
       gamesCounted++;
       countedAt = Date.now();
       response.writeHead(200, { ...cors, 'content-type': 'application/json' })
-        .end(JSON.stringify({ ok: true, country, level }));
+        .end(JSON.stringify({ ok: true, country, level, outcome }));
     }, () => {
       response.writeHead(400, cors).end('bad json');
     });
@@ -203,7 +253,7 @@ function attach(code: string, ws: WebSocket): void {
         ws.close();
         return;
       }
-      const result = join(room, msg.token, msg.name, now);
+      const result = join(room, msg.token, msg.name, now, msg.country);
       if (result.error) {
         send(ws, { t: 'err', code: result.error });
         ws.close();
@@ -222,6 +272,7 @@ function attach(code: string, ws: WebSocket): void {
     }
     const step = command(room, conn.token, msg, now);
     rooms.set(code, step.state);
+    if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
     dispatch(code, step.effects);
   });
 
@@ -245,6 +296,7 @@ setInterval(() => {
   for (const [code, room] of rooms) {
     const step = sweep(room, now);
     if (step.effects.length > 0) {
+      if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
       rooms.set(code, step.state);
       dispatch(code, step.effects);
     }

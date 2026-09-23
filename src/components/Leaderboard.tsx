@@ -1,67 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
-import { onlineBaseUrl } from '../lib/onlineConfig.ts';
-
-interface LeaderboardPlayer {
-  userId: string;
-  name: string;
-  rating: number;
-  gamesPlayed: number;
-  wins: number;
-  losses: number;
-  draws: number;
-  position: number;
-}
-
-interface LeaderboardResponse {
-  players: LeaderboardPlayer[];
-  total: number;
-  updatedAt: number;
-}
+import { useSettings } from '../lib/useSettings.ts';
+import { countryFlag, UNKNOWN_COUNTRY } from '../lib/country.ts';
+import { fetchLeaderboard, worldStatsEnabled, type LeaderboardPlayer } from '../lib/worldStats.ts';
+import { countryLabel } from './countryLabel.ts';
 
 interface Props {
   onBack: () => void;
+  /** Open a player's public profile. */
+  onPlayer: (userId: string) => void;
+  /** The viewer's own country and account, to filter by and to highlight. */
+  myCountry: string;
+  myId: string | null;
 }
 
-export default function Leaderboard({ onBack }: Props) {
+type Scope = 'world' | 'country';
+
+export default function Leaderboard({ onBack, onPlayer, myCountry, myId }: Props) {
   const t = useT();
+  const { language } = useSettings();
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  // "My country" only means something once the player has one.
+  const hasCountry = myCountry !== UNKNOWN_COUNTRY;
+  const [scope, setScope] = useState<Scope>('world');
 
-  const fetchLeaderboard = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const base = onlineBaseUrl();
-      if (!base) {
-        setError(t('leaderboard.notAvailable') as string);
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(`${base}/leaderboard`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json() as LeaderboardResponse;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    if (!worldStatsEnabled()) {
+      setError(t('leaderboard.notAvailable'));
+      setLoading(false);
+      return;
+    }
+    const data = await fetchLeaderboard();
+    if (!data) {
+      setError(t('leaderboard.error'));
+    } else {
       setPlayers(data.players);
       setLastUpdated(new Date(data.updatedAt).toLocaleString());
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('leaderboard.error') as string);
-    } finally {
-      setLoading(false);
     }
-  };
+    setLoading(false);
+  }, [t]);
 
-  useEffect(() => {
-    fetchLeaderboard();
-  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const shown = scope === 'country' ? players.filter(p => p.country === myCountry) : players;
 
   return (
     <div className="screen">
@@ -75,24 +61,51 @@ export default function Leaderboard({ onBack }: Props) {
         <h2 className="learn-title">{t('leaderboard.title')}</h2>
         <p className="learn-lead">{t('leaderboard.lead')}</p>
 
+        {hasCountry && (
+          <div className="segmented tabs" role="radiogroup" aria-label={t('leaderboard.scope')}>
+            {(['world', 'country'] as Scope[]).map(s => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={scope === s}
+                className={`seg ${scope === s ? 'seg-on' : ''}`}
+                onClick={() => setScope(s)}
+              >
+                {s === 'world'
+                  ? `🌍 ${t('leaderboard.world')}`
+                  : `${countryFlag(myCountry)} ${countryLabel(myCountry, t, language)}`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <p className="empty-note">{t('leaderboard.loading')}</p>
         ) : error ? (
           <>
             <p className="empty-note">{error}</p>
-            <button className="pill" onClick={fetchLeaderboard}>
+            <button className="pill" onClick={() => { void load(); }}>
               <span className="pill-body"><span className="pill-title">{t('leaderboard.retry')}</span></span>
             </button>
           </>
-        ) : players.length === 0 ? (
+        ) : shown.length === 0 ? (
           <p className="empty-note">{t('leaderboard.empty')}</p>
         ) : (
           <>
-            <h3 className="set-head">{t('leaderboard.totalPlayers', { count: players.length })}</h3>
+            <h3 className="set-head">{t('leaderboard.totalPlayers', { count: shown.length })}</h3>
             <div className="rec-list">
-              {players.map(player => (
-                <div key={player.userId} className="rec-row">
-                  <span className="rec-rank">{player.position}</span>
+              {shown.map((player, i) => (
+                <button
+                  key={player.userId}
+                  type="button"
+                  className={`rec-row rec-row-btn ${player.userId === myId ? 'rec-row-me' : ''}`}
+                  onClick={() => onPlayer(player.userId)}
+                  aria-label={t('leaderboard.open', { name: player.name })}
+                >
+                  {/* In a country's view, the place within that country. */}
+                  <span className="rec-rank">{scope === 'country' ? i + 1 : player.position}</span>
+                  <span className="rec-flag" aria-hidden>{countryFlag(player.country)}</span>
                   <span className="rec-body">
                     <span className="rec-score">{player.name}</span>
                     <span className="rec-meta">
@@ -100,7 +113,7 @@ export default function Leaderboard({ onBack }: Props) {
                     </span>
                   </span>
                   <span className="rec-delta">{player.rating}</span>
-                </div>
+                </button>
               ))}
             </div>
             <p className="stat-sub" style={{ textAlign: 'center', marginTop: 10 }}>

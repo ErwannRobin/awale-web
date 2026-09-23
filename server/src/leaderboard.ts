@@ -2,7 +2,14 @@
 //
 // Maintains a sorted list of players by their ELO rating.
 // Uses a single DO for the entire leaderboard to ensure consistency.
+//
+// Each entry also carries the player's country, so the same object can answer
+// "who plays for France, and how strong are they" — the people half of the
+// nations ranking. The results half lives in the Stats object.
 import { sortByRating, type PlayerRating } from '../../src/lib/elo.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY, type CountryKey } from '../../src/lib/country.ts';
+import type { CountryPeople } from '../../src/lib/countryStats.ts';
+import { AVATARS, type AvatarKey } from '../../src/lib/profile.ts';
 
 interface LeaderboardEntry {
   userId: string;
@@ -13,6 +20,9 @@ interface LeaderboardEntry {
   losses: number;
   draws: number;
   lastSeenAt: number;
+  /** Absent on an entry written before countries existed. */
+  country?: CountryKey;
+  avatar?: AvatarKey;
 }
 
 interface LeaderboardData {
@@ -31,6 +41,8 @@ export interface LeaderboardPlayer {
   losses: number;
   draws: number;
   position: number;
+  country: CountryKey;
+  avatar: AvatarKey;
 }
 
 export interface LeaderboardResponse {
@@ -53,7 +65,7 @@ export class Leaderboard implements DurableObject {
     switch (url.pathname) {
       case '/leaderboard': {
         if (request.method === 'GET') {
-          return await this.getLeaderboard();
+          return Response.json(await this.getLeaderboard());
         }
         return new Response('Method not allowed', { status: 405 });
       }
@@ -64,9 +76,17 @@ export class Leaderboard implements DurableObject {
           if (!userId) {
             return new Response('Missing userId', { status: 400 });
           }
-          return await this.getPlayerRank(userId);
+          const board = await this.getLeaderboard();
+          const player = board.players.find(p => p.userId === userId);
+          return player
+            ? Response.json(player)
+            : new Response('Player not found', { status: 404 });
         }
         return new Response('Method not allowed', { status: 405 });
+      }
+
+      case '/leaderboard/countries': {
+        return Response.json(await this.countries());
       }
 
       case '/leaderboard/update': {
@@ -81,11 +101,10 @@ export class Leaderboard implements DurableObject {
     }
   }
 
-  private async getLeaderboard(): Promise<Response> {
+  private async getLeaderboard(): Promise<LeaderboardResponse> {
     const data = await this.loadData();
-    const entries = Array.from(data.entries.values());
     const sorted = sortByRating(
-      entries.map(e => ({
+      Array.from(data.entries.values(), e => ({
         userId: e.userId,
         name: e.name,
         rating: e.rating,
@@ -94,59 +113,49 @@ export class Leaderboard implements DurableObject {
       false,
     );
 
-    const players: LeaderboardPlayer[] = sorted.map((e, index) => ({
-      userId: e.userId,
-      name: e.name,
-      rating: e.rating,
-      gamesPlayed: e.gamesPlayed,
-      wins: entries.find(x => x.userId === e.userId)?.wins ?? 0,
-      losses: entries.find(x => x.userId === e.userId)?.losses ?? 0,
-      draws: entries.find(x => x.userId === e.userId)?.draws ?? 0,
-      position: index + 1,
-    }));
+    const players: LeaderboardPlayer[] = sorted.map((e, index) => {
+      // A map lookup rather than a scan per row: the board is read far more
+      // often than it is written, and it grows with every sign-in.
+      const entry = data.entries.get(e.userId)!;
+      return {
+        userId: e.userId,
+        name: e.name,
+        rating: e.rating,
+        gamesPlayed: e.gamesPlayed,
+        wins: entry.wins,
+        losses: entry.losses,
+        draws: entry.draws,
+        position: index + 1,
+        country: entry.country ?? UNKNOWN_COUNTRY,
+        avatar: entry.avatar ?? 'clay',
+      };
+    });
 
-    const response: LeaderboardResponse = {
-      players,
-      total: players.length,
-      updatedAt: data.updatedAt,
-    };
-
-    return Response.json(response);
+    return { players, total: players.length, updatedAt: data.updatedAt };
   }
 
-  private async getPlayerRank(userId: string): Promise<Response> {
+  /** Signed-in players per country, and how strong they are. */
+  private async countries(): Promise<CountryPeople[]> {
     const data = await this.loadData();
-    const entry = data.entries.get(userId);
-
-    if (!entry) {
-      return new Response('Player not found', { status: 404 });
+    const by = new Map<CountryKey, { sum: number; people: LeaderboardEntry[] }>();
+    for (const e of data.entries.values()) {
+      const code = e.country ?? UNKNOWN_COUNTRY;
+      if (code === UNKNOWN_COUNTRY) continue;
+      const seen = by.get(code) ?? { sum: 0, people: [] };
+      seen.sum += e.rating;
+      seen.people.push(e);
+      by.set(code, seen);
     }
-
-    const entries = Array.from(data.entries.values());
-    const sorted = sortByRating(
-      entries.map(e => ({
-        userId: e.userId,
-        name: e.name,
-        rating: e.rating,
-        gamesPlayed: e.gamesPlayed,
-      })),
-      false,
-    );
-
-    const position = sorted.findIndex(e => e.userId === userId) + 1;
-
-    const player: LeaderboardPlayer = {
-      userId: entry.userId,
-      name: entry.name,
-      rating: entry.rating,
-      gamesPlayed: entry.gamesPlayed,
-      wins: entry.wins,
-      losses: entry.losses,
-      draws: entry.draws,
-      position: position > 0 ? position : entries.length + 1,
-    };
-
-    return Response.json(player);
+    return [...by.entries()].map(([code, { sum, people }]) => {
+      const top = people.reduce((best, p) => (p.rating > best.rating ? p : best));
+      return {
+        code,
+        players: people.length,
+        avgRating: Math.round(sum / people.length),
+        topRating: top.rating,
+        topPlayer: { userId: top.userId, name: top.name },
+      };
+    });
   }
 
   private async updatePlayer(request: Request, now: number): Promise<Response> {
@@ -154,6 +163,8 @@ export class Leaderboard implements DurableObject {
       userId: string;
       name: string;
       rating: PlayerRating;
+      country?: unknown;
+      avatar?: unknown;
     }
 
     const body = await request.json() as UpdateRequest;
@@ -163,6 +174,7 @@ export class Leaderboard implements DurableObject {
     }
 
     const data = await this.loadData();
+    const previous = data.entries.get(body.userId);
 
     // A freshly signed-in player has no display name yet — that is chosen
     // later, on the profile screen — so this cannot require one without
@@ -176,6 +188,10 @@ export class Leaderboard implements DurableObject {
       losses: body.rating.losses,
       draws: body.rating.draws,
       lastSeenAt: now,
+      // Absent from the update means "unchanged", not "unknown": a rating
+      // update from a room knows nothing about countries.
+      country: body.country === undefined ? previous?.country : normaliseCountry(body.country),
+      avatar: AVATARS.includes(body.avatar as AvatarKey) ? body.avatar as AvatarKey : previous?.avatar,
     };
 
     data.entries.set(body.userId, entry);

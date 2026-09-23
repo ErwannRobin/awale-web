@@ -4,7 +4,9 @@
 // guarantee and neither is big enough to deserve its own class:
 //
 //   sess:<session_id>  a sign-in still in flight
-//   user:<user_id>     an account: a display name and when it was last seen
+//   user:<user_id>     an account: a display name, a country, an avatar, the
+//                      online rating, and the record against the AI that the
+//                      public profile shows
 //
 // `idFromName` gives exactly one instance per key worldwide, which is what
 // makes a webhook and a poll about the same sign-in agree without a lock.
@@ -13,6 +15,12 @@ import {
   type VerificationRecord, type VerificationStatus,
 } from '../../src/lib/authCore.ts';
 import { initialRating, updatePlayerRating, type PlayerRating } from '../../src/lib/elo.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY, type CountryKey } from '../../src/lib/country.ts';
+import {
+  applyResult, coerceStats, emptyStats, publicStats, type PublicStats, type Stats,
+} from '../../src/lib/stats.ts';
+import { sanitiseLevel, sanitiseOutcome } from '../../src/lib/countryStats.ts';
+import { AVATARS, type AvatarKey } from '../../src/lib/profile.ts';
 
 const RECORD_KEY = 'record';
 const USER_KEY = 'user';
@@ -23,6 +31,36 @@ export interface UserRecord {
   createdAt: number;
   lastSeenAt: number;
   rating: PlayerRating;
+  /** Where the player says they play from. Absent on an account made before. */
+  country?: CountryKey;
+  avatar?: AvatarKey;
+  /** The record against the AI, as the public profile shows it. */
+  ai?: Stats;
+}
+
+/** What anybody may read about an account: no phone, no token, no history. */
+export interface PublicPlayer {
+  userId: string;
+  name: string;
+  country: CountryKey;
+  avatar: AvatarKey;
+  createdAt: number;
+  lastSeenAt: number;
+  rating: PlayerRating;
+  ai: PublicStats;
+}
+
+export function toPublic(record: UserRecord): PublicPlayer {
+  return {
+    userId: record.userId,
+    name: record.name,
+    country: record.country ?? UNKNOWN_COUNTRY,
+    avatar: record.avatar ?? 'clay',
+    createdAt: record.createdAt,
+    lastSeenAt: record.lastSeenAt,
+    rating: record.rating,
+    ai: publicStats(record.ai ?? emptyStats()),
+  };
 }
 
 /** What `/auth/status` needs to answer the browser. */
@@ -99,6 +137,7 @@ export class Identity implements DurableObject {
         const existing = await this.state.storage.get<UserRecord>(USER_KEY);
         const named = cleanDisplayName(body.name, existing?.name ?? '');
         const record: UserRecord = {
+          ...existing,
           userId: body.userId,
           name: named,
           createdAt: existing?.createdAt ?? now,
@@ -112,6 +151,65 @@ export class Identity implements DurableObject {
       case '/user/read': {
         const record = await this.state.storage.get<UserRecord>(USER_KEY);
         return Response.json(record ?? null);
+      }
+
+      /**
+       * What the player says about themselves: a name, a country, an avatar.
+       * Each field is optional and only overwrites when present and valid.
+       *
+       * `ai` is a one-time seed: the record a player built on this device
+       * before signing in. Taken only while the account has none of its own,
+       * so it cannot be used to rewrite a record the server already keeps.
+       */
+      case '/user/profile': {
+        const body = await request.json() as Record<string, unknown>;
+        const existing = await this.state.storage.get<UserRecord>(USER_KEY);
+        if (!existing) return new Response('no such user', { status: 404 });
+        const country = body.country === undefined ? existing.country : normaliseCountry(body.country);
+        const avatar = AVATARS.includes(body.avatar as AvatarKey)
+          ? body.avatar as AvatarKey
+          : existing.avatar;
+        const seeded = !existing.ai || existing.ai.games === 0;
+        const record: UserRecord = {
+          ...existing,
+          name: cleanDisplayName(body.name, existing.name),
+          ...(country ? { country } : {}),
+          ...(avatar ? { avatar } : {}),
+          ...(seeded && body.ai ? { ai: coerceStats(body.ai) } : {}),
+          lastSeenAt: now,
+        };
+        await this.state.storage.put(USER_KEY, record);
+        return Response.json(record);
+      }
+
+      /** One finished AI game, folded into the account's public record. */
+      case '/user/aiGame': {
+        const body = await request.json() as Record<string, unknown>;
+        const existing = await this.state.storage.get<UserRecord>(USER_KEY);
+        if (!existing) return new Response('no such user', { status: 404 });
+        const outcome = sanitiseOutcome(body.outcome);
+        if (!outcome) return new Response('bad outcome', { status: 400 });
+        const seeds = (v: unknown) => (typeof v === 'number' && Number.isFinite(v)
+          ? Math.min(48, Math.max(0, Math.round(v)))
+          : 0);
+        const ai = applyResult(coerceStats(existing.ai ?? null), {
+          level: sanitiseLevel(body.level),
+          outcome,
+          you: seeds(body.you),
+          them: seeds(body.them),
+          country: typeof body.country === 'string' ? body.country : existing.country,
+          at: now,
+        });
+        // The public profile never shows the history; a short one is kept so
+        // the record stays the same shape as the device's.
+        const record: UserRecord = { ...existing, ai: { ...ai, history: ai.history.slice(0, 10) }, lastSeenAt: now };
+        await this.state.storage.put(USER_KEY, record);
+        return Response.json(record);
+      }
+
+      case '/user/public': {
+        const record = await this.state.storage.get<UserRecord>(USER_KEY);
+        return Response.json(record ? toPublic(record) : null);
       }
 
       case '/user/leaderboard': {

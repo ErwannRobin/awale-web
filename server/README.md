@@ -9,8 +9,14 @@ as two people are in it.
 GET  /room/:code       WebSocket upgrade into that room
 POST /queue            quick match — a code to sit in, or one to walk into
 GET  /geo              which country this request came from
-POST /stats/game       count one finished game: a level and a country
-GET  /stats/countries  the world table
+POST /stats/game       count one finished AI game: level, outcome, country
+                       (with a session token: also the player's own record)
+GET  /stats/countries  the world table: AI and online, per country, and rivalries
+GET  /stats/nations    countries ranked by nation points, with the leaderboard's people
+GET  /stats/rivalry    ?a=CI&b=FR — one pair's head to head
+GET  /leaderboard      signed-in players by online rating, with their country
+GET  /players/:id      one player's public profile
+POST /auth/profile     name, country, avatar (and a one-time record seed)
 GET  /health           is anybody home
 everything else        the built web app, from the ASSETS binding
 ```
@@ -23,13 +29,16 @@ lookup, and the IP is never read, stored, or forwarded. `/geo` hands the browser
 those two letters and nothing else; `XX` and `T1` (proxy, Tor) come back as
 `ZZ`, "country unknown", which is a bucket rather than a dropped game.
 
-`/stats/game` takes `{ level, country }`. The country in the body wins when it
+`/stats/game` takes `{ level, country, outcome, you, them, world }`. The country in the body wins when it
 is a real code — a player may say where they are from — and the request's own
-country is the fallback. Both are clamped and validated; nothing else in the
-body is read.
+country is the fallback. Everything is clamped and validated. `world: false`
+skips the anonymous count; a valid `Authorization` header adds the game to that
+account's record.
 
-What the `Stats` object keeps is counters: a world total, and `{ games, byLevel }`
-per country. There is no row per game and no identifier, which is also why a
+What the `Stats` object keeps is counters: world totals, `{ games, byLevel,
+wins, losses, draws, pvp }` per country, and a head-to-head row per pair of
+countries. Online results are written only by the `Room` object, after a rated
+game it ran itself — never from a browser request. There is no row per game and no identifier, which is also why a
 player who changes country leaves their old games behind: the counter they went
 into has no idea who they were, and nothing ever goes back to move them.
 
@@ -66,7 +75,7 @@ field, and why each socket carries its own identity in `serializeAttachment`.
 | `src/index.ts` | The router, the matchmaker, and the fall-through to the app |
 | `src/room.ts` | One room: sockets in, sockets out, storage, the walkout alarm |
 | `src/lobby.ts` | Quick match — one waiting code at a time |
-| `src/stats.ts` | The world table: games per country, per difficulty |
+| `src/stats.ts` | The world table: games per country, per difficulty and outcome; online results and rivalries |
 | `dev-server.ts` | The same rooms over `ws`, on a laptop |
 
 None of them contain a rule of awalé, and none of them count anything by hand.

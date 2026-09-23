@@ -27,6 +27,8 @@ interface Props {
   goal?: string;          // challenge goal text (shown instead of rotating tips)
   title?: string;         // e.g. "Challenge 3"
   oppName?: string;       // override opponent label
+  /** Extra lines for the game-over card, under the rating change. */
+  overExtra?: React.ReactNode;
   resume?: SavedGame | null;
   /** Free play saves itself so a refresh resumes; challenges do not. */
   persist?: boolean;
@@ -65,7 +67,7 @@ function PlayerCard({
 }
 
 export default function Game({
-  mode, level, setup, goal, title, oppName: oppOverride, resume, persist, rated,
+  mode, level, setup, goal, title, oppName: oppOverride, overExtra, resume, persist, rated,
   online, onExit, onNext, onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
@@ -127,7 +129,7 @@ export default function Game({
     // The same game, counted once in the world table. Fire and forget: no part
     // of finishing a game waits on the network, and a failure is simply a game
     // the table never hears about.
-    void reportGame({ level, country });
+    void reportGame({ level, country, outcome, you: scores[me], them: scores[1 - me] });
     setRatingDelta({ before: before.rating, after: next.rating });
     onStatsChange?.();
 
@@ -430,6 +432,7 @@ export default function Game({
                 </span>
               </p>
             )}
+            {overExtra}
             {isChallenge && humanWon && !goNext && <p className="over-note">{t('game.nextUnlocked')}</p>}
             {overNote() && <p className="over-note">{overNote()}</p>}
             {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (

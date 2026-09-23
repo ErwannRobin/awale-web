@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Game from './Game.tsx';
 import { useT } from '../i18n/useT.ts';
 import type { StringKey } from '../i18n/index.ts';
@@ -9,6 +9,10 @@ import { loadSession } from '../lib/auth.ts';
 import type { GameSetup } from '../lib/useGame.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
+import { countryFlag, UNKNOWN_COUNTRY } from '../lib/country.ts';
+import { rivalryKey, type HeadToHead } from '../lib/countryStats.ts';
+import { fetchRivalry } from '../lib/worldStats.ts';
+import { HeadToHeadLine } from './Rivalry.tsx';
 
 interface Props {
   room: string;
@@ -17,6 +21,13 @@ interface Props {
   onSettings: () => void;
   onToast: (msg: string) => void;
 }
+
+/**
+ * How long after the game ends to ask for the head-to-head. The room tells both
+ * players the result first and counts it for the nations after, so asking at
+ * once would show the score from before this game.
+ */
+const RIVALRY_DELAY_MS = 2500;
 
 /** Errors worth explaining rather than showing as a code. */
 const ERROR_KEYS: Partial<Record<string, StringKey>> = {
@@ -39,8 +50,24 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
     name: account?.user.name || profile.name,
     token,
     auth: account?.token,
+    country: profile.country === UNKNOWN_COUNTRY ? undefined : profile.country,
   });
   const { snapshot, seat, connection, error } = online.view;
+
+  // Two countries at one board: the game is also a round of their rivalry.
+  const mine = seat === null ? undefined : snapshot?.players[seat]?.country;
+  const theirs = seat === null ? undefined : snapshot?.players[1 - seat]?.country;
+  const pair = rivalryKey(mine, theirs);
+  const over = snapshot?.status === 'over';
+  const [rivalry, setRivalry] = useState<HeadToHead | null>(null);
+  useEffect(() => {
+    if (!over || !pair || !mine || !theirs) { setRivalry(null); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      void fetchRivalry(mine, theirs).then(row => { if (live) setRivalry(row); });
+    }, RIVALRY_DELAY_MS);
+    return () => { live = false; clearTimeout(timer); };
+  }, [over, pair, mine, theirs]);
 
   // The board is built once, from the position at the moment both players are
   // in. After that the match drives it: a rematch or a reconnect arrives as a
@@ -77,7 +104,12 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
         level={0}
         setup={setupRef.current}
         online={online}
-        oppName={snapshot?.players[1 - (seat ?? 0)]?.name || t('online.opponent')}
+        oppName={`${theirs ? `${countryFlag(theirs)} ` : ''}${snapshot?.players[1 - (seat ?? 0)]?.name || t('online.opponent')}`}
+        overExtra={rivalry && mine && (
+          <p className="over-rating over-rivalry">
+            {t('rival.overLine')} <HeadToHeadLine row={rivalry} from={mine} t={t} />
+          </p>
+        )}
         onExit={onExit}
         onLearn={onLearn}
         onSettings={onSettings}

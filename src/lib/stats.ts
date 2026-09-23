@@ -76,8 +76,9 @@ export function emptyStats(): Stats {
 
 const num = (v: unknown, fb: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fb);
 
-// Stored stats are user-editable JSON; rebuild rather than trust the blob.
-function coerce(raw: unknown): Stats {
+// Stored stats are user-editable JSON; rebuild rather than trust the blob. The
+// Worker runs the same rebuild over what a browser sends it.
+export function coerceStats(raw: unknown): Stats {
   const d = emptyStats();
   if (!raw || typeof raw !== 'object') return d;
   const o = raw as Record<string, unknown>;
@@ -121,7 +122,7 @@ function coerce(raw: unknown): Stats {
 export function loadStats(): Stats {
   try {
     const raw = getStore().get(KEY);
-    return coerce(raw ? JSON.parse(raw) : null);
+    return coerceStats(raw ? JSON.parse(raw) : null);
   } catch {
     return emptyStats();
   }
@@ -192,9 +193,22 @@ export function applyResult(
     byLevel,
     // Folded in under the country of the moment. Moving country later leaves
     // this row exactly as it is, which is what keeps old games where they were.
-    byCountry: addCountryGame(prev.byCountry, where, lvl),
+    byCountry: addCountryGame(prev.byCountry, where, lvl, outcome),
     history: [record, ...prev.history].slice(0, HISTORY_CAP),
   };
+}
+
+/**
+ * The record as another player sees it: everything the Stats screen showed,
+ * minus the game-by-game history, which is nobody else's business and would
+ * only make the public profile heavier.
+ */
+export type PublicStats = Omit<Stats, 'history'>;
+
+export function publicStats(stats: Stats): PublicStats {
+  const copy: Partial<Stats> = { ...stats };
+  delete copy.history;
+  return copy as PublicStats;
 }
 
 /** The AI level whose rating is closest to the player's — used by Quick Match. */

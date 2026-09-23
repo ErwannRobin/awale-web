@@ -5,6 +5,7 @@
 // frame, and every one is validated on arrival: the client does not trust the
 // server's shape any more than the server trusts the client's.
 import type { EndReason, Seat, Winner } from './rules.ts';
+import { normaliseCountry, UNKNOWN_COUNTRY, type CountryKey } from './country.ts';
 
 /** Bumped when a message shape changes incompatibly. */
 export const PROTOCOL_VERSION = 1;
@@ -21,6 +22,24 @@ export type OverReason = EndReason | 'resign' | 'abandoned';
 export interface PlayerView {
   name: string;
   online: boolean;
+  /**
+   * Where the player says they play from, for the flag beside their name and
+   * the rivalry it starts. Optional on the wire, so an older peer that never
+   * sends one simply reads as unknown.
+   */
+  country?: CountryKey;
+}
+
+/** A player view from anywhere, validated. */
+function parsePlayer(p: unknown, fallback: string): PlayerView | null {
+  if (!p || typeof p !== 'object') return null;
+  const r = p as Record<string, unknown>;
+  const country = normaliseCountry(r.country);
+  return {
+    name: cleanName(r.name, fallback),
+    online: r.online === true,
+    ...(country === UNKNOWN_COUNTRY ? {} : { country }),
+  };
 }
 
 /** Everything needed to draw the room from scratch. Sent on join and resync. */
@@ -50,7 +69,7 @@ export type ClientMsg =
    * valid the server uses the account behind it as the seat identity, so the
    * seat cannot be taken by someone who learned the anonymous `token`.
    */
-  | { t: 'hello'; v: number; token: string; name: string; auth?: string }
+  | { t: 'hello'; v: number; token: string; name: string; auth?: string; country?: CountryKey }
   | { t: 'move'; pit: number; ply: number }
   | { t: 'resign' }
   | { t: 'rematch' }
@@ -149,7 +168,11 @@ export function parseClientMsg(raw: string): ClientMsg | null {
       const auth = typeof o.auth === 'string' && o.auth.length > 0 && o.auth.length <= 1024
         ? { auth: o.auth }
         : {};
-      return { t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, ''), ...auth };
+      const country = normaliseCountry(o.country);
+      return {
+        t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, ''), ...auth,
+        ...(country === UNKNOWN_COUNTRY ? {} : { country }),
+      };
     }
     case 'move':
       if (typeof o.pit !== 'number' || !Number.isInteger(o.pit)) return null;
@@ -172,11 +195,7 @@ function parseSnapshot(v: unknown): RoomSnapshot | null {
   if (!isSeat(o.turn) || !isSeat(o.startSeat)) return null;
   if (typeof o.ply !== 'number' || !Number.isInteger(o.ply) || o.ply < 0) return null;
   if (!Array.isArray(o.players) || o.players.length !== 2) return null;
-  const players = o.players.map(p => {
-    if (!p || typeof p !== 'object') return null;
-    const r = p as Record<string, unknown>;
-    return { name: cleanName(r.name, '?'), online: r.online === true };
-  }) as [PlayerView | null, PlayerView | null];
+  const players = o.players.map(p => parsePlayer(p, '?')) as [PlayerView | null, PlayerView | null];
   const rematch: [boolean, boolean] = Array.isArray(o.rematch) && o.rematch.length === 2
     ? [o.rematch[0] === true, o.rematch[1] === true]
     : [false, false];
@@ -226,14 +245,7 @@ export function parseServerMsg(raw: string): ServerMsg | null {
     }
     case 'peer': {
       if (!isSeat(o.seat)) return null;
-      const p = o.player;
-      const player = p && typeof p === 'object'
-        ? {
-            name: cleanName((p as Record<string, unknown>).name, '?'),
-            online: (p as Record<string, unknown>).online === true,
-          }
-        : null;
-      return { t: 'peer', seat: o.seat, player };
+      return { t: 'peer', seat: o.seat, player: parsePlayer(o.player, '?') };
     }
     case 'rematch':
       return isSeat(o.from) ? { t: 'rematch', from: o.from } : null;

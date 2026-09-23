@@ -124,6 +124,31 @@ check('a reconnect is answered with the position, not a new game', () => {
   assert.equal(sent.turn, before.turn);
 });
 
+check('each seat carries its country, and both players see both flags', () => {
+  let room = createRoom('ABCDE', 1000);
+  room = join(room, TOKEN_A, 'Ama', 1000, 'CI').state;
+  const second = join(room, TOKEN_B, 'Marie', 1000, 'FR');
+  const sync = second.effects.find(e => e.msg.t === 'sync');
+  const seen = (sync!.msg as { snapshot: ReturnType<typeof snapshot> }).snapshot;
+  assert.deepEqual(seen.players.map(p => p?.country), ['CI', 'FR']);
+  // A reconnect without a country keeps the one the seat already had.
+  const back = join(second.state, TOKEN_A, 'Ama', 2000);
+  assert.equal(back.state.players[0]?.country, 'CI');
+});
+
+check('a hello carries a real country, and drops anything else', () => {
+  const hello = (country: unknown) => parseClientMsg(JSON.stringify({
+    t: 'hello', v: PROTOCOL_VERSION, token: TOKEN_A, name: 'Ama', country,
+  }));
+  assert.equal((hello('ci') as { country?: string }).country, 'CI');
+  assert.equal('country' in hello('XX')!, false);
+  assert.equal('country' in hello(42)!, false);
+  const peer = parseServerMsg(JSON.stringify({
+    t: 'peer', seat: 1, player: { name: 'Kofi', online: true, country: 'gh' },
+  }));
+  assert.equal((peer as { player: { country?: string } }).player.country, 'GH');
+});
+
 // ---------------------------------------------------------------------------
 console.log('room: the matchmaker\'s question');
 

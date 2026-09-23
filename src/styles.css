@@ -1197,3 +1197,46 @@ a.pill { text-decoration: none; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .wait-dots span { animation: none; opacity: 0.7; }
 }
+
+/* =====================================================================
+   PLAYERS, NATIONS, RIVALRIES
+   ===================================================================== */
+.tabs { margin: 14px 0 4px; display: flex; }
+.tabs .seg { flex: 1; text-align: center; }
+.stats-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.stats-links .pill { flex: 1 1 160px; }
+
+.rec-row-btn {
+  width: 100%; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.rec-row-btn:hover, .rec-row-btn:focus-visible { border-color: var(--gold); }
+.rec-row-me, .level-row-me { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.rec-flag { font-size: 1.25rem; line-height: 1; flex: none; }
+
+.player-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.player-head .avatar { width: 64px; height: 64px; flex: none; }
+.player-id { min-width: 0; }
+.player-name { margin: 0; overflow-wrap: anywhere; }
+.player-where { color: var(--ivory-70); font-size: 0.92rem; margin-top: 2px; }
+
+.rival-card {
+  margin: 12px 0; padding: 14px 16px; border-radius: 16px;
+  background: linear-gradient(180deg, var(--card-1), var(--card-2));
+  border: 1px solid var(--gold);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rival-title {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-soft);
+}
+.rival-pos { font-weight: 800; font-size: 1rem; color: var(--ivory); }
+.rival-text { margin: 0; line-height: 1.4; }
+.rival-link {
+  width: 100%; max-width: 520px; margin: 0 auto;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  box-sizing: border-box; padding: 0 16px;
+}
+.rival-link .rival-card { width: 100%; box-sizing: border-box; }
+.h2h { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.h2h-draws { font-weight: 400; color: var(--ivory-66); font-size: 0.85em; }

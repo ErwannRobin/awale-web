@@ -18,6 +18,8 @@ interface Props {
   onBack: () => void;
   onProfileChange: () => void;
   onAccountChange: (next: Session) => void;
+  /** How the profile looks to everybody else. */
+  onViewPublic: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
 }
@@ -41,7 +43,7 @@ function Row({ label, help, children }: { label: string; help?: string; children
  * lives here and nowhere else, because that is what an account is.
  */
 export default function Profile({
-  stats, account, onBack, onProfileChange, onAccountChange, onSignIn, onSignOut,
+  stats, account, onBack, onProfileChange, onAccountChange, onViewPublic, onSignIn, onSignOut,
 }: Props) {
   const t = useT();
   const [profile, setProfile] = useState(loadProfile);
@@ -100,6 +102,9 @@ export default function Profile({
       <div className="panel-body">
         <h2 className="learn-title">{t('profile.title')}</h2>
         <p className="learn-lead">{t('profile.lead')}</p>
+        <button className="pill" onClick={onViewPublic}>
+          <span className="pill-body"><span className="pill-title">{t('profile.viewPublic')}</span></span>
+        </button>
 
         <section className="set-section" aria-label={t('profile.sectionIdentity')}>
           <h3 className="set-head">{t('profile.sectionIdentity')}</h3>

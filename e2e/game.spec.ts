@@ -82,8 +82,13 @@ test('a full game against the AI finishes and is recorded', async ({ page }) => 
 
   await page.getByText('BACK TO MENU').click();
   await page.getByLabel('Stats').click();
+  // Stats is the world now; the game also landed in the worldwide AI count.
+  await expect(page.getByRole('tab', { name: 'vs AI' })).toBeVisible();
   await expect(page.locator('.stat-grid')).toBeVisible();
-  await expect(page.locator('.stat-tile').first()).toContainText('1');
+  // The player's own record lives on their profile.
+  await page.getByRole('button', { name: 'My profile' }).click();
+  await expect(page.locator('.stat-grid').last()).toBeVisible();
+  await expect(page.locator('.stat-tile').filter({ hasText: 'Played' }).first()).toContainText('1');
 });
 
 test('the board holds still while the coaching text changes', async ({ page }) => {
@@ -202,7 +207,8 @@ test('the player chip opens a profile screen, and the gear opens settings', asyn
   await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
   await page.getByLabel('Display name').fill('Ama');
   await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
-  await page.getByText('Done').click();
+  // By role, not text: the country picker lists "Indonesia", which contains "Done".
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('.chip-name')).toHaveText('Ama');
 
   // The gear: how the game behaves. The name lives on the other screen now.

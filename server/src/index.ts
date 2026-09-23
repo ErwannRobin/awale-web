@@ -5,8 +5,14 @@
 //   POST /queue        quick match: a code to sit in, or one to walk into
 //   POST /auth/*       signing in with a phone number, via phone-verif.com
 //   GET  /geo          which country this request came from
-//   POST /stats/game   count one finished game: a level and a country
-//   GET  /stats/countries  the world table
+//   POST /stats/game   count one finished AI game: level, outcome, country —
+//                      and, with a session token, add it to that player's
+//                      public record too
+//   GET  /stats/countries  the world table: AI and online, per country
+//   GET  /stats/nations    countries ranked, with the rivalries between them
+//   GET  /stats/rivalry    one pair of countries' record against each other
+//   GET  /leaderboard      signed-in players, by online rating
+//   GET  /players/:id      one player's public profile
 //   GET  /health       is anybody home
 //   everything else    the game itself, from the ASSETS binding
 //
@@ -22,8 +28,15 @@
 // everyone else plays exactly as before, anonymously.
 import { normaliseRoomCode } from '../../src/lib/protocol.ts';
 import { normaliseCountry, UNKNOWN_COUNTRY } from '../../src/lib/country.ts';
-import { sanitiseLevel } from '../../src/lib/countryStats.ts';
-import { handleAuth, type AuthEnv } from './auth.ts';
+import {
+  rankNations, sanitiseLevel, sanitiseOutcome,
+  type CountryPeople, type CountryTable,
+} from '../../src/lib/countryStats.ts';
+import {
+  bearerUserId, handleAuth, post, stub, type AuthEnv,
+} from './auth.ts';
+import type { PublicPlayer } from './identity.ts';
+import type { LeaderboardPlayer } from './leaderboard.ts';
 import type { QueueReply } from './lobby.ts';
 import type { RoomProbe } from './room.ts';
 
@@ -137,9 +150,6 @@ function statsObject(env: Env): DurableObjectStub | null {
  * clamped, the country has to be a real code, and nothing else is read.
  */
 async function countGame(request: Request, env: Env): Promise<Response> {
-  const stats = statsObject(env);
-  if (!stats) return new Response('stats are not enabled', { status: 503 });
-
   let body: Record<string, unknown> = {};
   try {
     body = await request.json() as Record<string, unknown>;
@@ -150,13 +160,61 @@ async function countGame(request: Request, env: Env): Promise<Response> {
   const claimed = normaliseCountry(body.country);
   const country = claimed === UNKNOWN_COUNTRY ? requestCountry(request) : claimed;
   const level = sanitiseLevel(typeof body.level === 'number' ? body.level : Number(body.level));
+  const outcome = sanitiseOutcome(body.outcome);
 
-  const response = await stats.fetch(
-    `https://stats/count?country=${country}&level=${level}`,
-    { method: 'POST' },
-  );
+  // A signed-in player's game also lands on their public record. That is the
+  // account's own business, so it happens whether or not they share counts
+  // with the world table — `world: false` turns off only the anonymous half.
+  const userId = await bearerUserId(request, env);
+  if (userId && outcome) {
+    await post(stub(env, `user:${userId}`), '/user/aiGame', {
+      level, outcome, you: body.you, them: body.them, country,
+    });
+  }
+
+  if (body.world === false) return Response.json({ ok: true, country, level, outcome });
+  const stats = statsObject(env);
+  if (!stats) return new Response('stats are not enabled', { status: 503 });
+  const q = new URLSearchParams({ country, level: String(level), ...(outcome ? { outcome } : {}) });
+  const response = await stats.fetch(`https://stats/count?${q}`, { method: 'POST' });
   return new Response(response.body, { status: response.status, headers: response.headers });
 }
+
+const leaderboardObject = (env: Env) => env.LEADERBOARD.get(env.LEADERBOARD.idFromName('global'));
+
+/**
+ * The nations ranking: the world table's results, the leaderboard's people,
+ * folded by the same pure function the dev server uses.
+ */
+async function nations(env: Env): Promise<Response> {
+  const stats = statsObject(env);
+  const [table, people] = await Promise.all([
+    stats
+      ? stats.fetch('https://stats/table').then(r => r.json() as Promise<CountryTable>)
+      : Promise.resolve<CountryTable>({ total: 0, pvpTotal: 0, updatedAt: 0, countries: [], rivalries: [] }),
+    leaderboardObject(env).fetch('https://leaderboard/leaderboard/countries')
+      .then(r => r.json() as Promise<CountryPeople[]>),
+  ]);
+  return Response.json({
+    nations: rankNations(table.countries, people),
+    rivalries: table.rivalries,
+    pvpTotal: table.pvpTotal,
+    updatedAt: table.updatedAt,
+  });
+}
+
+/** One player, as anybody may see them, with their place on the board. */
+async function publicPlayer(userId: string, env: Env): Promise<Response> {
+  const [player, placed] = await Promise.all([
+    post<PublicPlayer | null>(stub(env, `user:${userId}`), '/user/public'),
+    leaderboardObject(env)
+      .fetch(`https://leaderboard/leaderboard/player?userId=${encodeURIComponent(userId)}`)
+      .then(r => (r.ok ? r.json() as Promise<LeaderboardPlayer> : null)),
+  ]);
+  if (!player) return new Response('no such player', { status: 404 });
+  return Response.json({ ...player, position: placed?.position ?? null });
+}
+
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -189,6 +247,36 @@ export default {
         status: counted.status,
         headers: { ...cors, 'content-type': counted.headers.get('content-type') ?? 'text/plain' },
       });
+    }
+
+    if (url.pathname === '/stats/nations') {
+      const reply = await nations(env);
+      return new Response(reply.body, {
+        headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' },
+      });
+    }
+
+    if (url.pathname === '/stats/rivalry') {
+      const stats = statsObject(env);
+      if (!stats) return Response.json(null, { headers: cors });
+      const q = new URLSearchParams({
+        a: url.searchParams.get('a') ?? '', b: url.searchParams.get('b') ?? '',
+      });
+      const reply = await stats.fetch(`https://stats/rivalry?${q}`);
+      // Asked right after a game ends, to show the score it just changed —
+      // so never cached.
+      return new Response(reply.body, {
+        headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' },
+      });
+    }
+
+    const playerMatch = /^\/players\/([^/]{1,128})$/.exec(url.pathname);
+    if (playerMatch && request.method === 'GET') {
+      const reply = await publicPlayer(decodeURIComponent(playerMatch[1]), env);
+      const headers = new Headers(reply.headers);
+      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+      headers.set('cache-control', 'no-store');
+      return new Response(reply.body, { status: reply.status, headers });
     }
 
     if (url.pathname === '/stats/countries') {
