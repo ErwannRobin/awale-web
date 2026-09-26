@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
   IDLE_SWEEP_MS, MIN_ALARM_MS, REACT_GAP_MS,
-  command, createRoom, disconnect, isCoherent, isJoinable, join, liveChange, liveEntry, nextAlarmAt,
+  command, createRoom, disconnect, flagAt, isCoherent, isJoinable, join, liveChange, liveEntry, nextAlarmAt,
   snapshot, spectate, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
@@ -526,6 +526,19 @@ check('the alarm is set for the flag, and the sweep calls it', () => {
   assert.equal(flagged.state.reason, 'timeout');
   assert.equal(flagged.state.turnStartedAt, null, 'the clocks stop');
   assert.ok(isCoherent(flagged.state));
+});
+
+check('after a move, the alarm is due at the other side\'s flag, even when that is sooner', () => {
+  // Seat 0 thinks for two minutes, seat 1 for two and a half: seat 1 is now
+  // the one short of time. When seat 0 moves again, the next alarm must be
+  // seat 1's flag — earlier than any alarm seat 0's own clock would need.
+  let room = timedRoom('blitz', 0);
+  room = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 120_000).state;
+  room = command(room, TOKEN_B, { t: 'move', pit: 8, ply: 1 }, 270_000).state;
+  room = command(room, TOKEN_A, { t: 'move', pit: 1, ply: 2 }, 271_000).state;
+  const seat1Left = 3 * MIN - 150_000 + 2_000;
+  assert.equal(flagAt(room), 271_000 + seat1Left);
+  assert.equal(nextAlarmAt(room, 271_000), 271_000 + seat1Left);
 });
 
 check('resigning stops the clocks where they stand', () => {

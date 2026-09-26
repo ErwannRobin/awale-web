@@ -150,6 +150,9 @@ export class Room implements DurableObject {
     const step = command(room, tag.token, msg, now);
     await this.commit(step.state);
     this.dispatch(step.effects);
+    // A move hands the clock to the other side, whose flag may fall long
+    // before the alarm set for the side that just moved. Re-aim it.
+    if (step.state !== room) await this.scheduleSweep();
     await this.tellLive(room, step.state);
 
     // A move or a resign can end the game directly, with no alarm involved —

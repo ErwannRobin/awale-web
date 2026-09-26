@@ -1,10 +1,11 @@
 // The win-probability bar's number: P(South wins), kept in step with the board.
 //
 // The search runs in its own worker, never the game's, so the bar can neither
-// slow the AI's reply nor disturb its self-tuning depth. It asks once per
-// settled position — not during a sowing animation, whose board is a picture
-// of a move half made — and a reply for a position the board has already left
-// is thrown away.
+// disturb the AI's self-tuning depth nor queue behind its search. It asks once
+// per settled position — not during a sowing animation, whose board is a
+// picture of a move half made, but as soon as it lands, even while the AI is
+// already thinking about its reply — and a reply for a position the board has
+// already left is thrown away.
 import { useEffect, useRef, useState } from 'react';
 import { AIClient } from './aiClient.ts';
 import { winProbability } from './winProbability.ts';
@@ -26,7 +27,7 @@ export function useWinProbability(
       setP(winner === 0 ? 1 : winner === 1 ? 0 : 0.5);
       return;
     }
-    if (phase !== 'idle') return;
+    if (phase === 'animating') return;
     const id = ++asked.current;
     client.current ??= new AIClient();
     const board = [...pits], banked = [...scores];
