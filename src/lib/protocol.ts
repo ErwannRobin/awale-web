@@ -16,8 +16,76 @@ export const CODE_LENGTH = 5;
 
 export type RoomStatus = 'waiting' | 'playing' | 'over';
 
-/** Why a game stopped, including the two reasons only online play has. */
-export type OverReason = EndReason | 'resign' | 'abandoned';
+/** Why a game stopped, including the reasons only online play has. */
+export type OverReason = EndReason | 'resign' | 'abandoned' | 'timeout';
+
+/**
+ * How much thinking time each player gets: a budget for the whole game, plus
+ * an increment added back after every move (so "3+2" is three minutes, two
+ * seconds a move). `none` is the untimed game online play has always been.
+ */
+export type TimeControlId = 'none' | 'blitz' | 'rapid' | 'classic';
+
+export const TIME_CONTROLS: Record<TimeControlId, { base: number; inc: number } | null> = {
+  none: null,
+  blitz: { base: 3 * 60_000, inc: 2_000 },
+  rapid: { base: 5 * 60_000, inc: 5_000 },
+  classic: { base: 10 * 60_000, inc: 10_000 },
+};
+
+export const TIME_CONTROL_IDS = Object.keys(TIME_CONTROLS) as TimeControlId[];
+
+export const isTimeControl = (v: unknown): v is TimeControlId =>
+  typeof v === 'string' && v in TIME_CONTROLS;
+
+/**
+ * The reactions a player can send, by index. A fixed set rather than free
+ * text: it says "nice move" in every language at once, and there is nothing
+ * to moderate. Append only — the index is what travels.
+ */
+export const REACTIONS = ['👋', '👍', '😮', '😅', '🔥', '🤝'] as const;
+
+export const isReaction = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < REACTIONS.length;
+
+/** One game in the public list of live games. */
+export interface LiveGame {
+  room: string;
+  players: [PlayerView, PlayerView];
+  control: TimeControlId;
+  /** When this game (or this rematch) began. */
+  startedAt: number;
+}
+
+/** A list from anywhere, validated, malformed rows dropped. */
+export function parseLiveGames(v: unknown): LiveGame[] {
+  if (!Array.isArray(v)) return [];
+  const out: LiveGame[] = [];
+  for (const row of v) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const room = typeof o.room === 'string' ? normaliseRoomCode(o.room) : null;
+    if (!room || !Array.isArray(o.players) || o.players.length !== 2) continue;
+    const a = parsePlayer(o.players[0], '?'), b = parsePlayer(o.players[1], '?');
+    if (!a || !b) continue;
+    out.push({
+      room,
+      players: [a, b],
+      control: isTimeControl(o.control) ? o.control : 'none',
+      startedAt: typeof o.startedAt === 'number' && Number.isFinite(o.startedAt) ? o.startedAt : 0,
+    });
+  }
+  return out;
+}
+
+/** A running game's clocks, as the server had them when it sent this. */
+export interface ClockView {
+  control: TimeControlId;
+  /** Milliseconds left per seat. */
+  left: [number, number];
+  /** The seat whose clock is running, or null when both are stopped. */
+  running: Seat | null;
+}
 
 export interface PlayerView {
   name: string;
@@ -58,6 +126,8 @@ export interface RoomSnapshot {
   reason: OverReason | null;
   /** Seats that have asked for a rematch. */
   rematch: [boolean, boolean];
+  /** Absent for an untimed game. */
+  clock?: ClockView;
 }
 
 export type ClientMsg =
@@ -69,12 +139,32 @@ export type ClientMsg =
    * valid the server uses the account behind it as the seat identity, so the
    * seat cannot be taken by someone who learned the anonymous `token`.
    */
-  | { t: 'hello'; v: number; token: string; name: string; auth?: string; country?: CountryKey }
+  | {
+    t: 'hello'; v: number; token: string; name: string; auth?: string; country?: CountryKey;
+    /**
+     * The time control this player came for. The first player into a room who
+     * names one sets it for the room; everyone after plays at whatever is set.
+     */
+    tc?: TimeControlId;
+    /**
+     * Come to watch, not to play: no seat, no moves, everything the board
+     * hears. A full room is never full to a spectator.
+     */
+    watch?: boolean;
+    /**
+     * Show this game in the public list of live games. Quick match sends it —
+     * those players asked a stranger to play them. A friend game does not: it
+     * can be watched by whoever has the code, and by nobody else.
+     */
+    listed?: boolean;
+  }
   | { t: 'move'; pit: number; ply: number }
   | { t: 'resign' }
   | { t: 'rematch' }
   /** "My board and yours disagree — send me yours." */
   | { t: 'resync' }
+  /** One of `REACTIONS`, by index. */
+  | { t: 'react'; e: number }
   | { t: 'ping' };
 
 export type ErrorCode =
@@ -89,12 +179,22 @@ export type ErrorCode =
 
 export type ServerMsg =
   | { t: 'welcome'; seat: Seat; snapshot: RoomSnapshot }
+  /** The spectator's welcome: the room as it stands, and no seat. */
+  | { t: 'watching'; snapshot: RoomSnapshot }
+  /** How many people are watching, sent whenever it changes. */
+  | { t: 'audience'; n: number }
   | { t: 'sync'; snapshot: RoomSnapshot }
-  /** Apply this move locally; `hash` is what your board should look like after. */
-  | { t: 'move'; pit: number; by: Seat; ply: number; hash: string }
-  | { t: 'over'; winner: Winner; reason: OverReason; scores: number[] }
+  /**
+   * Apply this move locally; `hash` is what your board should look like after.
+   * A timed game also sends both clocks as they stand after the move, with the
+   * mover's increment added; the other side's clock is the one now running.
+   */
+  | { t: 'move'; pit: number; by: Seat; ply: number; hash: string; clock?: [number, number] }
+  | { t: 'over'; winner: Winner; reason: OverReason; scores: number[]; clock?: [number, number] }
   | { t: 'peer'; seat: Seat; player: PlayerView | null }
   | { t: 'rematch'; from: Seat }
+  /** Someone at the board reacted. */
+  | { t: 'react'; by: Seat; e: number }
   | { t: 'err'; code: ErrorCode }
   | { t: 'pong' };
 
@@ -150,6 +250,18 @@ const isScores = (v: unknown): v is number[] =>
 
 const isSeat = (v: unknown): v is Seat => v === 0 || v === 1;
 
+const isClockPair = (v: unknown): v is [number, number] =>
+  Array.isArray(v) && v.length === 2
+  && v.every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0);
+
+function parseClock(v: unknown): ClockView | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  if (!isTimeControl(o.control) || o.control === 'none' || !isClockPair(o.left)) return undefined;
+  const running = isSeat(o.running) ? o.running : null;
+  return { control: o.control, left: [o.left[0], o.left[1]], running };
+}
+
 export function parseClientMsg(raw: string): ClientMsg | null {
   let o: Record<string, unknown>;
   try {
@@ -172,6 +284,9 @@ export function parseClientMsg(raw: string): ClientMsg | null {
       return {
         t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, ''), ...auth,
         ...(country === UNKNOWN_COUNTRY ? {} : { country }),
+        ...(isTimeControl(o.tc) ? { tc: o.tc } : {}),
+        ...(o.watch === true ? { watch: true } : {}),
+        ...(o.listed === true ? { listed: true } : {}),
       };
     }
     case 'move':
@@ -182,6 +297,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     case 'rematch': return { t: 'rematch' };
     case 'resync': return { t: 'resync' };
     case 'ping': return { t: 'ping' };
+    case 'react': return isReaction(o.e) ? { t: 'react', e: o.e } : null;
     default: return null;
   }
 }
@@ -200,6 +316,7 @@ function parseSnapshot(v: unknown): RoomSnapshot | null {
     ? [o.rematch[0] === true, o.rematch[1] === true]
     : [false, false];
   const winner = isSeat(o.winner) || o.winner === 'draw' ? o.winner : null;
+  const clock = parseClock(o.clock);
   return {
     room: o.room,
     status: o.status,
@@ -212,6 +329,7 @@ function parseSnapshot(v: unknown): RoomSnapshot | null {
     winner,
     reason: typeof o.reason === 'string' ? (o.reason as OverReason) : null,
     rematch,
+    ...(clock ? { clock } : {}),
   };
 }
 
@@ -234,14 +352,26 @@ export function parseServerMsg(raw: string): ServerMsg | null {
       const snapshot = parseSnapshot(o.snapshot);
       return snapshot ? { t: 'sync', snapshot } : null;
     }
+    case 'watching': {
+      const snapshot = parseSnapshot(o.snapshot);
+      return snapshot ? { t: 'watching', snapshot } : null;
+    }
+    case 'audience':
+      return typeof o.n === 'number' && Number.isInteger(o.n) && o.n >= 0 ? { t: 'audience', n: o.n } : null;
     case 'move':
       if (typeof o.pit !== 'number' || !isSeat(o.by)) return null;
       if (typeof o.ply !== 'number' || typeof o.hash !== 'string') return null;
-      return { t: 'move', pit: o.pit, by: o.by, ply: o.ply, hash: o.hash };
+      return {
+        t: 'move', pit: o.pit, by: o.by, ply: o.ply, hash: o.hash,
+        ...(isClockPair(o.clock) ? { clock: [o.clock[0], o.clock[1]] as [number, number] } : {}),
+      };
     case 'over': {
       if (!isSeat(o.winner) && o.winner !== 'draw') return null;
       if (typeof o.reason !== 'string' || !isScores(o.scores)) return null;
-      return { t: 'over', winner: o.winner, reason: o.reason as OverReason, scores: o.scores };
+      return {
+        t: 'over', winner: o.winner, reason: o.reason as OverReason, scores: o.scores,
+        ...(isClockPair(o.clock) ? { clock: [o.clock[0], o.clock[1]] as [number, number] } : {}),
+      };
     }
     case 'peer': {
       if (!isSeat(o.seat)) return null;
@@ -249,6 +379,8 @@ export function parseServerMsg(raw: string): ServerMsg | null {
     }
     case 'rematch':
       return isSeat(o.from) ? { t: 'rematch', from: o.from } : null;
+    case 'react':
+      return isSeat(o.by) && isReaction(o.e) ? { t: 'react', by: o.by, e: o.e } : null;
     case 'err':
       return typeof o.code === 'string' ? { t: 'err', code: o.code as ErrorCode } : null;
     case 'pong':

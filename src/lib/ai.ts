@@ -59,6 +59,26 @@ export function delay2(pits: number[], scores: number[], i: number, ply: number,
   return d;
 }
 
+/** How deep the win-probability bar looks. Measured at a few milliseconds. */
+export const EVAL_DEPTH = 9;
+
+/**
+ * How the position stands for `player`, who is to move: the score difference
+ * (their seeds minus the opponent's, banked ones included) that the search
+ * expects at its horizon after their best move. The same `value` every level
+ * plays with, so the bar and the Master agree about a position. Null when
+ * `player` has no legal move — the game is over, and the scores say how.
+ */
+export function evaluate(pits: number[], scores: number[], player: 0 | 1, depth = EVAL_DEPTH): number | null {
+  let best: number | null = null;
+  for (let j = player * 6; j < player * 6 + 6; j++) {
+    if (!isValid(pits, j)) continue;
+    const v = value(pits, scores, j, 0, depth);
+    if (best === null || v > best) best = v;
+  }
+  return best;
+}
+
 export class AwaleAI {
   private depths = [2, 3, 4, 5];
   private budgets = [0.01, 0.1, 0.5, 1.0]; // seconds per level

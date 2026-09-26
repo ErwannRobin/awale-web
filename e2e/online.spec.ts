@@ -86,6 +86,86 @@ test('two browsers play the same game over a websocket', async ({ browser }) => 
   }
 });
 
+test('a timed game shows both clocks, and the room keeps the creator\'s', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByRole('radio', { name: /Blitz/ }).click();
+    await expect(host.getByRole('radio', { name: /Blitz/ })).toHaveAttribute('aria-checked', 'true');
+    await host.getByText('INVITE A FRIEND').click();
+    await expect(host.getByText('Clock: Blitz 3+2')).toBeVisible();
+    const code = await host.locator('.room-code').innerText();
+
+    // The guest types the code rather than following the link, so names no
+    // clock of their own — and still plays at the room's.
+    const guest = await freshPlayer(two, 'Kofi');
+    await guest.goto('/');
+    await guest.getByText('PLAY ONLINE').click();
+    await guest.getByRole('radio', { name: /Classic/ }).click();
+    await guest.getByText('JOIN A GAME').click();
+    await guest.getByLabel('Enter the code').fill(code);
+    await guest.getByRole('button', { name: 'JOIN', exact: true }).click();
+
+    await expect(host.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(host.locator('.pcard-clock')).toHaveCount(2);
+    await expect(guest.locator('.pcard-clock')).toHaveCount(2);
+    // Three minutes each, give or take the second the page took to load.
+    await expect(guest.locator('.pcard-clock').first()).toHaveText(/^(3:00|2:5\d)$/);
+
+    // An engine's opinion mid-game would be help: players never get the bar.
+    await expect(host.locator('.winbar')).toHaveCount(0);
+    await expect(guest.locator('.winbar')).toHaveCount(0);
+
+    // One clock runs: the one belonging to whoever is to move.
+    const first = await mover(host, guest);
+    await expect(first.locator('.pcard-you .pcard-clock-running')).toHaveCount(1);
+    await expect(first.locator('.pcard-opp .pcard-clock-running')).toHaveCount(0);
+
+    // A move hands it over.
+    await legalPits(first).first().click();
+    await expect(first.locator('.pcard-opp .pcard-clock-running')).toHaveCount(1, { timeout: 15_000 });
+    await expect(first.locator('.pcard-you .pcard-clock-running')).toHaveCount(0);
+  } finally {
+    await one.close();
+    await two.close();
+  }
+});
+
+test('a reaction sent on one screen floats up on the other', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByText('INVITE A FRIEND').click();
+    const code = await host.locator('.room-code').innerText();
+    const guest = await freshPlayer(two, 'Kofi');
+    await guest.goto(`/?join=${code}`);
+    await expect(host.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+
+    await host.getByRole('button', { name: 'Send a reaction' }).click();
+    await host.getByRole('menuitem', { name: 'On fire' }).click();
+
+    // On the guest's screen it rises from the opponent's card; on the host's,
+    // from their own.
+    await expect(guest.locator('.pcard-opp .react-bubble')).toHaveText('🔥', { timeout: 15_000 });
+    await expect(host.locator('.pcard-you .react-bubble')).toHaveText('🔥');
+    // And it goes away by itself.
+    await expect(guest.locator('.react-bubble')).toHaveCount(0, { timeout: 5_000 });
+  } finally {
+    await one.close();
+    await two.close();
+  }
+});
+
 test('a game between two countries is a round of their rivalry', async ({ browser }) => {
   const one = await browser.newContext();
   const two = await browser.newContext();
@@ -155,6 +235,93 @@ test('a room that already has two players turns a third away', async ({ browser 
     await one.close();
     await two.close();
     await three.close();
+  }
+});
+
+test('a full room offers to be watched, and the spectator follows the game', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+  const three = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByText('INVITE A FRIEND').click();
+    const code = await host.locator('.room-code').innerText();
+    const guest = await freshPlayer(two, 'Kofi');
+    await guest.goto(`/?join=${code}`);
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+
+    const fan = await freshPlayer(three, 'Fan');
+    await fan.goto(`/?join=${code}`);
+    await fan.getByRole('button', { name: /WATCH INSTEAD/ }).click();
+
+    await expect(fan.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(fan.locator('.brand')).toContainText('LIVE');
+    await expect(fan.locator('.pcard-you')).toContainText('Ama');
+    await expect(fan.locator('.pcard-opp')).toContainText('Kofi');
+    // A spectator gets the bar the players do not.
+    await expect(fan.locator('.winbar')).toBeVisible({ timeout: 15_000 });
+    // Nothing to play, resign or react with.
+    await expect(fan.locator('.pit-legal')).toHaveCount(0);
+    await expect(fan.getByRole('button', { name: /Resign/ })).toHaveCount(0);
+    await expect(fan.getByRole('button', { name: 'Send a reaction' })).toHaveCount(0);
+    // The players can see they have an audience.
+    await expect(host.locator('.audience-chip')).toContainText('1', { timeout: 15_000 });
+
+    // A move on a player's screen shows on the spectator's.
+    const first = await mover(host, guest);
+    const pit = legalPits(first).first();
+    const index = await pit.getAttribute('data-pit');
+    await pit.click();
+    await expect(fan.locator(`[data-pit="${index}"]`)).toHaveAttribute('aria-label', /0 seeds/, { timeout: 15_000 });
+
+    // And so does the end, told by name.
+    const second = first === host ? guest : host;
+    await expect(legalPits(second).first()).toBeVisible({ timeout: 15_000 });
+    await second.getByRole('button', { name: /Resign/ }).click();
+    await second.getByRole('button', { name: /Tap again to resign/ }).click();
+    await expect(fan.locator('.over-card')).toBeVisible({ timeout: 15_000 });
+    await expect(fan.locator('.over-note').first()).toContainText('resigned');
+  } finally {
+    await one.close();
+    await two.close();
+    await three.close();
+  }
+});
+
+test('a quick-match game shows up in the live list, and opens to watch', async ({ browser }, testInfo) => {
+  // One shared queue per clock on the dev server: run once, and on a clock
+  // nothing else here queues for.
+  test.skip(testInfo.project.name !== 'desktop', 'one shared queue: run once');
+
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext()));
+  try {
+    const [a, b, fan] = await Promise.all(
+      contexts.map((context, i) => freshPlayer(context, ['Adjoa', 'Kwame', 'Fan'][i])),
+    );
+    for (const page of [a, b]) {
+      await page.goto('/');
+      await page.getByText('PLAY ONLINE').click();
+      await page.getByRole('radio', { name: /Classic/ }).click();
+      await page.getByText('QUICK MATCH').click();
+      await expect(page.locator('.room-code, .board').first()).toBeVisible({ timeout: 15_000 });
+    }
+    await expect(a.locator('.board')).toBeVisible({ timeout: 20_000 });
+    await expect(b.locator('.board')).toBeVisible({ timeout: 20_000 });
+
+    await fan.goto('/');
+    await fan.getByText('PLAY ONLINE').click();
+    await fan.getByText('WATCH LIVE GAMES').click();
+    const row = fan.locator('.live-row', { hasText: 'Adjoa' });
+    await expect(row).toContainText('Kwame', { timeout: 15_000 });
+    await expect(row).toContainText('Classic 10+10');
+    await row.click();
+    await expect(fan.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(fan.locator('.pcard-clock')).toHaveCount(2);
+  } finally {
+    await Promise.all(contexts.map(context => context.close()));
   }
 });
 

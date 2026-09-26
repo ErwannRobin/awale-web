@@ -1,12 +1,14 @@
-// The twelve fixed challenge positions.
+// The fixed challenge positions, and the daily puzzle's pool.
 //
 // Goal text is NOT stored here — it lives in the translation tables under
-// `challenge.1` … `challenge.12`, so the puzzles are translatable.
+// `challenge.1` … `challenge.24`, so the puzzles are translatable.
 //
 // Every position is checked by `npm run verify:challenges`: seeds must total
 // 48, and the player must have a line that beats the configured AI.
 import challenges from '../content/challenges.json';
+import daily from '../content/daily.json';
 import type { StringKey } from '../i18n/index.ts';
+import type { DailyPool } from './daily.ts';
 
 export interface Challenge {
   /** Engine level for the computer opponent, default 1. */
@@ -18,6 +20,9 @@ export interface Challenge {
 }
 
 export const CHALLENGES = challenges as Challenge[];
+
+/** The daily puzzle's three tiers of positions — see lib/daily.ts. */
+export const DAILY_POOL = daily as DailyPool;
 
 export const challengeGoalKey = (index: number): StringKey =>
   `challenge.${index + 1}` as StringKey;

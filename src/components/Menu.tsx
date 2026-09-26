@@ -6,10 +6,12 @@ import { rankFor, suggestedLevel, type Stats } from '../lib/stats.ts';
 import type { SavedGame } from '../lib/saveGame.ts';
 import { primeAudio, playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
-import { CHALLENGES } from '../lib/challenges.ts';
+import { CHALLENGES, DAILY_POOL } from '../lib/challenges.ts';
+import { currentStreak, dailyFor, dayKey, msUntilNext, type DailyProgress } from '../lib/daily.ts';
+import { formatWait } from '../lib/format.ts';
 import { onlineEnabled } from '../lib/onlineConfig.ts';
 import {
-  BoltIcon, BotIcon, CapIcon, ChartIcon, GearIcon,
+  BoltIcon, BotIcon, CalendarIcon, CapIcon, ChartIcon, GearIcon,
   GlobeIcon, PlayIcon, TargetIcon, TrophyIcon, UsersIcon,
 } from './Icons.tsx';
 
@@ -18,6 +20,8 @@ interface Props {
   stats: Stats;
   completed: number[];
   saved: SavedGame | null;
+  daily: DailyProgress;
+  onDaily: () => void;
   onPlayAI: (level: number) => void;
   onPlayLocal: () => void;
   onQuickMatch: (level: number) => void;
@@ -38,7 +42,7 @@ function Diamond() {
 }
 
 export default function Menu({
-  profile, stats, completed, saved,
+  profile, stats, completed, saved, daily, onDaily,
   onPlayAI, onPlayLocal, onQuickMatch, onContinue, onOnline,
   onTutorial, onChallenges, onSettings, onProfile, onStats, onRecords, onLeaderboard,
 }: Props) {
@@ -47,6 +51,16 @@ export default function Menu({
   const rank = rankFor(stats.rating);
   const quickLevel = suggestedLevel(stats.rating);
   const levelName = (i: number) => t(`level.${i + 1}.name` as StringKey);
+
+  // Today's puzzle, and whether it is already done. Read at render: the menu
+  // is drawn afresh every time it is shown, which is often enough for a date.
+  const now = new Date();
+  const today = dailyFor(dayKey(now), DAILY_POOL);
+  const solvedToday = daily.solved[today.day] !== undefined;
+  const streak = currentStreak(daily, today.day);
+  const dailySub = solvedToday
+    ? t('daily.menuSolved', { time: formatWait(msUntilNext(now)) })
+    : t('daily.menuSub', { n: today.number, tier: t(`daily.tier.${today.tier}` as StringKey) });
 
   // The menu is the first thing a player touches, so unlock audio here.
   const tap = () => { primeAudio(); playTap(); hapticTap(); };
@@ -104,6 +118,15 @@ export default function Menu({
             <span className="pill-body">
               <span className="pill-title">{t('menu.quickMatch')}</span>
               <span className="pill-sub">{t('menu.quickMatchSub', { level: levelName(quickLevel) })}</span>
+            </span>
+          </button>
+          <button className={`pill ${solvedToday ? 'pill-done' : ''}`} onClick={go(onDaily)}>
+            <span className="pill-icon"><CalendarIcon /></span>
+            <span className="pill-body">
+              <span className="pill-title">{t('daily.menuTitle')}</span>
+              <span className="pill-sub">
+                {dailySub}{streak > 0 ? ` · 🔥 ${streak}` : ''}
+              </span>
             </span>
           </button>
           {/* Built with no server configured, this build has no online play,

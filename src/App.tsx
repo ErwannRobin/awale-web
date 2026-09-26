@@ -3,7 +3,11 @@ import Menu from './components/Menu.tsx';
 import Learn from './components/Learn.tsx';
 import Tutorial from './components/Tutorial.tsx';
 import Challenges from './components/Challenges.tsx';
-import { CHALLENGES, challengeGoalKey } from './lib/challenges.ts';
+import { CHALLENGES, DAILY_POOL, challengeGoalKey } from './lib/challenges.ts';
+import {
+  currentStreak, dailyFor, dayKey, loadDaily, msUntilNext, recordAttempt, saveDaily, tryMarks,
+  type DailyProgress,
+} from './lib/daily.ts';
 import Game from './components/Game.tsx';
 import Online from './components/Online.tsx';
 import OnlineGame from './components/OnlineGame.tsx';
@@ -26,10 +30,15 @@ import { useBackButton } from './lib/useBackButton.ts';
 import { useEscapeKey } from './lib/useEscapeKey.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
-import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
+import {
+  clearJoinCode, onlineEnabled, readJoinCode, readJoinControl, readWatchCode,
+} from './lib/onlineConfig.ts';
+import LiveGames from './components/LiveGames.tsx';
 import { detectCountry } from './lib/worldStats.ts';
-import { normaliseRoomCode } from './lib/protocol.ts';
+import { normaliseRoomCode, type TimeControlId } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
+import { isRtl, type StringKey } from './i18n/index.ts';
+import { formatWait } from './lib/format.ts';
 
 type Screen =
   | { name: 'menu' }
@@ -44,8 +53,17 @@ type Screen =
   // Sign-in is reached from the profile screen, so like Learn and Settings it
   // carries where to go back to.
   | { name: 'signIn'; back: Screen }
-  | { name: 'onlineGame'; room: string }
+  // `tc` is the clock this player asked for; absent when joining by code.
+  // `listed` is quick match's game, which goes in the public live list.
+  | { name: 'onlineGame'; room: string; tc?: TimeControlId; listed?: boolean }
+  // Someone else's game, watched.
+  | { name: 'watch'; room: string }
+  // The quick-match games being played now, to pick one to watch.
+  | { name: 'live' }
   | { name: 'challenge'; index: number }
+  // The day is carried, so a puzzle opened before midnight is still that
+  // day's puzzle after it — and Back/Forward bring back the same board.
+  | { name: 'daily'; day: string }
   | { name: 'leaderboard' }
   // A player's public profile; `userId` null is your own.
   | { name: 'player'; userId: string | null }
@@ -73,9 +91,12 @@ export default function App() {
     // first and making the player find the code again would waste the link.
     () => {
       if (!onlineEnabled()) return { name: 'menu' };
+      const watching = readWatchCode();
+      const watchRoom = watching ? normaliseRoomCode(watching) : null;
+      if (watchRoom) return { name: 'watch', room: watchRoom };
       const code = readJoinCode();
       const room = code ? normaliseRoomCode(code) : null;
-      return room ? { name: 'onlineGame', room } : { name: 'menu' };
+      return room ? { name: 'onlineGame', room, tc: readJoinControl() } : { name: 'menu' };
     },
     useCallback((target: Screen): Screen => {
       if (target.name !== 'game') return target;
@@ -85,6 +106,7 @@ export default function App() {
   );
   const screen = nav.screen;
   const [completed, setCompleted] = useState<number[]>(() => loadCompleted());
+  const [daily, setDaily] = useState<DailyProgress>(loadDaily);
   const [profile, setProfile] = useState(loadProfile);
   // Read from storage so a returning player is signed in before the first
   // paint, then confirmed against the server — see the effect below.
@@ -101,6 +123,7 @@ export default function App() {
     const root = document.documentElement;
     root.setAttribute('data-theme', settings.theme);
     root.setAttribute('lang', settings.language);
+    root.setAttribute('dir', isRtl(settings.language) ? 'rtl' : 'ltr');
 
     // The browser paints its own furniture — the address bar on mobile web,
     // the status bar in an installed shell — and CSS cannot reach it. Left at
@@ -191,6 +214,7 @@ export default function App() {
     if (screen.name !== 'menu') return;
     refreshSaved();
     refreshStats();
+    setDaily(loadDaily());
     clearJoinCode();
   }, [screen.name, refreshSaved, refreshStats]);
 
@@ -238,6 +262,66 @@ export default function App() {
       onResult: won => { if (won) markComplete(challengeIndex); },
     };
   }, [challengeIndex, markComplete]);
+
+  // The daily puzzle on screen, if any, built once per day it is opened for.
+  const dailyDay = screen.name === 'daily' ? screen.day : null;
+  const dailyPuzzle = useMemo(() => (dailyDay ? dailyFor(dailyDay, DAILY_POOL) : null), [dailyDay]);
+  const dailySetup = useMemo<GameSetup | null>(() => {
+    if (!dailyPuzzle) return null;
+    const day = dailyPuzzle.day;
+    return {
+      pits: dailyPuzzle.pits,
+      scores: dailyPuzzle.scores,
+      humanPlayer: 1,
+      firstPlayer: 1,
+      // Every finished game is an attempt; the first win banks the day.
+      onResult: won => {
+        const next = recordAttempt(loadDaily(), day, won);
+        saveDaily(next);
+        setDaily(next);
+      },
+    };
+  }, [dailyPuzzle]);
+
+  const dailyGoal = (): string => {
+    if (!dailyPuzzle) return '';
+    const [them, you] = dailyPuzzle.scores;
+    const score = you > them ? t('daily.scoreAhead', { you, them })
+      : you < them ? t('daily.scoreBehind', { you, them })
+        : t('daily.scoreLevel', { you });
+    return t('daily.goal', {
+      score,
+      level: t(`level.${dailyPuzzle.level + 1}.name` as StringKey),
+      moves: dailyPuzzle.moves,
+    });
+  };
+
+  const shareDaily = async () => {
+    if (!dailyPuzzle) return;
+    const tries = daily.solved[dailyPuzzle.day] ?? 1;
+    const streak = currentStreak(daily, dayKey(new Date()));
+    const lines = [
+      `${t('daily.shareTitle', { n: dailyPuzzle.number })} ${tryMarks(tries)}`,
+      tries === 1 ? t('daily.firstTry') : t('daily.inTries', { n: tries }),
+      ...(streak > 1 ? [`🔥 ${t('daily.streakDays', { n: streak })}`] : []),
+    ];
+    const url = typeof location !== 'undefined' && /^https?:$/.test(location.protocol)
+      ? `${location.origin}${location.pathname}`
+      : '';
+    const text = lines.join('\n');
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ text, ...(url ? { url } : {}) });
+        return;
+      }
+      await navigator.clipboard.writeText(url ? `${text}\n${url}` : text);
+      showToast(t('daily.copied'));
+    } catch (error) {
+      // Dismissing the share sheet is a choice, not a failure worth a toast.
+      if ((error as { name?: string })?.name === 'AbortError') return;
+      showToast(t('online.copyFailed'));
+    }
+  };
 
   /**
    * The ← on a screen that was opened over another one.
@@ -294,11 +378,14 @@ export default function App() {
       // that ended while it sat under a Settings screen, so ask, don't assume.
       case 'menu': if (nav.atRoot()) void exitApp(); else nav.back({ name: 'menu' }); return;
       case 'game': leaveGame(); return;
-      case 'onlineGame': leaveOnline(); return;
+      case 'onlineGame':
+      case 'watch': leaveOnline(); return;
+      case 'live': nav.back({ name: 'online' }); return;
       case 'signIn':
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
       case 'challenge': nav.back({ name: 'challenges' }); return;
+      case 'daily': nav.back({ name: 'menu' }); return;
       default: nav.back({ name: 'menu' });
     }
   };
@@ -321,6 +408,8 @@ export default function App() {
           stats={stats}
           completed={completed}
           saved={saved}
+          daily={daily}
+          onDaily={() => nav.go({ name: 'daily', day: dayKey(new Date()) })}
           onPlayAI={level => startGame('ai', level)}
           onPlayLocal={() => startGame('local')}
           onQuickMatch={level => startGame('ai', level)}
@@ -340,7 +429,8 @@ export default function App() {
         <Online
           myCountry={profile.country}
           onNations={() => nav.go({ name: 'stats' })}
-          onStart={room => nav.go({ name: 'onlineGame', room })}
+          onStart={(room, tc, listed) => nav.go({ name: 'onlineGame', room, tc, listed })}
+          onLive={() => nav.go({ name: 'live' })}
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
         />
@@ -386,10 +476,35 @@ export default function App() {
         <OnlineGame
           key={screen.room}
           room={screen.room}
+          control={screen.tc}
+          listed={screen.listed}
+          // Sideways, not deeper: Back from watching goes where Back from the
+          // full room would have gone.
+          onWatch={room => nav.replace({ name: 'watch', room })}
           onExit={leaveOnline}
           onLearn={() => nav.go({ name: 'learn', back: screen })}
           onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'watch' && (
+        <OnlineGame
+          key={`watch-${screen.room}`}
+          room={screen.room}
+          watch
+          onExit={leaveOnline}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
+          onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'live' && (
+        <LiveGames
+          onWatch={room => nav.go({ name: 'watch', room })}
+          onPlay={() => nav.back({ name: 'online' })}
+          onBack={() => nav.back({ name: 'online' })}
         />
       )}
 
@@ -498,6 +613,36 @@ export default function App() {
           onNext={screen.index + 1 < CHALLENGES.length
             ? () => nav.replace({ name: 'challenge', index: screen.index + 1 })
             : undefined}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
+          onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'daily' && dailyPuzzle && dailySetup && (
+        <Game
+          key={`daily-${dailyPuzzle.day}`}
+          mode="ai"
+          level={dailyPuzzle.level}
+          setup={dailySetup}
+          goal={dailyGoal()}
+          title={t('daily.title', { n: dailyPuzzle.number })}
+          oppName={t(`level.${dailyPuzzle.level + 1}.name` as StringKey)}
+          winText={t('daily.solved')}
+          onShare={() => void shareDaily()}
+          exitLabel={t('game.backToMenu')}
+          assists={false}
+          overExtra={daily.solved[dailyPuzzle.day] !== undefined && (
+            <p className="over-note">
+              {daily.solved[dailyPuzzle.day] === 1
+                ? t('daily.firstTry')
+                : t('daily.inTries', { n: daily.solved[dailyPuzzle.day] })}
+              {' · 🔥 '}{t('daily.streakDays', { n: currentStreak(daily, dailyPuzzle.day) })}
+              <br />
+              {t('daily.nextIn', { time: formatWait(msUntilNext(new Date())) })}
+            </p>
+          )}
+          onExit={() => nav.back({ name: 'menu' })}
           onLearn={() => nav.go({ name: 'learn', back: screen })}
           onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}

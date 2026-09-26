@@ -68,6 +68,62 @@ test('board sows counterclockwise: pit indices run the right way round', async (
   expect(sum).toBeLessThan(0);
 });
 
+test('an Arabic page reads right to left, and the board still sows counterclockwise', async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('awale.settings.v1', JSON.stringify({ language: 'ar', speed: 'instant', sound: false }));
+    } catch { /* private mode */ }
+  });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+
+  // "Two players", in Arabic.
+  await page.getByText('لاعبان', { exact: true }).click();
+  await expect(page.locator('.board-wrap')).toHaveAttribute('dir', 'ltr');
+
+  // Measured from the pits' own indices, not DOM order, so nothing about the
+  // page's direction can hide a reversed ring.
+  const centres = await page.locator('[data-pit]').evaluateAll(els => els
+    .map(el => {
+      const r = el.getBoundingClientRect();
+      return { i: Number(el.getAttribute('data-pit')), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })
+    .sort((a, b) => a.i - b.i));
+  expect(centres.map(c => c.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  let sum = 0;
+  for (let i = 0; i < centres.length; i++) {
+    const p = centres[i], q = centres[(i + 1) % centres.length];
+    sum += p.x * q.y - q.x * p.y;
+  }
+  expect(sum).toBeLessThan(0);
+});
+
+test('the win bar shows against the AI, and never in a puzzle', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('PLAY VS AI').click();
+  await page.getByText('Novice').first().click();
+
+  const bar = page.locator('.winbar');
+  await expect(bar).toBeVisible({ timeout: 15_000 });
+  const [near, far] = await bar.locator('.winbar-pct').allInnerTexts();
+  expect(parseInt(near, 10) + parseInt(far, 10)).toBe(100);
+  await expect(bar).toHaveAttribute('aria-label', /Win probability: You \d+%, Novice \d+%/);
+
+  // A puzzle's bar would be its answer.
+  await page.goBack();
+  await page.getByText('Challenges').first().click();
+  await page.locator('.challenge-item').first().click();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.winbar')).toHaveCount(0);
+  await page.goBack();
+  await page.goBack();
+  await page.getByText('DAILY PUZZLE').click();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.winbar')).toHaveCount(0);
+});
+
 test('a full game against the AI finishes and is recorded', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');
@@ -246,9 +302,25 @@ test('challenges unlock in order', async ({ page }) => {
   await page.getByText('Challenges').first().click();
 
   const items = page.locator('.challenge-item');
-  await expect(items).toHaveCount(12);
+  await expect(items).toHaveCount(24);
   await expect(items.first()).toBeEnabled();
   await expect(items.nth(1)).toBeDisabled();
+});
+
+test('the daily puzzle opens on a board with a stated goal', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('DAILY PUZZLE').click();
+
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.brand')).toContainText(/DAILY #\d+/);
+  // The goal is a claim the verifier proves: a forced win in so many moves.
+  await expect(page.locator('.goal-card')).toContainText(/force the win in \d+ moves/);
+  // The player moves first, as North.
+  await expect(playablePits(page).first()).toBeVisible();
+
+  // Back returns to the menu, where the puzzle is still on offer.
+  await page.goBack();
+  await expect(page.getByText('DAILY PUZZLE')).toBeVisible();
 });
 
 /**

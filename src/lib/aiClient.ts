@@ -4,12 +4,14 @@
 // not (React Native, SSR, older WebViews, a worker that failed to boot) the
 // same `AwaleAI` runs inline instead, so the game never freezes waiting for a
 // reply that will not come.
-import { AwaleAI } from './ai.ts';
+import { AwaleAI, evaluate } from './ai.ts';
 import type { AIRequest, AIResponse } from './ai.worker.ts';
 
 interface Backend {
   newGame(level: number): void;
   bestMove(which: 'game' | 'hint', pits: number[], scores: number[], player: 0 | 1): Promise<number | null>;
+  /** The win-probability bar's evaluation — see `ai.evaluate`. */
+  evaluate(pits: number[], scores: number[], player: 0 | 1): Promise<number | null>;
   dispose(): void;
 }
 
@@ -22,6 +24,9 @@ function inlineBackend(): Backend {
     bestMove(which, pits, scores, player) {
       const ai = which === 'game' ? gameAI : hintAI;
       return Promise.resolve(ai.bestMove(pits, scores, player));
+    },
+    evaluate(pits, scores, player) {
+      return Promise.resolve(evaluate(pits, scores, player));
     },
     dispose() { /* nothing to tear down */ },
   };
@@ -37,8 +42,9 @@ function workerBackend(): Backend | null {
     return null;
   }
 
+  /** A move or an evaluation: both are a number or null. */
   interface Pending {
-    resolve: (move: number | null) => void;
+    resolve: (result: number | null) => void;
     retry: (b: Backend) => Promise<number | null>;
   }
 
@@ -49,9 +55,9 @@ function workerBackend(): Backend | null {
   let lastLevel = 3;
 
   worker.onmessage = (e: MessageEvent<AIResponse>) => {
-    const { id, move } = e.data;
-    const entry = pending.get(id);
-    if (entry) { pending.delete(id); entry.resolve(move); }
+    const reply = e.data;
+    const entry = pending.get(reply.id);
+    if (entry) { pending.delete(reply.id); entry.resolve(reply.type === 'eval' ? reply.value : reply.move); }
   };
 
   // A worker that dies must not leave the board stuck on "Thinking…" — replay
@@ -89,6 +95,21 @@ function workerBackend(): Backend | null {
         }
       });
     },
+    evaluate(pits, scores, player) {
+      const snapPits = [...pits], snapScores = [...scores];
+      const retry = (b: Backend) => b.evaluate(snapPits, snapScores, player);
+      if (broken) return retry(fallback);
+      const id = nextId++;
+      return new Promise<number | null>(resolve => {
+        pending.set(id, { resolve, retry });
+        const msg: AIRequest = { type: 'eval', id, pits: snapPits, scores: snapScores, player };
+        try {
+          worker.postMessage(msg);
+        } catch {
+          failOver();
+        }
+      });
+    },
     dispose() { pending.clear(); worker.terminate(); },
   };
 }
@@ -100,6 +121,10 @@ export class AIClient {
 
   bestMove(which: 'game' | 'hint', pits: number[], scores: number[], player: 0 | 1) {
     return this.backend.bestMove(which, pits, scores, player);
+  }
+
+  evaluate(pits: number[], scores: number[], player: 0 | 1) {
+    return this.backend.evaluate(pits, scores, player);
   }
 
   dispose() { this.backend.dispose(); }

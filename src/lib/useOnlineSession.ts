@@ -7,7 +7,7 @@
 // moves reach it from there.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OnlineSession, type OnlineView } from './online.ts';
-import type { OverReason, RoomSnapshot } from './protocol.ts';
+import type { OverReason, RoomSnapshot, TimeControlId } from './protocol.ts';
 import type { Seat, Winner } from './rules.ts';
 import type { TransportFactory } from './transport.ts';
 import { webSocketTransport } from './wsTransport.ts';
@@ -28,6 +28,13 @@ export interface OnlineHandle {
   bind(api: GameBridge | null): void;
   resign(): void;
   rematch(): void;
+  /** Send one of `REACTIONS`. */
+  react(e: number): void;
+  /**
+   * The latest reaction from either seat, with a counter so the same emoji
+   * twice in a row is still two bubbles.
+   */
+  reaction: { by: Seat; e: number; n: number } | null;
 }
 
 export interface OnlineOptions {
@@ -38,6 +45,12 @@ export interface OnlineOptions {
   auth?: string;
   /** Where the player says they play from. */
   country?: string;
+  /** The clock this player asked for — see `SessionOptions.control`. */
+  control?: TimeControlId;
+  /** Watch rather than play. */
+  watch?: boolean;
+  /** Ask to be in the public live list. */
+  listed?: boolean;
   /** Injectable for tests; defaults to a real WebSocket. */
   factory?: TransportFactory;
 }
@@ -49,12 +62,16 @@ const startingView: OnlineView = {
   error: null,
   rematchOffered: false,
   rematchSent: false,
+  clockAt: 0,
+  watching: false,
+  audience: 0,
 };
 
 export function useOnlineSession(
-  { room, name, token, auth, country, factory }: OnlineOptions,
+  { room, name, token, auth, country, control, watch, listed, factory }: OnlineOptions,
 ): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
+  const [reaction, setReaction] = useState<OnlineHandle['reaction']>(null);
   const sessionRef = useRef<OnlineSession | null>(null);
   const bridgeRef = useRef<GameBridge | null>(null);
 
@@ -73,8 +90,13 @@ export function useOnlineSession(
       auth,
       name: nameRef.current,
       country: countryRef.current,
+      control,
+      watch,
+      listed,
       callbacks: {
         change: next => setView(next),
+
+        react: (by, e) => setReaction(prev => ({ by, e, n: (prev?.n ?? 0) + 1 })),
 
         reset: (snapshot: RoomSnapshot) => {
           bridgeRef.current?.resetTo({
@@ -101,7 +123,7 @@ export function useOnlineSession(
           // A game that ended on the board has already ended locally, at the
           // end of its own animation. Only the endings the board cannot see
           // need telling.
-          if (reason === 'resign' || reason === 'abandoned') {
+          if (reason === 'resign' || reason === 'abandoned' || reason === 'timeout') {
             bridgeRef.current?.endWith(winner);
           }
         },
@@ -115,7 +137,7 @@ export function useOnlineSession(
       bridgeRef.current = null;
       setView(startingView);
     };
-  }, [room, token, auth, factory]);
+  }, [room, token, auth, control, watch, listed, factory]);
 
   const remote = useMemo(() => ({
     sendMove: (pit: number) => sessionRef.current?.sendMove(pit),
@@ -124,6 +146,7 @@ export function useOnlineSession(
   const bind = useCallback((api: GameBridge | null) => { bridgeRef.current = api; }, []);
   const resign = useCallback(() => sessionRef.current?.resign(), []);
   const rematch = useCallback(() => sessionRef.current?.rematch(), []);
+  const react = useCallback((e: number) => sessionRef.current?.react(e), []);
 
-  return { view, remote, bind, resign, rematch };
+  return { view, remote, bind, resign, rematch, react, reaction };
 }

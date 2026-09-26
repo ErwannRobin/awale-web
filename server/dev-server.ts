@@ -12,12 +12,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   ABANDON_MS,
-  command, createRoom, disconnect, isExpired, isJoinable, join, seatOf, sweep,
+  command, createRoom, disconnect, isExpired, isJoinable, join, liveChange, liveEntry,
+  seatOf, spectate, sweep,
   type Effect, type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
-  PROTOCOL_VERSION, makeRoomCode, normaliseRoomCode, parseClientMsg,
-  type ServerMsg,
+  PROTOCOL_VERSION, isTimeControl, makeRoomCode, normaliseRoomCode, parseClientMsg,
+  type LiveGame, type ServerMsg, type TimeControlId,
 } from '../src/lib/protocol.ts';
 import {
   addCountryGame, addHeadToHead, addPvpMatch, rankCountries, rankNations, rivalryKey,
@@ -28,12 +29,34 @@ import type { Seat } from '../src/lib/rules.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WAIT_TTL_MS = 120_000;
-const SWEEP_EVERY_MS = 5_000;
+// Often enough that a flag falls within a second of the clock reaching zero —
+// the Durable Object gets an alarm set for the exact moment instead.
+const SWEEP_EVERY_MS = 1_000;
 
 interface Conn {
   ws: WebSocket;
   token: string;
   seat: Seat | null;
+  /** A spectator: no seat, counted in the audience. */
+  watch?: boolean;
+}
+
+/** The public list of live games — the Worker's `Live` object, in a Map. */
+const live = new Map<string, LiveGame>();
+
+function tellLive(before: RoomState, after: RoomState): void {
+  const change = liveChange(before, after);
+  if (change === 'start') {
+    const entry = liveEntry(after);
+    if (entry) live.set(entry.room, entry);
+  } else if (change === 'end') {
+    live.delete(after.code);
+  }
+}
+
+function announceAudience(code: string): void {
+  const n = [...connsOf(code)].filter(c => c.watch).length;
+  dispatch(code, [{ to: 'all', msg: { t: 'audience', n } }]);
 }
 
 /**
@@ -77,7 +100,8 @@ function countOnlineGame(room: RoomState): void {
 
 const rooms = new Map<string, RoomState>();
 const conns = new Map<string, Set<Conn>>();
-let waiting: { code: string; at: number } | null = null;
+/** One waiting code per time control, like the Worker's one lobby per control. */
+const waiting = new Map<TimeControlId, { code: string; at: number }>();
 
 const roomOf = (code: string): RoomState => {
   const existing = rooms.get(code);
@@ -103,7 +127,7 @@ function send(ws: WebSocket, msg: ServerMsg): void {
 function dispatch(code: string, effects: Effect[]): void {
   for (const effect of effects) {
     for (const conn of connsOf(code)) {
-      if (effect.to !== 'all' && conn.seat !== effect.to) continue;
+      if (effect.to === 'watchers' ? !conn.watch : effect.to !== 'all' && conn.seat !== effect.to) continue;
       send(conn.ws, effect.msg);
     }
   }
@@ -124,6 +148,12 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   }
   if (url.pathname === '/health') {
     response.writeHead(200, { ...cors, 'content-type': 'text/plain' }).end('ok');
+    return;
+  }
+  if (url.pathname === '/live') {
+    const games = [...live.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 30);
+    response.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify(games));
     return;
   }
   if (url.pathname === '/geo') {
@@ -180,17 +210,20 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   }
   if (url.pathname === '/queue' && request.method === 'POST') {
     const now = Date.now();
+    const asked = url.searchParams.get('tc');
+    const tc: TimeControlId = isTimeControl(asked) ? asked : 'none';
     let body: { code: string; role: 'created' | 'joined' };
     // A waiting code is only worth handing out if somebody is still sitting in
     // it. See the same check, against the Room object, in `src/index.ts`.
-    const fresh = waiting && now - waiting.at < WAIT_TTL_MS ? waiting : null;
+    const held = waiting.get(tc);
+    const fresh = held && now - held.at < WAIT_TTL_MS ? held : null;
     const room = fresh ? rooms.get(fresh.code) : undefined;
     if (fresh && room && isJoinable(room)) {
       body = { code: fresh.code, role: 'joined' };
-      waiting = null;
+      waiting.delete(tc);
     } else {
       const code = makeRoomCode();
-      waiting = { code, at: now };
+      waiting.set(tc, { code, at: now });
       body = { code, role: 'created' };
     }
     response.writeHead(200, { ...cors, 'content-type': 'application/json' })
@@ -253,7 +286,13 @@ function attach(code: string, ws: WebSocket): void {
         ws.close();
         return;
       }
-      const result = join(room, msg.token, msg.name, now, msg.country);
+      if (msg.watch) {
+        conn.watch = true;
+        send(ws, spectate(room, now));
+        announceAudience(code);
+        return;
+      }
+      const result = join(room, msg.token, msg.name, now, msg.country, msg.tc, msg.listed);
       if (result.error) {
         send(ws, { t: 'err', code: result.error });
         ws.close();
@@ -263,9 +302,16 @@ function attach(code: string, ws: WebSocket): void {
       conn.seat = result.seat;
       rooms.set(code, result.state);
       dispatch(code, result.effects);
+      const n = [...connsOf(code)].filter(c => c.watch).length;
+      if (n > 0) send(ws, { t: 'audience', n });
+      tellLive(room, result.state);
       return;
     }
 
+    if (conn.watch) {
+      if (msg.t === 'ping') send(ws, { t: 'pong' });
+      return;
+    }
     if (!conn.token || seatOf(room, conn.token) === null) {
       send(ws, { t: 'err', code: 'not-seated' });
       return;
@@ -274,10 +320,12 @@ function attach(code: string, ws: WebSocket): void {
     rooms.set(code, step.state);
     if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
     dispatch(code, step.effects);
+    tellLive(room, step.state);
   });
 
   ws.on('close', () => {
     connsOf(code).delete(conn);
+    if (conn.watch) { announceAudience(code); return; }
     if (!conn.token) return;
     // Another tab on the same token means the player has not actually left.
     for (const other of connsOf(code)) if (other.token === conn.token) return;
@@ -299,8 +347,10 @@ setInterval(() => {
       if (room.status === 'playing' && step.state.status === 'over') countOnlineGame(step.state);
       rooms.set(code, step.state);
       dispatch(code, step.effects);
+      tellLive(room, step.state);
     }
     if (isExpired(step.state, now) && connsOf(code).size === 0) {
+      tellLive(step.state, { ...step.state, status: 'over' });
       rooms.delete(code);
       conns.delete(code);
     }

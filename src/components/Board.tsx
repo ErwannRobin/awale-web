@@ -224,7 +224,9 @@ export default function Board({ state, viewpoint, interactive, onPlay }: Props) 
   const stores = nearFirst ? [nearStore, farStore] : [farStore, nearStore];
 
   return (
-    <div className="board-wrap">
+    // Always left to right, whatever the page: an Arabic page flips its rows,
+    // and a flipped ring of pits is a ring sown clockwise.
+    <div className="board-wrap" dir="ltr">
       <div className="board" style={{ flexDirection: layout.boardDirection }}
            role="group" aria-label={t('a11y.board')}>
         {stores[0]}

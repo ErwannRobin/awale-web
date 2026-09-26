@@ -6,7 +6,7 @@
 import { isCountryCode, type CountryCode } from './country.ts';
 import {
   PROTOCOL_VERSION, parseServerMsg, stateHash,
-  type ClientMsg, type ErrorCode, type OverReason, type RoomSnapshot,
+  type ClientMsg, type ErrorCode, type OverReason, type RoomSnapshot, type TimeControlId,
 } from './protocol.ts';
 import type { Seat, Winner } from './rules.ts';
 import type { Transport, TransportFactory, TransportStatus } from './transport.ts';
@@ -25,6 +25,16 @@ export interface OnlineView {
   rematchOffered: boolean;
   /** You asked; you are waiting on them. */
   rematchSent: boolean;
+  /**
+   * When `snapshot.clock` arrived, on this device's clock. The countdown on
+   * screen is the server's numbers minus the time since — never a clock this
+   * device keeps on its own.
+   */
+  clockAt: number;
+  /** Here to watch: no seat, and the room has said so. */
+  watching: boolean;
+  /** How many people are watching this room. */
+  audience: number;
 }
 
 export interface SessionCallbacks {
@@ -34,6 +44,8 @@ export interface SessionCallbacks {
   reset(snapshot: RoomSnapshot): void;
   over(winner: Winner, reason: OverReason, scores: number[]): void;
   change(view: OnlineView): void;
+  /** Someone at the board sent one of `REACTIONS`. Optional: a test may not care. */
+  react?(by: Seat, e: number): void;
 }
 
 /** A country worth sending, or null: `ZZ` is simply left out of the hello. */
@@ -55,6 +67,12 @@ export interface SessionOptions {
   name: string;
   /** Where the player says they play from; sent so the other side sees the flag. */
   country?: string;
+  /** The clock this player came for; the room keeps the first one it hears. */
+  control?: TimeControlId;
+  /** Come as a spectator rather than a player. */
+  watch?: boolean;
+  /** Ask for the game to be in the public live list (quick match does). */
+  listed?: boolean;
   callbacks: SessionCallbacks;
 }
 
@@ -68,6 +86,9 @@ export class OnlineSession {
     error: null,
     rematchOffered: false,
     rematchSent: false,
+    clockAt: 0,
+    watching: false,
+    audience: 0,
   };
 
   private readonly opts: SessionOptions;
@@ -97,6 +118,9 @@ export class OnlineSession {
   }
 
   resign(): void { this.send({ t: 'resign' }); }
+
+  /** One of `REACTIONS`, by index. The server rate-limits; so does the UI. */
+  react(e: number): void { this.send({ t: 'react', e }); }
 
   rematch(): void {
     this.patch({ rematchSent: true });
@@ -142,10 +166,15 @@ export class OnlineSession {
         name: this.opts.name,
         ...(this.opts.auth ? { auth: this.opts.auth } : {}),
         ...(countryOf(this.opts.country) ? { country: countryOf(this.opts.country)! } : {}),
+        ...(this.opts.control && this.opts.control !== 'none' ? { tc: this.opts.control } : {}),
+        ...(this.opts.watch ? { watch: true } : {}),
+        ...(this.opts.listed ? { listed: true } : {}),
       });
       // Stay "connecting" until the welcome lands: an open socket that has not
-      // been seated yet is not a game.
-      this.patch({ connection: this.view.seat === null ? 'connecting' : 'online' });
+      // been seated (or shown the room, for a spectator) yet is not a game.
+      this.patch({
+        connection: this.view.seat === null && !this.view.watching ? 'connecting' : 'online',
+      });
       return;
     }
     this.patch({ connection: status === 'connecting' ? 'connecting' : 'offline' });
@@ -169,8 +198,24 @@ export class OnlineSession {
           error: null,
           rematchOffered: false,
           rematchSent: false,
+          clockAt: Date.now(),
         });
         this.opts.callbacks.reset(msg.snapshot);
+        return;
+
+      case 'watching':
+        this.patch({
+          watching: true,
+          snapshot: msg.snapshot,
+          connection: 'online',
+          error: null,
+          clockAt: Date.now(),
+        });
+        this.opts.callbacks.reset(msg.snapshot);
+        return;
+
+      case 'audience':
+        this.patch({ audience: msg.n });
         return;
 
       case 'sync':
@@ -179,6 +224,7 @@ export class OnlineSession {
           error: null,
           rematchOffered: false,
           rematchSent: false,
+          clockAt: Date.now(),
         });
         this.opts.callbacks.reset(msg.snapshot);
         return;
@@ -187,6 +233,14 @@ export class OnlineSession {
         const snap = this.view.snapshot;
         // A move for a ply we have already played is a duplicate, not news.
         if (snap && msg.ply <= snap.ply) return;
+        // The clocks change hands the moment the move is made, not when this
+        // board has finished animating it.
+        if (snap?.clock && msg.clock) {
+          this.patch({
+            snapshot: { ...snap, clock: { ...snap.clock, left: msg.clock, running: msg.by === 0 ? 1 : 0 } },
+            clockAt: Date.now(),
+          });
+        }
         this.opts.callbacks.move(msg.pit, msg.by, msg.ply, msg.hash);
         return;
       }
@@ -202,9 +256,13 @@ export class OnlineSession {
               winner: msg.winner,
               reason: msg.reason,
               rematch: [false, false],
+              ...(snap.clock
+                ? { clock: { ...snap.clock, left: msg.clock ?? snap.clock.left, running: null } }
+                : {}),
             },
             rematchOffered: false,
             rematchSent: false,
+            clockAt: Date.now(),
           });
         }
         this.opts.callbacks.over(msg.winner, msg.reason, msg.scores);
@@ -222,6 +280,10 @@ export class OnlineSession {
 
       case 'rematch':
         this.patch({ rematchOffered: true });
+        return;
+
+      case 'react':
+        this.opts.callbacks.react?.(msg.by, msg.e);
         return;
 
       case 'err':

@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/useT.ts';
-import { makeRoomCode, normaliseRoomCode, CODE_LENGTH } from '../lib/protocol.ts';
+import {
+  makeRoomCode, normaliseRoomCode, CODE_LENGTH, TIME_CONTROL_IDS, type TimeControlId,
+} from '../lib/protocol.ts';
 import { queueUrl } from '../lib/onlineConfig.ts';
 import { playTap } from '../lib/sound.ts';
 import { hapticTap } from '../lib/haptics.ts';
 import { fetchNations, worldStatsEnabled, type NationsTable } from '../lib/worldStats.ts';
 import { useSettings } from '../lib/useSettings.ts';
+import { updateSettings } from '../lib/settings.ts';
+import { timeControlShort } from './timeControl.ts';
+import type { StringKey } from '../i18n/index.ts';
 import { RivalCard } from './Rivalry.tsx';
 
 interface Props {
@@ -13,7 +18,13 @@ interface Props {
   myCountry: string;
   /** The nations ranking, behind the nudge. */
   onNations: () => void;
-  onStart: (room: string) => void;
+  /**
+   * `control` is absent when joining by code: the room already has its clock.
+   * `listed` is quick match asking for a place in the public live list.
+   */
+  onStart: (room: string, control?: TimeControlId, listed?: boolean) => void;
+  /** The public list of games to watch. */
+  onLive: () => void;
   onBack: () => void;
   onToast: (msg: string) => void;
 }
@@ -21,9 +32,9 @@ interface Props {
 /** How long to wait for the matchmaker before giving up and saying so. */
 const QUEUE_TIMEOUT_MS = 8000;
 
-export default function Online({ myCountry, onNations, onStart, onBack, onToast }: Props) {
+export default function Online({ myCountry, onNations, onStart, onLive, onBack, onToast }: Props) {
   const t = useT();
-  const { language } = useSettings();
+  const { language, timeControl } = useSettings();
 
   // The moment a player chooses to play someone is the moment their nation's
   // standing is worth a line: who is just ahead, and by how much.
@@ -44,7 +55,14 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
   // and the room comes into being when the first player connects to it.
   const createRoom = () => {
     tap();
-    onStart(makeRoomCode());
+    onStart(makeRoomCode(), timeControl);
+  };
+
+  // Remembered, because a player who likes blitz likes it next time too — and
+  // quick match only ever pairs two people who asked for the same clock.
+  const pickControl = (id: TimeControlId) => {
+    tap();
+    updateSettings({ timeControl: id });
   };
 
   const submitCode = () => {
@@ -60,13 +78,13 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), QUEUE_TIMEOUT_MS);
-      const response = await fetch(queueUrl(), { method: 'POST', signal: controller.signal });
+      const response = await fetch(queueUrl(timeControl), { method: 'POST', signal: controller.signal });
       clearTimeout(timer);
       if (!response.ok) throw new Error(String(response.status));
       const body = await response.json() as { code?: unknown };
       const clean = typeof body.code === 'string' ? normaliseRoomCode(body.code) : null;
       if (!clean) throw new Error('bad reply');
-      onStart(clean);
+      onStart(clean, timeControl, true);
     } catch {
       // The matchmaker is the only part of online play that needs plain HTTP,
       // so this is also the first place a misconfigured URL shows up.
@@ -104,6 +122,24 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
 
       {!joining ? (
         <div className="menu-actions">
+          <div className="tc-picker" role="radiogroup" aria-label={t('online.timeControl')}>
+            <span className="tc-picker-label" aria-hidden>⏱ {t('online.timeControl')}</span>
+            <div className="tc-options">
+              {TIME_CONTROL_IDS.map(id => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={timeControl === id}
+                  className={`tc-option ${timeControl === id ? 'tc-option-on' : ''}`}
+                  onClick={() => pickControl(id)}
+                >
+                  <span className="tc-option-name">{t(`tc.${id}` as StringKey)}</span>
+                  {id !== 'none' && <span className="tc-option-time">{timeControlShort(id)}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
           <button className="pill pill-green" onClick={() => void quickMatch()} disabled={searching}>
             <span className="pill-icon">🌍</span>
             <span className="pill-body">
@@ -125,6 +161,13 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
             <span className="pill-body">
               <span className="pill-title">{t('online.join')}</span>
               <span className="pill-sub">{t('online.joinSub')}</span>
+            </span>
+          </button>
+          <button className="pill" onClick={() => { tap(); onLive(); }}>
+            <span className="pill-icon">👁</span>
+            <span className="pill-body">
+              <span className="pill-title">{t('live.menu')}</span>
+              <span className="pill-sub">{t('live.menuSub')}</span>
             </span>
           </button>
         </div>

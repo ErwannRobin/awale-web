@@ -31,6 +31,15 @@ export const PlayIcon = () => (
   <Icon><path d="M8.5 5.4 19 12 8.5 18.6V5.4Z" /></Icon>
 );
 
+/** The daily puzzle — a page of the calendar with one seed on it. */
+export const CalendarIcon = () => (
+  <Icon>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+    <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+    <circle cx="12" cy="15" r="2.2" />
+  </Icon>
+);
+
 /** Quick match — straight into a game. */
 export const BoltIcon = () => (
   <Icon><path d="M13.2 2.5 4.8 13.4h6.1L10.8 21.5l8.4-10.9h-6.1l.1-8.1Z" /></Icon>

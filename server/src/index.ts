@@ -2,7 +2,8 @@
 // built web app sitting next to it.
 //
 //   GET  /room/:code   WebSocket upgrade into that room's Durable Object
-//   POST /queue        quick match: a code to sit in, or one to walk into
+//   POST /queue        quick match: a code to sit in, or one to walk into —
+//                      `?tc=blitz|rapid|classic` for a timed game
 //   POST /auth/*       signing in with a phone number, via phone-verif.com
 //   GET  /geo          which country this request came from
 //   POST /stats/game   count one finished AI game: level, outcome, country —
@@ -13,6 +14,7 @@
 //   GET  /stats/rivalry    one pair of countries' record against each other
 //   GET  /leaderboard      signed-in players, by online rating
 //   GET  /players/:id      one player's public profile
+//   GET  /live         quick-match games being played right now, to watch
 //   GET  /health       is anybody home
 //   everything else    the game itself, from the ASSETS binding
 //
@@ -26,7 +28,7 @@
 // needs. Signing in adds an identity on top of that rather than replacing it —
 // a signed-in player's seat is proved by a token nobody else can forge, and
 // everyone else plays exactly as before, anonymously.
-import { normaliseRoomCode } from '../../src/lib/protocol.ts';
+import { isTimeControl, normaliseRoomCode, type TimeControlId } from '../../src/lib/protocol.ts';
 import { normaliseCountry, UNKNOWN_COUNTRY } from '../../src/lib/country.ts';
 import {
   rankNations, sanitiseLevel, sanitiseOutcome,
@@ -45,6 +47,7 @@ export { Lobby } from './lobby.ts';
 export { Identity } from './identity.ts';
 export { Leaderboard } from './leaderboard.ts';
 export { Stats } from './stats.ts';
+export { Live } from './live.ts';
 
 export interface Env extends AuthEnv {
   ROOM: DurableObjectNamespace;
@@ -52,6 +55,8 @@ export interface Env extends AuthEnv {
   LEADERBOARD: DurableObjectNamespace;
   /** The world table. Absent on an older deploy, which simply has no stats. */
   STATS?: DurableObjectNamespace;
+  /** Games being played right now. Absent on an older deploy: an empty list. */
+  LIVE?: DurableObjectNamespace;
   /** The built web app. Present in a deploy; absent under `wrangler dev` if
    *  the app has not been built yet, which is a warning, not a crash. */
   ASSETS?: Fetcher;
@@ -86,11 +91,13 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
  * sitting in that room, we go back to the lobby, which by then has forgotten
  * the stale code and issues a fresh one to wait in.
  */
-async function queue(env: Env): Promise<QueueReply> {
-  // One lobby for everyone. A single Durable Object is a bottleneck only at a
-  // scale this game is nowhere near; sharding it later is a one-line change to
-  // the name below.
-  const lobby = env.LOBBY.get(env.LOBBY.idFromName('global'));
+async function queue(env: Env, control: TimeControlId): Promise<QueueReply> {
+  // One lobby per time control: a player who asked for three-minute games is
+  // never paired with one who asked for ten. A single Durable Object each is a
+  // bottleneck only at a scale this game is nowhere near. The untimed lobby
+  // keeps the name it had before clocks, so nobody waiting in it is stranded
+  // by a deploy.
+  const lobby = env.LOBBY.get(env.LOBBY.idFromName(control === 'none' ? 'global' : `global:${control}`));
   // A fresh request each time, rather than forwarding the player's: a Request
   // cannot be sent twice, and the lobby wants nothing from theirs but the verb.
   const ask = async (): Promise<QueueReply> => {
@@ -295,6 +302,22 @@ export default {
       });
     }
 
+    if (url.pathname === '/live') {
+      if (!env.LIVE) return Response.json([], { headers: { ...cors, 'cache-control': 'no-store' } });
+      const live = env.LIVE.get(env.LIVE.idFromName('global'));
+      const reply = await live.fetch('https://live/list');
+      return new Response(reply.body, {
+        status: reply.status,
+        headers: {
+          ...cors,
+          'content-type': 'application/json',
+          // Games start and end by the minute; a few seconds of staleness is
+          // fine and keeps a crowd refreshing the list off the object.
+          'cache-control': 'public, max-age=5',
+        },
+      });
+    }
+
     if (url.pathname === '/health') {
       return new Response('ok', { headers: { ...cors, 'content-type': 'text/plain' } });
     }
@@ -303,7 +326,8 @@ export default {
       if (request.method !== 'POST') {
         return new Response('use POST', { status: 405, headers: cors });
       }
-      const reply = await queue(env);
+      const tc = url.searchParams.get('tc');
+      const reply = await queue(env, isTimeControl(tc) ? tc : 'none');
       return Response.json(reply, { headers: cors });
     }
 

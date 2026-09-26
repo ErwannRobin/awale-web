@@ -11,12 +11,13 @@
 import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
-  IDLE_SWEEP_MS, MIN_ALARM_MS,
-  command, createRoom, disconnect, isCoherent, isJoinable, join, nextAlarmAt, snapshot, sweep,
+  IDLE_SWEEP_MS, MIN_ALARM_MS, REACT_GAP_MS,
+  command, createRoom, disconnect, flagAt, isCoherent, isJoinable, join, liveChange, liveEntry, nextAlarmAt,
+  snapshot, spectate, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
-  PROTOCOL_VERSION, normaliseRoomCode, parseClientMsg, parseServerMsg, stateHash,
+  PROTOCOL_VERSION, normaliseRoomCode, parseClientMsg, parseLiveGames, parseServerMsg, stateHash,
   type ServerMsg,
 } from '../src/lib/protocol.ts';
 import { applyMove, legalMoves, type Seat, type Winner } from '../src/lib/rules.ts';
@@ -453,6 +454,232 @@ check('a room code is read the way a person would say it', () => {
 });
 
 // ---------------------------------------------------------------------------
+console.log('room: the clock');
+
+const MIN = 60_000;
+
+/** A timed room, both seated at `now`, the first seat to move. */
+function timedRoom(control: 'blitz' | 'rapid' | 'classic' = 'blitz', now = 1000): RoomState {
+  let room = createRoom('ABCDE', now);
+  room = join(room, TOKEN_A, 'Ama', now, undefined, control).state;
+  room = join(room, TOKEN_B, 'Kofi', now).state;
+  return room;
+}
+
+const clockOf = (effects: { msg: ServerMsg }[], t: 'move' | 'over') =>
+  (effects.find(e => e.msg.t === t)?.msg as { clock?: [number, number] } | undefined)?.clock;
+
+check('the first player to name a clock sets it; the game starts it', () => {
+  const room = timedRoom('blitz');
+  assert.equal(room.control, 'blitz');
+  const snap = snapshot(room, 1000);
+  assert.deepEqual(snap.clock, { control: 'blitz', left: [3 * MIN, 3 * MIN], running: 0 });
+});
+
+check('a later player cannot change the clock', () => {
+  let room = createRoom('ABCDE', 1000);
+  room = join(room, TOKEN_A, 'Ama', 1000, undefined, 'blitz').state;
+  room = join(room, TOKEN_B, 'Kofi', 1000, undefined, 'classic').state;
+  assert.equal(room.control, 'blitz');
+});
+
+check('an untimed room has no clock anywhere', () => {
+  const room = seatedRoom();
+  assert.equal(snapshot(room).clock, undefined);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 60_000);
+  assert.equal(clockOf(step.effects, 'move'), undefined);
+  assert.equal(sweep(step.state, 10 * 60 * MIN).state.status, 'playing', 'no flag ever falls');
+});
+
+check('the snapshot counts the running clock down', () => {
+  const room = timedRoom('blitz', 1000);
+  assert.deepEqual(snapshot(room, 11_000).clock?.left, [3 * MIN - 10_000, 3 * MIN]);
+});
+
+check('a move takes the thinking time off and adds the increment', () => {
+  const room = timedRoom('blitz', 1000);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 11_000);
+  // 3:00 − 0:10 + 0:02 for the mover; the other clock untouched and now running.
+  assert.deepEqual(clockOf(step.effects, 'move'), [3 * MIN - 8_000, 3 * MIN]);
+  assert.equal(step.state.turnStartedAt, 11_000);
+  assert.deepEqual(snapshot(step.state, 16_000).clock, {
+    control: 'blitz', left: [3 * MIN - 8_000, 3 * MIN - 5_000], running: 1,
+  });
+});
+
+check('a move that arrives after the flag loses on time and is not played', () => {
+  const room = timedRoom('blitz', 1000);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 1000 + 3 * MIN);
+  assert.equal(step.state.status, 'over');
+  assert.equal(step.state.winner, 1);
+  assert.equal(step.state.reason, 'timeout');
+  assert.equal(step.state.ply, 0, 'the board did not move');
+  assert.deepEqual(clockOf(step.effects, 'over'), [0, 3 * MIN]);
+});
+
+check('the alarm is set for the flag, and the sweep calls it', () => {
+  const room = timedRoom('blitz', 1000);
+  assert.equal(nextAlarmAt(room, 2000), 1000 + 3 * MIN, 'no later than the flag');
+  assert.equal(sweep(room, 1000 + 3 * MIN - 1).state.status, 'playing', 'not a moment early');
+  const flagged = sweep(room, 1000 + 3 * MIN);
+  assert.equal(flagged.state.winner, 1);
+  assert.equal(flagged.state.reason, 'timeout');
+  assert.equal(flagged.state.turnStartedAt, null, 'the clocks stop');
+  assert.ok(isCoherent(flagged.state));
+});
+
+check('after a move, the alarm is due at the other side\'s flag, even when that is sooner', () => {
+  // Seat 0 thinks for two minutes, seat 1 for two and a half: seat 1 is now
+  // the one short of time. When seat 0 moves again, the next alarm must be
+  // seat 1's flag — earlier than any alarm seat 0's own clock would need.
+  let room = timedRoom('blitz', 0);
+  room = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 120_000).state;
+  room = command(room, TOKEN_B, { t: 'move', pit: 8, ply: 1 }, 270_000).state;
+  room = command(room, TOKEN_A, { t: 'move', pit: 1, ply: 2 }, 271_000).state;
+  const seat1Left = 3 * MIN - 150_000 + 2_000;
+  assert.equal(flagAt(room), 271_000 + seat1Left);
+  assert.equal(nextAlarmAt(room, 271_000), 271_000 + seat1Left);
+});
+
+check('resigning stops the clocks where they stand', () => {
+  const room = timedRoom('rapid', 1000);
+  const step = command(room, TOKEN_A, { t: 'resign' }, 31_000);
+  assert.deepEqual(clockOf(step.effects, 'over'), [5 * MIN - 30_000, 5 * MIN]);
+  assert.equal(snapshot(step.state, 99_000).clock?.running, null);
+});
+
+check('a rematch starts both clocks from full', () => {
+  let room = timedRoom('blitz', 1000);
+  room = command(room, TOKEN_A, { t: 'resign' }, 61_000).state;
+  room = command(room, TOKEN_A, { t: 'rematch' }, 62_000).state;
+  room = command(room, TOKEN_B, { t: 'rematch' }, 63_000).state;
+  assert.equal(room.status, 'playing');
+  assert.deepEqual(snapshot(room, 63_000).clock?.left, [3 * MIN, 3 * MIN]);
+  assert.equal(room.turnStartedAt, 63_000);
+});
+
+check('a room stored before clocks existed still plays, untimed', () => {
+  const legacy = seatedRoom() as Partial<RoomState>;
+  delete legacy.control;
+  delete legacy.left;
+  delete legacy.turnStartedAt;
+  const step = command(legacy as RoomState, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000);
+  assert.equal(step.state.ply, 1);
+  assert.equal(snapshot(step.state).clock, undefined);
+});
+
+check('only a known clock is accepted from the wire', () => {
+  const ok = parseClientMsg(JSON.stringify({ t: 'hello', v: 1, token: TOKEN_A, name: 'A', tc: 'rapid' }));
+  assert.equal(ok?.t === 'hello' && ok.tc, 'rapid');
+  const bad = parseClientMsg(JSON.stringify({ t: 'hello', v: 1, token: TOKEN_A, name: 'A', tc: 'forever' }));
+  assert.equal(bad?.t === 'hello' && bad.tc, undefined);
+  const move = parseServerMsg(JSON.stringify({ t: 'move', pit: 2, by: 0, ply: 1, hash: 'x', clock: [1, -5] }));
+  assert.equal(move?.t === 'move' && move.clock, undefined, 'a negative clock is dropped');
+});
+
+// ---------------------------------------------------------------------------
+console.log('room: reactions');
+
+const reactionsIn = (effects: { to: unknown; msg: ServerMsg }[]) =>
+  effects.filter(e => e.msg.t === 'react').map(e => ({ to: e.to, ...(e.msg as { by: number; e: number }) }));
+
+check('a reaction goes to everyone at the board, from its seat', () => {
+  const step = command(seatedRoom(), TOKEN_B, { t: 'react', e: 4 }, 5000);
+  assert.deepEqual(reactionsIn(step.effects), [{ to: 'all', t: 'react', by: 1, e: 4 }]);
+});
+
+check('reacting too fast is dropped, not echoed', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'react', e: 0 }, 5000).state;
+  const again = command(room, TOKEN_A, { t: 'react', e: 1 }, 5000 + REACT_GAP_MS - 1);
+  assert.deepEqual(reactionsIn(again.effects), []);
+  assert.deepEqual(errorsIn(again.effects), [], 'and without an error to answer');
+  const later = command(room, TOKEN_A, { t: 'react', e: 1 }, 5000 + REACT_GAP_MS);
+  assert.equal(reactionsIn(later.effects).length, 1);
+});
+
+check('each seat has its own allowance', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'react', e: 0 }, 5000).state;
+  assert.equal(reactionsIn(command(room, TOKEN_B, { t: 'react', e: 5 }, 5001).effects).length, 1);
+});
+
+check('a handshake after the game is allowed; an empty waiting room is not', () => {
+  const over = command(seatedRoom(), TOKEN_A, { t: 'resign' }, 2000).state;
+  assert.equal(reactionsIn(command(over, TOKEN_B, { t: 'react', e: 5 }, 3000).effects).length, 1);
+  const waiting = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  assert.equal(reactionsIn(command(waiting, TOKEN_A, { t: 'react', e: 0 }, 3000).effects).length, 0);
+});
+
+check('only the fixed set travels', () => {
+  for (const e of [-1, 6, 1.5, '0', null]) {
+    assert.equal(parseClientMsg(JSON.stringify({ t: 'react', e })), null, `e = ${String(e)}`);
+  }
+  assert.deepEqual(parseClientMsg(JSON.stringify({ t: 'react', e: 2 })), { t: 'react', e: 2 });
+  assert.equal(parseServerMsg(JSON.stringify({ t: 'react', by: 2, e: 0 })), null, 'no such seat');
+});
+
+// ---------------------------------------------------------------------------
+console.log('room: spectators and the live list');
+
+check('a spectator is shown the room as it stands', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000).state;
+  const msg = spectate(room, 2000);
+  assert.equal(msg.t, 'watching');
+  assert.deepEqual((msg as { snapshot: { pits: number[] } }).snapshot.pits, room.pits);
+});
+
+check('spectators who came early are told when the game starts', () => {
+  const first = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  const second = join(first, TOKEN_B, 'Kofi', 1100);
+  const toWatchers = second.effects.filter(e => e.to === 'watchers');
+  assert.equal(toWatchers.length, 1);
+  assert.equal((toWatchers[0].msg as { snapshot: { status: string } }).snapshot.status, 'playing');
+});
+
+check('a quick-match game is listed; a friend game is not', () => {
+  let open = createRoom('ABCDE', 1000);
+  open = join(open, TOKEN_A, 'Ama', 1000, 'CI', 'blitz', true).state;
+  open = join(open, TOKEN_B, 'Kofi', 1200, 'GH', undefined, true).state;
+  assert.deepEqual(liveEntry(open), {
+    room: 'ABCDE',
+    players: [{ name: 'Ama', online: true, country: 'CI' }, { name: 'Kofi', online: true, country: 'GH' }],
+    control: 'blitz',
+    startedAt: 1200,
+  });
+  assert.equal(liveEntry(seatedRoom()), null, 'nobody asked for a friend game to be listed');
+});
+
+check('only the first player decides whether a room is listed', () => {
+  let room = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  room = join(room, TOKEN_B, 'Kofi', 1000, undefined, undefined, true).state;
+  assert.equal(liveEntry(room), null, 'a joiner cannot put a friend game on show');
+});
+
+check('the live list hears a game start, end, and start again', () => {
+  let waiting = createRoom('ABCDE', 1000);
+  waiting = join(waiting, TOKEN_A, 'Ama', 1000, undefined, undefined, true).state;
+  const playing = join(waiting, TOKEN_B, 'Kofi', 1000, undefined, undefined, true).state;
+  assert.equal(liveChange(waiting, playing), 'start');
+  const moved = command(playing, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000).state;
+  assert.equal(liveChange(playing, moved), null, 'a move changes nothing on the list');
+  const over = command(moved, TOKEN_A, { t: 'resign' }, 3000).state;
+  assert.equal(liveChange(moved, over), 'end');
+  let again = command(over, TOKEN_A, { t: 'rematch' }, 4000).state;
+  again = command(again, TOKEN_B, { t: 'rematch' }, 4000).state;
+  assert.equal(liveChange(over, again), 'start', 'a rematch is a new game on the list');
+});
+
+check('the list survives a bad row', () => {
+  const rows = parseLiveGames([
+    { room: 'abcde', players: [{ name: 'A' }, { name: 'B' }], control: 'rapid', startedAt: 5 },
+    { room: 'nope', players: [{ name: 'A' }, { name: 'B' }] },
+    { room: 'FGHJK', players: [{ name: 'A' }] },
+    'junk',
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].room, 'ABCDE');
+});
+
+// ---------------------------------------------------------------------------
 // Two real sessions, talking to a fake server through in-memory pipes.
 // ---------------------------------------------------------------------------
 
@@ -460,7 +687,7 @@ check('a room code is read the way a person would say it', () => {
 class FakeServer {
   state: RoomState;
   now = 1000;
-  private sockets: { token: string; seat: Seat | null; handlers: TransportHandlers }[] = [];
+  private sockets: { token: string; seat: Seat | null; watch?: boolean; handlers: TransportHandlers }[] = [];
   private queue: (() => void)[] = [];
   /** Set to corrupt the next `move` fingerprint, to prove desync is noticed. */
   corruptNextHash = false;
@@ -492,13 +719,19 @@ class FakeServer {
   }
 
   private receive(
-    socket: { token: string; seat: Seat | null; handlers: TransportHandlers },
+    socket: { token: string; seat: Seat | null; watch?: boolean; handlers: TransportHandlers },
     data: string,
   ): void {
     const msg = parseClientMsg(data);
     if (!msg) return;
+    if (msg.t === 'hello' && msg.watch) {
+      socket.watch = true;
+      this.send(socket, spectate(this.state, this.now));
+      return;
+    }
+    if (socket.watch) return;
     if (msg.t === 'hello') {
-      const result = join(this.state, msg.token, msg.name, this.now);
+      const result = join(this.state, msg.token, msg.name, this.now, msg.country, msg.tc);
       if (result.error) {
         this.send(socket, { t: 'err', code: result.error });
         return;
@@ -515,7 +748,7 @@ class FakeServer {
     this.emit(step.effects);
   }
 
-  private emit(effects: { to: 'all' | Seat; msg: ServerMsg }[]): void {
+  private emit(effects: { to: 'all' | Seat | 'watchers'; msg: ServerMsg }[]): void {
     for (const effect of effects) {
       let msg = effect.msg;
       if (msg.t === 'move' && this.corruptNextHash) {
@@ -523,7 +756,7 @@ class FakeServer {
         msg = { ...msg, hash: 'wrong' };
       }
       for (const socket of this.sockets) {
-        if (effect.to !== 'all' && socket.seat !== effect.to) continue;
+        if (effect.to === 'watchers' ? !socket.watch : effect.to !== 'all' && socket.seat !== effect.to) continue;
         this.send(socket, msg);
       }
     }
@@ -535,6 +768,14 @@ class FakeServer {
   ): void {
     const body = JSON.stringify(msg);
     this.queue.push(() => socket.handlers.message(body));
+  }
+
+  /** The alarm: let time-driven rules (the flag, a walkout) act at `now`. */
+  sweepAt(now: number): void {
+    this.now = now;
+    const step = sweep(this.state, now);
+    this.state = step.state;
+    this.emit(step.effects);
   }
 
   /** Runs everything in flight, including replies to replies. */
@@ -560,12 +801,18 @@ class TestClient {
   resets = 0;
   /** Every error the session reported, in order. It clears itself on repair. */
   errors: string[] = [];
+  /** Reactions heard, as [seat, index]. */
+  reactions: [number, number][] = [];
 
-  constructor(server: FakeServer, token: string, name: string) {
+  constructor(
+    server: FakeServer, token: string, name: string, control?: 'blitz' | 'rapid' | 'classic', watch = false,
+  ) {
     this.session = new OnlineSession({
       factory: server.connect(),
       token,
       name,
+      control,
+      watch,
       callbacks: {
         reset: snap => {
           this.resets++;
@@ -595,6 +842,7 @@ class TestClient {
           this.status = 'over';
           this.over = { winner, reason };
         },
+        react: (by, e) => { this.reactions.push([by, e]); },
         change: () => {
           this.seat = this.session.current.seat;
           const error = this.session.current.error;
@@ -786,6 +1034,84 @@ await checkAsync('a rematch restarts both boards with the other side opening', a
 
   ama.session.close();
   kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a timed game hands the clock over with every move', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama', 'blitz');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  await server.settle();
+
+  const clock = () => kofi.session.current.snapshot?.clock;
+  assert.equal(clock()?.control, 'blitz', 'the joiner plays at the creator\'s clock');
+  const opener = server.state.turn;
+  assert.equal(clock()?.running, opener);
+
+  server.now += 7_000;
+  (opener === 0 ? ama : kofi).playFirstLegal();
+  await server.settle();
+
+  assert.equal(clock()?.running, opener === 0 ? 1 : 0, 'the other clock runs now');
+  assert.equal(clock()?.left[opener], 3 * MIN - 7_000 + 2_000);
+
+  // Then the side to move lets the flag fall.
+  server.sweepAt(server.now + 3 * MIN);
+  await server.settle();
+  assert.equal(ama.over?.reason, 'timeout');
+  assert.equal(kofi.session.current.snapshot?.clock?.running, null, 'both clocks stopped');
+
+  ama.session.close();
+  kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a reaction reaches both players, sender included', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  await server.settle();
+
+  kofi.session.react(1);
+  await server.settle();
+  assert.deepEqual(ama.reactions, [[1, 1]]);
+  assert.deepEqual(kofi.reactions, [[1, 1]], 'the sender sees their own bubble too');
+
+  ama.session.close();
+  kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a spectator follows the game move by move, and cannot play', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  const fan = new TestClient(server, TOKEN_C, 'Fan', undefined, true);
+  await server.settle();
+
+  assert.equal(fan.session.current.watching, true);
+  assert.equal(fan.session.current.connection, 'online');
+  assert.equal(fan.seat, null, 'no seat for a spectator');
+  assert.deepEqual(fan.session.current.snapshot?.players.map(p => p?.name), ['Ama', 'Kofi']);
+
+  for (let i = 0; i < 6 && ama.status === 'playing'; i++) {
+    (ama.myTurn ? ama : kofi).playFirstLegal();
+    await server.settle();
+    assert.deepEqual(fan.pits, server.state.pits, `the spectator's board after move ${i + 1}`);
+    assert.equal(fan.desyncs, 0);
+  }
+
+  // A move from the spectator's socket goes nowhere.
+  const before = server.state.ply;
+  fan.session.sendMove(legalMoves(server.state.pits, server.state.turn)[0]);
+  await server.settle();
+  assert.equal(server.state.ply, before);
+
+  ama.session.resign();
+  await server.settle();
+  assert.equal(fan.over?.reason, 'resign', 'and it hears how the game ended');
+
+  for (const c of [ama, kofi, fan]) c.session.close();
   await server.settle();
 });
 

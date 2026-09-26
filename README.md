@@ -23,8 +23,21 @@ of the oware / mancala family.
   not yours to play. Holding and sliding walks the preview from pit to pit;
   lifting your finger plays nothing.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
+- **Win probability** — a bar under the board with each side's chance to win,
+  like a chess site's evaluation bar. The engine looks 9 plies ahead, and the
+  score it expects is turned into odds by a curve *fitted to outcomes*:
+  123,675 positions from about 1,450 self-play games between players of every
+  strength (`npm run winprob:calibrate`). It is calibrated — of the positions
+  it calls 75%, 74.5% were won. Shown against the AI, in pass-and-play and to
+  spectators; never to the players of an online game (that would be help), and
+  never in a puzzle (that would be the answer). A setting turns it off.
 - **Undo** (vs AI) — restores your previous position.
-- **Challenges** — 12 fixed puzzle positions, every one machine-verified as
+- **Daily puzzle** — one position a day, the same for everybody, offline
+  included: the date alone picks it. Gentle on Monday and Tuesday, trickier
+  midweek, tough at the weekend. Its goal states how many moves the forced win
+  takes, and that number is proved exact. Solve it to keep a streak, and share
+  the result (tries, no spoilers). No hint and no undo — it is compared.
+- **Challenges** — 24 fixed puzzle positions, every one machine-verified as
   winnable. You play North and move first; win one to unlock the next.
 - **Tutorial** — a guided 13-step walkthrough with demo moves, a hands-on turn,
   and a short free-play finish.
@@ -47,7 +60,13 @@ of the oware / mancala family.
   table](#countries-and-the-world-table).
 - **Settings** — sound, vibration, animation speed (including *instant*), three
   board themes, seed-count badges, a left-handed layout, and language.
-- **English and French**, auto-detected and overridable.
+- **Five languages** — English, French, Portuguese, Spanish and Arabic,
+  auto-detected from the browser and overridable. Arabic lays the page out right
+  to left; the board alone stays left to right, because a mirrored ring of pits
+  is a ring sown clockwise (an e2e test measures it). Every table is typed
+  against English, and `test/i18n.test.ts` checks each line keeps the same
+  placeholders. The Portuguese, Spanish and Arabic tables were written with
+  machine help and deserve a native speaker's read before a store release.
 - **Offline** — a service worker caches the whole game; it is installable from
   the browser.
 - **Back goes back** — every screen gets a browser history entry of its own, so
@@ -134,7 +153,9 @@ npm test                   # engine, layout, navigation, AI, state, online and
                            # self-play suites
 npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
                            # dev match server, and plays a game in two browsers)
-npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
+npm run verify:challenges  # seed conservation + solvability of every puzzle,
+                           # and the exact length of every daily one
+npm run puzzles:generate   # mine new proved positions — see scripts/gen-puzzles.ts
 
 npm run sounds:generate    # regenerate the seed sample pack — needs an
                            # ELEVENLABS_API_KEY in .env, see the Sound section
@@ -169,6 +190,8 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/roomCore.ts` | A match as pure functions — the server's rules |
 | `src/lib/transport.ts` | The two-way string pipe an online session talks through |
 | `src/lib/wsTransport.ts` | The browser WebSocket, and its reconnect backoff |
+| `src/lib/useClocks.ts` | The two game clocks, counted down from the server's last word |
+| `src/components/LiveGames.tsx` | Quick-match games being played now, to watch |
 | `src/lib/online.ts` | One seat in one room: the client conversation |
 | `src/lib/useOnlineSession.ts` | Where the match meets the board |
 | `src/lib/onlineConfig.ts` | Server URL, seat token, invite links |
@@ -180,13 +203,19 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/worldStats.ts` | Detect a country, count a game, read the world table |
 | `src/lib/saveGame.ts` | The resumable in-progress game |
 | `src/lib/sound.ts` | Web Audio effects — recorded seed samples, synthesised fallback |
+| `src/lib/winProbability.ts` | Evaluation → odds: the fitted curve behind the win bar |
+| `src/lib/useWinProbability.ts` | The bar's number, from a worker of its own |
 | `src/lib/haptics.ts` | Vibration feedback |
-| `src/lib/challenges.ts` | Challenge data + goal-text keys |
-| `src/i18n/` | English and French tables, typed so a gap is a build error |
-| `src/content/challenges.json` | The 12 fixed challenge positions |
+| `src/lib/challenges.ts` | Challenge data + goal-text keys, and the daily pool |
+| `src/lib/daily.ts` | Which puzzle a date gets, and the streak |
+| `src/i18n/` | English, French, Portuguese, Spanish and Arabic tables, typed so a gap is a build error |
+| `src/content/challenges.json` | The 24 fixed challenge positions |
+| `src/content/daily.json` | The daily pool: three tiers of proved positions |
 | `src/components/` | Every screen |
 | `server/` | The Cloudflare Worker — see [`server/README.md`](server/README.md) |
 | `scripts/verify-challenges.ts` | Proves each puzzle conserves seeds and is winnable |
+| `scripts/gen-puzzles.ts` | Mines and proves new puzzle positions |
+| `scripts/calibrate-winprob.ts` | Fits the win bar's curve to self-play outcomes |
 | `scripts/gen-sounds.ts` | Generates the seed sample pack (ElevenLabs) |
 | `public/sounds/v1/` | The sample pack itself — versioned, see below |
 
@@ -300,6 +329,51 @@ The rules live in [`src/lib/rules.ts`](src/lib/rules.ts) and
 by the browser, the Worker and the tests alike, so the two sides cannot drift
 apart on what a move means.
 
+### The clock
+
+Four time controls: **untimed**, **Blitz 3+2**, **Rapid 5+5** and **Classic
+10+10** (minutes for the game, plus seconds added back after each move). The
+choice is remembered, and it travels:
+
+- **Invite a friend** puts it in the link (`?join=CODE&tc=blitz`). Whoever
+  reaches the room first sets its clock, so with the control in the link it is
+  the same clock either way round. A player who joins by typing the code plays
+  at the room's clock, whatever they picked.
+- **Quick match** queues per control: a player who asked for three minutes is
+  never paired with one who asked for ten.
+
+The server's clock is the only one that counts. The client draws a countdown
+from the last numbers it was sent; a flag falls on the server — on a move that
+arrives too late, or on an alarm set for the exact moment the time runs out.
+Running out of time loses the game. The clock keeps running while a player is
+disconnected, like one across a real table.
+
+### Reactions
+
+Six emoji, sent from the 😊 button: 👋 👍 😮 😅 🔥 🤝. A fixed set rather than a
+chat box — it reads the same in every language and there is nothing to
+moderate. The index travels, not the emoji; the server relays it to everyone at
+the board and drops anything sent within 1.5 s of the same seat's last one.
+Allowed during the game and after it, for the 🤝. *Emoji reactions* in Settings
+turns them off: nothing shown, nothing offered.
+
+### Watching
+
+Anyone can watch a game without taking a seat: a spectator's `hello` says
+`watch`, and the room answers with the position and then the same broadcast the
+players hear — moves, clocks, reactions, the result, a rematch. Spectators
+cannot move, resign or react, and nothing about them is stored. Players see how
+many are watching (👁).
+
+- **Live games** (Online → *Watch live games*) lists quick-match games in
+  progress, from a small `Live` Durable Object the rooms keep informed.
+- **Friend games stay private.** An invite is never listed; it can be watched
+  by whoever holds its code — a full room offers *Watch instead*, and
+  `?watch=CODE` opens one directly.
+
+Deploying this adds a Durable Object class, so `server/wrangler.toml` gains
+migration `v5`.
+
 ### The things that go wrong
 
 - **A dropped connection** reconnects with backoff and walks back into its own
@@ -312,7 +386,7 @@ apart on what a move means.
 
 ### What it is not
 
-No ratings, no stored history, no clock, and no ladder. A room code is still the
+No stored history. A room code is still the
 whole authorisation model for a room: anyone holding it can take a free seat,
 which is right for a game shared by link and is not more than that. The
 trade-offs are written down in [`server/README.md`](server/README.md).
