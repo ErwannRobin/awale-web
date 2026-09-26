@@ -57,6 +57,12 @@ new_sqlite_classes = ["Leaderboard"]
 tag = "v4"
 new_sqlite_classes = ["Stats"]
 
+# The public list of live games, for spectators. v5, after everything above,
+# and never to be renumbered — see the note on v2.
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["Live"]
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
@@ -76,6 +82,10 @@ class_name = "Leaderboard"
 [[durable_objects.bindings]]
 name = "STATS"
 class_name = "Stats"
+
+[[durable_objects.bindings]]
+name = "LIVE"
+class_name = "Live"
 
 [vars]
 # Origins allowed to call /queue from a *different* site. The game itself is

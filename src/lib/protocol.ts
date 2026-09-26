@@ -48,6 +48,36 @@ export const REACTIONS = ['👋', '👍', '😮', '😅', '🔥', '🤝'] as con
 export const isReaction = (v: unknown): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < REACTIONS.length;
 
+/** One game in the public list of live games. */
+export interface LiveGame {
+  room: string;
+  players: [PlayerView, PlayerView];
+  control: TimeControlId;
+  /** When this game (or this rematch) began. */
+  startedAt: number;
+}
+
+/** A list from anywhere, validated, malformed rows dropped. */
+export function parseLiveGames(v: unknown): LiveGame[] {
+  if (!Array.isArray(v)) return [];
+  const out: LiveGame[] = [];
+  for (const row of v) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const room = typeof o.room === 'string' ? normaliseRoomCode(o.room) : null;
+    if (!room || !Array.isArray(o.players) || o.players.length !== 2) continue;
+    const a = parsePlayer(o.players[0], '?'), b = parsePlayer(o.players[1], '?');
+    if (!a || !b) continue;
+    out.push({
+      room,
+      players: [a, b],
+      control: isTimeControl(o.control) ? o.control : 'none',
+      startedAt: typeof o.startedAt === 'number' && Number.isFinite(o.startedAt) ? o.startedAt : 0,
+    });
+  }
+  return out;
+}
+
 /** A running game's clocks, as the server had them when it sent this. */
 export interface ClockView {
   control: TimeControlId;
@@ -116,6 +146,17 @@ export type ClientMsg =
      * names one sets it for the room; everyone after plays at whatever is set.
      */
     tc?: TimeControlId;
+    /**
+     * Come to watch, not to play: no seat, no moves, everything the board
+     * hears. A full room is never full to a spectator.
+     */
+    watch?: boolean;
+    /**
+     * Show this game in the public list of live games. Quick match sends it —
+     * those players asked a stranger to play them. A friend game does not: it
+     * can be watched by whoever has the code, and by nobody else.
+     */
+    listed?: boolean;
   }
   | { t: 'move'; pit: number; ply: number }
   | { t: 'resign' }
@@ -138,6 +179,10 @@ export type ErrorCode =
 
 export type ServerMsg =
   | { t: 'welcome'; seat: Seat; snapshot: RoomSnapshot }
+  /** The spectator's welcome: the room as it stands, and no seat. */
+  | { t: 'watching'; snapshot: RoomSnapshot }
+  /** How many people are watching, sent whenever it changes. */
+  | { t: 'audience'; n: number }
   | { t: 'sync'; snapshot: RoomSnapshot }
   /**
    * Apply this move locally; `hash` is what your board should look like after.
@@ -240,6 +285,8 @@ export function parseClientMsg(raw: string): ClientMsg | null {
         t: 'hello', v: o.v, token: o.token, name: cleanName(o.name, ''), ...auth,
         ...(country === UNKNOWN_COUNTRY ? {} : { country }),
         ...(isTimeControl(o.tc) ? { tc: o.tc } : {}),
+        ...(o.watch === true ? { watch: true } : {}),
+        ...(o.listed === true ? { listed: true } : {}),
       };
     }
     case 'move':
@@ -305,6 +352,12 @@ export function parseServerMsg(raw: string): ServerMsg | null {
       const snapshot = parseSnapshot(o.snapshot);
       return snapshot ? { t: 'sync', snapshot } : null;
     }
+    case 'watching': {
+      const snapshot = parseSnapshot(o.snapshot);
+      return snapshot ? { t: 'watching', snapshot } : null;
+    }
+    case 'audience':
+      return typeof o.n === 'number' && Number.isInteger(o.n) && o.n >= 0 ? { t: 'audience', n: o.n } : null;
     case 'move':
       if (typeof o.pit !== 'number' || !isSeat(o.by)) return null;
       if (typeof o.ply !== 'number' || typeof o.hash !== 'string') return null;

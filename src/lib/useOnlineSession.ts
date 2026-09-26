@@ -47,6 +47,10 @@ export interface OnlineOptions {
   country?: string;
   /** The clock this player asked for — see `SessionOptions.control`. */
   control?: TimeControlId;
+  /** Watch rather than play. */
+  watch?: boolean;
+  /** Ask to be in the public live list. */
+  listed?: boolean;
   /** Injectable for tests; defaults to a real WebSocket. */
   factory?: TransportFactory;
 }
@@ -59,10 +63,12 @@ const startingView: OnlineView = {
   rematchOffered: false,
   rematchSent: false,
   clockAt: 0,
+  watching: false,
+  audience: 0,
 };
 
 export function useOnlineSession(
-  { room, name, token, auth, country, control, factory }: OnlineOptions,
+  { room, name, token, auth, country, control, watch, listed, factory }: OnlineOptions,
 ): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
   const [reaction, setReaction] = useState<OnlineHandle['reaction']>(null);
@@ -85,6 +91,8 @@ export function useOnlineSession(
       name: nameRef.current,
       country: countryRef.current,
       control,
+      watch,
+      listed,
       callbacks: {
         change: next => setView(next),
 
@@ -129,7 +137,7 @@ export function useOnlineSession(
       bridgeRef.current = null;
       setView(startingView);
     };
-  }, [room, token, auth, control, factory]);
+  }, [room, token, auth, control, watch, listed, factory]);
 
   const remote = useMemo(() => ({
     sendMove: (pit: number) => sessionRef.current?.sendMove(pit),

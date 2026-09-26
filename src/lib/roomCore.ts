@@ -17,7 +17,7 @@ import {
 } from './rules.ts';
 import {
   stateHash, TIME_CONTROLS,
-  type ClientMsg, type ClockView, type ErrorCode, type OverReason,
+  type ClientMsg, type ClockView, type ErrorCode, type LiveGame, type OverReason,
   type PlayerView, type RoomSnapshot, type RoomStatus, type ServerMsg, type TimeControlId,
 } from './protocol.ts';
 import type { CountryKey } from './country.ts';
@@ -81,11 +81,16 @@ export interface RoomState {
   turnStartedAt?: number | null;
   /** When each seat last reacted, for the rate limit; null for never. */
   reactedAt?: [number | null, number | null];
+  /** In the public list of live games — see `hello.listed`. */
+  listed?: boolean;
 }
 
-/** A message and who should get it. */
+/**
+ * A message and who should get it: everyone connected (players and
+ * spectators), one seat, or the spectators only.
+ */
 export interface Effect {
-  to: 'all' | Seat;
+  to: 'all' | Seat | 'watchers';
   msg: ServerMsg;
 }
 
@@ -229,7 +234,7 @@ function touch(state: RoomState, now: number): RoomState {
  */
 export function join(
   state: RoomState, token: string, name: string, now: number, country?: CountryKey,
-  control?: TimeControlId,
+  control?: TimeControlId, listed?: boolean,
 ): JoinResult {
   const existing = seatOf(state, token);
   const effects: Effect[] = [];
@@ -269,6 +274,11 @@ export function join(
   if (next.status === 'waiting' && (next.control ?? 'none') === 'none' && control) {
     next = { ...next, control };
   }
+  // Listing works the same way: the room's first player decides. Quick match
+  // asks for it; a friend's invite never does.
+  if (next.status === 'waiting' && next.players.filter(p => p !== null).length === 1 && listed) {
+    next = { ...next, listed: true };
+  }
 
   // The second player through the door starts the game, and the clock.
   if (next.status === 'waiting' && players[0] && players[1]) {
@@ -277,7 +287,42 @@ export function join(
 
   effects.push({ to: free, msg: { t: 'welcome', seat: free, snapshot: snapshot(next, now) } });
   effects.push({ to: other(free), msg: { t: 'sync', snapshot: snapshot(next, now) } });
+  // Anyone who came to watch before the second player arrived sees the room
+  // fill, and the game begin.
+  effects.push({ to: 'watchers', msg: { t: 'sync', snapshot: snapshot(next, now) } });
   return { state: next, effects, seat: free, error: null };
+}
+
+/**
+ * A spectator's welcome. Spectators hold no seat and change nothing: this is
+ * the whole of what the room does for one — everything after it is the same
+ * broadcast the players hear.
+ */
+export function spectate(state: RoomState, now: number): ServerMsg {
+  return { t: 'watching', snapshot: snapshot(state, now) };
+}
+
+/** This room as a row of the public live list, or null when it is not one. */
+export function liveEntry(state: RoomState): LiveGame | null {
+  const [a, b] = state.players;
+  if (!state.listed || state.status !== 'playing' || !a || !b) return null;
+  return {
+    room: state.code,
+    players: [view(a)!, view(b)!],
+    control: state.control ?? 'none',
+    startedAt: state.updatedAt,
+  };
+}
+
+/**
+ * What the live list needs to hear about a step from `before` to `after`:
+ * a game that began (or a rematch), a game that ended, or nothing.
+ */
+export function liveChange(before: RoomState, after: RoomState): 'start' | 'end' | null {
+  if (!after.listed) return null;
+  if (after.status === 'playing' && before.status !== 'playing') return 'start';
+  if (before.status === 'playing' && after.status !== 'playing') return 'end';
+  return null;
 }
 
 /** A socket dropped. The seat is held, not freed — see `sweep`. */

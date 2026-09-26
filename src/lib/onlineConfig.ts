@@ -49,6 +49,12 @@ export function roomSocketUrl(code: string): string {
 }
 
 /** Quick match, in the queue for one time control. */
+/** The public list of live games. */
+export function liveUrl(): string {
+  const base = onlineBaseUrl();
+  return `${base.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')}/live`;
+}
+
 export function queueUrl(control: TimeControlId = 'none'): string {
   const base = onlineBaseUrl();
   const tc = control === 'none' ? '' : `?tc=${control}`;
@@ -80,6 +86,25 @@ export function readJoinCode(): string | null {
   }
 }
 
+/** The link that lets someone watch a room rather than play in it. */
+export function watchLink(code: string): string {
+  if (typeof location === 'undefined') return code;
+  const url = new URL(location.href);
+  url.hash = '';
+  url.search = `?watch=${encodeURIComponent(code)}`;
+  return url.toString();
+}
+
+/** A `?watch=CODE` on the address bar, if there is one. */
+export function readWatchCode(): string | null {
+  if (typeof location === 'undefined') return null;
+  try {
+    return new URL(location.href).searchParams.get('watch');
+  } catch {
+    return null;
+  }
+}
+
 /** The time control an invite link asked for, if it named one. */
 export function readJoinControl(): TimeControlId | undefined {
   if (typeof location === 'undefined') return undefined;
@@ -96,9 +121,10 @@ export function clearJoinCode(): void {
   if (typeof history === 'undefined' || typeof location === 'undefined') return;
   try {
     const url = new URL(location.href);
-    if (!url.searchParams.has('join')) return;
+    if (!url.searchParams.has('join') && !url.searchParams.has('watch')) return;
     url.searchParams.delete('join');
     url.searchParams.delete('tc');
+    url.searchParams.delete('watch');
     // Keep whatever state the entry holds: this rewrites the address only, and
     // the screen stack (lib/navigation.ts) lives in that state.
     history.replaceState(history.state, '', url.toString());

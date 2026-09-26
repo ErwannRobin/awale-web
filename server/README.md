@@ -7,7 +7,7 @@ as two people are in it.
 
 ```
 GET  /room/:code       WebSocket upgrade into that room
-POST /queue            quick match — a code to sit in, or one to walk into
+POST /queue            quick match — a code to sit in, or one to walk into (?tc=blitz…)
 GET  /geo              which country this request came from
 POST /stats/game       count one finished AI game: level, outcome, country
                        (with a session token: also the player's own record)
@@ -16,6 +16,7 @@ GET  /stats/nations    countries ranked by nation points, with the leaderboard's
 GET  /stats/rivalry    ?a=CI&b=FR — one pair's head to head
 GET  /leaderboard      signed-in players by online rating, with their country
 GET  /players/:id      one player's public profile
+GET  /live             quick-match games being played now, for spectators
 POST /auth/profile     name, country, avatar (and a one-time record seed)
 GET  /health           is anybody home
 everything else        the built web app, from the ASSETS binding

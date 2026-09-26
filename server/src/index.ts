@@ -14,6 +14,7 @@
 //   GET  /stats/rivalry    one pair of countries' record against each other
 //   GET  /leaderboard      signed-in players, by online rating
 //   GET  /players/:id      one player's public profile
+//   GET  /live         quick-match games being played right now, to watch
 //   GET  /health       is anybody home
 //   everything else    the game itself, from the ASSETS binding
 //
@@ -46,6 +47,7 @@ export { Lobby } from './lobby.ts';
 export { Identity } from './identity.ts';
 export { Leaderboard } from './leaderboard.ts';
 export { Stats } from './stats.ts';
+export { Live } from './live.ts';
 
 export interface Env extends AuthEnv {
   ROOM: DurableObjectNamespace;
@@ -53,6 +55,8 @@ export interface Env extends AuthEnv {
   LEADERBOARD: DurableObjectNamespace;
   /** The world table. Absent on an older deploy, which simply has no stats. */
   STATS?: DurableObjectNamespace;
+  /** Games being played right now. Absent on an older deploy: an empty list. */
+  LIVE?: DurableObjectNamespace;
   /** The built web app. Present in a deploy; absent under `wrangler dev` if
    *  the app has not been built yet, which is a warning, not a crash. */
   ASSETS?: Fetcher;
@@ -294,6 +298,22 @@ export default {
           // A table that is a minute stale is still a true picture, and this
           // is the one route a crowd could all ask for at once.
           'cache-control': 'public, max-age=60',
+        },
+      });
+    }
+
+    if (url.pathname === '/live') {
+      if (!env.LIVE) return Response.json([], { headers: { ...cors, 'cache-control': 'no-store' } });
+      const live = env.LIVE.get(env.LIVE.idFromName('global'));
+      const reply = await live.fetch('https://live/list');
+      return new Response(reply.body, {
+        status: reply.status,
+        headers: {
+          ...cors,
+          'content-type': 'application/json',
+          // Games start and end by the minute; a few seconds of staleness is
+          // fine and keeps a crowd refreshing the list off the object.
+          'cache-control': 'public, max-age=5',
         },
       });
     }

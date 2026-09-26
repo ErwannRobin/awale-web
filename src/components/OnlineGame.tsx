@@ -20,6 +20,12 @@ interface Props {
   room: string;
   /** The clock this player asked for; the room keeps the first one it hears. */
   control?: TimeControlId;
+  /** Here to watch, not to play. */
+  watch?: boolean;
+  /** Ask for a place in the public live list (quick match). */
+  listed?: boolean;
+  /** A full room offers to be watched instead; this takes the player there. */
+  onWatch?: (room: string) => void;
   onExit: () => void;
   onLearn: () => void;
   onSettings: () => void;
@@ -39,7 +45,9 @@ const ERROR_KEYS: Partial<Record<string, StringKey>> = {
   'bad-version': 'online.errVersion',
 };
 
-export default function OnlineGame({ room, control, onExit, onLearn, onSettings, onToast }: Props) {
+export default function OnlineGame({
+  room, control, watch = false, listed = false, onWatch, onExit, onLearn, onSettings, onToast,
+}: Props) {
   const t = useT();
   const profile = useMemo(loadProfile, []);
   const token = useMemo(playerToken, []);
@@ -56,6 +64,8 @@ export default function OnlineGame({ room, control, onExit, onLearn, onSettings,
     auth: account?.token,
     country: profile.country === UNKNOWN_COUNTRY ? undefined : profile.country,
     control,
+    watch,
+    listed,
   });
   const { snapshot, seat, connection, error } = online.view;
   // What the room actually plays at, once it has said; until then, what we asked.
@@ -80,14 +90,20 @@ export default function OnlineGame({ room, control, onExit, onLearn, onSettings,
   // in. After that the match drives it: a rematch or a reconnect arrives as a
   // reset, not as a remount, so the screen never flickers mid-game.
   const setupRef = useRef<GameSetup | null>(null);
-  if (!setupRef.current && snapshot && seat !== null && snapshot.status !== 'waiting') {
+  // A spectator sits on South's side of the board.
+  const sitAs: 0 | 1 | null = watch ? (online.view.watching ? 0 : null) : seat;
+  if (!setupRef.current && snapshot && sitAs !== null && snapshot.status !== 'waiting') {
     setupRef.current = {
       pits: [...snapshot.pits],
       scores: [snapshot.scores[0], snapshot.scores[1]],
-      humanPlayer: seat,
+      humanPlayer: sitAs,
       firstPlayer: snapshot.turn,
     };
   }
+  const labelOf = (s: 0 | 1) => {
+    const p = snapshot?.players[s];
+    return `${p?.country ? `${countryFlag(p.country)} ` : ''}${p?.name || t('online.opponent')}`;
+  };
 
   const copyLink = async () => {
     playTap(); hapticTap();
@@ -103,6 +119,25 @@ export default function OnlineGame({ room, control, onExit, onLearn, onSettings,
       onToast(t('online.copyFailed'));
     }
   };
+
+  if (setupRef.current && watch) {
+    return (
+      <Game
+        mode="online"
+        level={0}
+        setup={setupRef.current}
+        online={online}
+        spectating
+        title={t('watch.title')}
+        youName={labelOf(0)}
+        oppName={labelOf(1)}
+        onExit={onExit}
+        onLearn={onLearn}
+        onSettings={onSettings}
+        onToast={onToast}
+      />
+    );
+  }
 
   if (setupRef.current) {
     return (
@@ -148,6 +183,13 @@ export default function OnlineGame({ room, control, onExit, onLearn, onSettings,
         {fatal ? (
           <>
             <p className="wait-line">{t(fatal)}</p>
+            {error === 'room-full' && onWatch && (
+              <button className="pill pill-green" onClick={() => { playTap(); onWatch(room); }}>
+                <span className="pill-body">
+                  <span className="pill-title">👁 {t('watch.instead')}</span>
+                </span>
+              </button>
+            )}
             <button className="pill" onClick={() => { playTap(); onExit(); }}>
               <span className="pill-body">
                 <span className="pill-title">{t('game.backToMenu')}</span>
@@ -160,15 +202,20 @@ export default function OnlineGame({ room, control, onExit, onLearn, onSettings,
             <p className="room-code">{room}</p>
             <p className="wait-label">{t('online.roomClock', { tc: timeControlLabel(t, roomControl) })}</p>
             <p className="wait-line">
-              {connection === 'online' ? t('online.waiting') : t('online.connecting')}
+              {connection !== 'online' ? t('online.connecting')
+                : watch ? t('watch.waitingPlayers') : t('online.waiting')}
             </p>
             <div className="wait-dots" aria-hidden>
               <span /><span /><span />
             </div>
-            <p className="wait-hint">{t('online.shareHint')}</p>
-            <button className="ctrl" onClick={() => void copyLink()}>
-              {copied ? `✓ ${t('online.copied')}` : `🔗 ${t('online.copyLink')}`}
-            </button>
+            {!watch && (
+              <>
+                <p className="wait-hint">{t('online.shareHint')}</p>
+                <button className="ctrl" onClick={() => void copyLink()}>
+                  {copied ? `✓ ${t('online.copied')}` : `🔗 ${t('online.copyLink')}`}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>

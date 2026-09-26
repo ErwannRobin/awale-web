@@ -31,6 +31,10 @@ export interface OnlineView {
    * device keeps on its own.
    */
   clockAt: number;
+  /** Here to watch: no seat, and the room has said so. */
+  watching: boolean;
+  /** How many people are watching this room. */
+  audience: number;
 }
 
 export interface SessionCallbacks {
@@ -65,6 +69,10 @@ export interface SessionOptions {
   country?: string;
   /** The clock this player came for; the room keeps the first one it hears. */
   control?: TimeControlId;
+  /** Come as a spectator rather than a player. */
+  watch?: boolean;
+  /** Ask for the game to be in the public live list (quick match does). */
+  listed?: boolean;
   callbacks: SessionCallbacks;
 }
 
@@ -79,6 +87,8 @@ export class OnlineSession {
     rematchOffered: false,
     rematchSent: false,
     clockAt: 0,
+    watching: false,
+    audience: 0,
   };
 
   private readonly opts: SessionOptions;
@@ -157,10 +167,14 @@ export class OnlineSession {
         ...(this.opts.auth ? { auth: this.opts.auth } : {}),
         ...(countryOf(this.opts.country) ? { country: countryOf(this.opts.country)! } : {}),
         ...(this.opts.control && this.opts.control !== 'none' ? { tc: this.opts.control } : {}),
+        ...(this.opts.watch ? { watch: true } : {}),
+        ...(this.opts.listed ? { listed: true } : {}),
       });
       // Stay "connecting" until the welcome lands: an open socket that has not
-      // been seated yet is not a game.
-      this.patch({ connection: this.view.seat === null ? 'connecting' : 'online' });
+      // been seated (or shown the room, for a spectator) yet is not a game.
+      this.patch({
+        connection: this.view.seat === null && !this.view.watching ? 'connecting' : 'online',
+      });
       return;
     }
     this.patch({ connection: status === 'connecting' ? 'connecting' : 'offline' });
@@ -187,6 +201,21 @@ export class OnlineSession {
           clockAt: Date.now(),
         });
         this.opts.callbacks.reset(msg.snapshot);
+        return;
+
+      case 'watching':
+        this.patch({
+          watching: true,
+          snapshot: msg.snapshot,
+          connection: 'online',
+          error: null,
+          clockAt: Date.now(),
+        });
+        this.opts.callbacks.reset(msg.snapshot);
+        return;
+
+      case 'audience':
+        this.patch({ audience: msg.n });
         return;
 
       case 'sync':

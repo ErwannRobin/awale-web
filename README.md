@@ -182,6 +182,8 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/roomCore.ts` | A match as pure functions — the server's rules |
 | `src/lib/transport.ts` | The two-way string pipe an online session talks through |
 | `src/lib/wsTransport.ts` | The browser WebSocket, and its reconnect backoff |
+| `src/lib/useClocks.ts` | The two game clocks, counted down from the server's last word |
+| `src/components/LiveGames.tsx` | Quick-match games being played now, to watch |
 | `src/lib/online.ts` | One seat in one room: the client conversation |
 | `src/lib/useOnlineSession.ts` | Where the match meets the board |
 | `src/lib/onlineConfig.ts` | Server URL, seat token, invite links |
@@ -343,6 +345,23 @@ moderate. The index travels, not the emoji; the server relays it to everyone at
 the board and drops anything sent within 1.5 s of the same seat's last one.
 Allowed during the game and after it, for the 🤝. *Emoji reactions* in Settings
 turns them off: nothing shown, nothing offered.
+
+### Watching
+
+Anyone can watch a game without taking a seat: a spectator's `hello` says
+`watch`, and the room answers with the position and then the same broadcast the
+players hear — moves, clocks, reactions, the result, a rematch. Spectators
+cannot move, resign or react, and nothing about them is stored. Players see how
+many are watching (👁).
+
+- **Live games** (Online → *Watch live games*) lists quick-match games in
+  progress, from a small `Live` Durable Object the rooms keep informed.
+- **Friend games stay private.** An invite is never listed; it can be watched
+  by whoever holds its code — a full room offers *Watch instead*, and
+  `?watch=CODE` opens one directly.
+
+Deploying this adds a Durable Object class, so `server/wrangler.toml` gains
+migration `v5`.
 
 ### The things that go wrong
 

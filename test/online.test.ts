@@ -12,11 +12,12 @@ import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
   IDLE_SWEEP_MS, MIN_ALARM_MS, REACT_GAP_MS,
-  command, createRoom, disconnect, isCoherent, isJoinable, join, nextAlarmAt, snapshot, sweep,
+  command, createRoom, disconnect, isCoherent, isJoinable, join, liveChange, liveEntry, nextAlarmAt,
+  snapshot, spectate, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
-  PROTOCOL_VERSION, normaliseRoomCode, parseClientMsg, parseServerMsg, stateHash,
+  PROTOCOL_VERSION, normaliseRoomCode, parseClientMsg, parseLiveGames, parseServerMsg, stateHash,
   type ServerMsg,
 } from '../src/lib/protocol.ts';
 import { applyMove, legalMoves, type Seat, type Winner } from '../src/lib/rules.ts';
@@ -604,6 +605,68 @@ check('only the fixed set travels', () => {
 });
 
 // ---------------------------------------------------------------------------
+console.log('room: spectators and the live list');
+
+check('a spectator is shown the room as it stands', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000).state;
+  const msg = spectate(room, 2000);
+  assert.equal(msg.t, 'watching');
+  assert.deepEqual((msg as { snapshot: { pits: number[] } }).snapshot.pits, room.pits);
+});
+
+check('spectators who came early are told when the game starts', () => {
+  const first = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  const second = join(first, TOKEN_B, 'Kofi', 1100);
+  const toWatchers = second.effects.filter(e => e.to === 'watchers');
+  assert.equal(toWatchers.length, 1);
+  assert.equal((toWatchers[0].msg as { snapshot: { status: string } }).snapshot.status, 'playing');
+});
+
+check('a quick-match game is listed; a friend game is not', () => {
+  let open = createRoom('ABCDE', 1000);
+  open = join(open, TOKEN_A, 'Ama', 1000, 'CI', 'blitz', true).state;
+  open = join(open, TOKEN_B, 'Kofi', 1200, 'GH', undefined, true).state;
+  assert.deepEqual(liveEntry(open), {
+    room: 'ABCDE',
+    players: [{ name: 'Ama', online: true, country: 'CI' }, { name: 'Kofi', online: true, country: 'GH' }],
+    control: 'blitz',
+    startedAt: 1200,
+  });
+  assert.equal(liveEntry(seatedRoom()), null, 'nobody asked for a friend game to be listed');
+});
+
+check('only the first player decides whether a room is listed', () => {
+  let room = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  room = join(room, TOKEN_B, 'Kofi', 1000, undefined, undefined, true).state;
+  assert.equal(liveEntry(room), null, 'a joiner cannot put a friend game on show');
+});
+
+check('the live list hears a game start, end, and start again', () => {
+  let waiting = createRoom('ABCDE', 1000);
+  waiting = join(waiting, TOKEN_A, 'Ama', 1000, undefined, undefined, true).state;
+  const playing = join(waiting, TOKEN_B, 'Kofi', 1000, undefined, undefined, true).state;
+  assert.equal(liveChange(waiting, playing), 'start');
+  const moved = command(playing, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000).state;
+  assert.equal(liveChange(playing, moved), null, 'a move changes nothing on the list');
+  const over = command(moved, TOKEN_A, { t: 'resign' }, 3000).state;
+  assert.equal(liveChange(moved, over), 'end');
+  let again = command(over, TOKEN_A, { t: 'rematch' }, 4000).state;
+  again = command(again, TOKEN_B, { t: 'rematch' }, 4000).state;
+  assert.equal(liveChange(over, again), 'start', 'a rematch is a new game on the list');
+});
+
+check('the list survives a bad row', () => {
+  const rows = parseLiveGames([
+    { room: 'abcde', players: [{ name: 'A' }, { name: 'B' }], control: 'rapid', startedAt: 5 },
+    { room: 'nope', players: [{ name: 'A' }, { name: 'B' }] },
+    { room: 'FGHJK', players: [{ name: 'A' }] },
+    'junk',
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].room, 'ABCDE');
+});
+
+// ---------------------------------------------------------------------------
 // Two real sessions, talking to a fake server through in-memory pipes.
 // ---------------------------------------------------------------------------
 
@@ -611,7 +674,7 @@ check('only the fixed set travels', () => {
 class FakeServer {
   state: RoomState;
   now = 1000;
-  private sockets: { token: string; seat: Seat | null; handlers: TransportHandlers }[] = [];
+  private sockets: { token: string; seat: Seat | null; watch?: boolean; handlers: TransportHandlers }[] = [];
   private queue: (() => void)[] = [];
   /** Set to corrupt the next `move` fingerprint, to prove desync is noticed. */
   corruptNextHash = false;
@@ -643,11 +706,17 @@ class FakeServer {
   }
 
   private receive(
-    socket: { token: string; seat: Seat | null; handlers: TransportHandlers },
+    socket: { token: string; seat: Seat | null; watch?: boolean; handlers: TransportHandlers },
     data: string,
   ): void {
     const msg = parseClientMsg(data);
     if (!msg) return;
+    if (msg.t === 'hello' && msg.watch) {
+      socket.watch = true;
+      this.send(socket, spectate(this.state, this.now));
+      return;
+    }
+    if (socket.watch) return;
     if (msg.t === 'hello') {
       const result = join(this.state, msg.token, msg.name, this.now, msg.country, msg.tc);
       if (result.error) {
@@ -666,7 +735,7 @@ class FakeServer {
     this.emit(step.effects);
   }
 
-  private emit(effects: { to: 'all' | Seat; msg: ServerMsg }[]): void {
+  private emit(effects: { to: 'all' | Seat | 'watchers'; msg: ServerMsg }[]): void {
     for (const effect of effects) {
       let msg = effect.msg;
       if (msg.t === 'move' && this.corruptNextHash) {
@@ -674,7 +743,7 @@ class FakeServer {
         msg = { ...msg, hash: 'wrong' };
       }
       for (const socket of this.sockets) {
-        if (effect.to !== 'all' && socket.seat !== effect.to) continue;
+        if (effect.to === 'watchers' ? !socket.watch : effect.to !== 'all' && socket.seat !== effect.to) continue;
         this.send(socket, msg);
       }
     }
@@ -722,12 +791,15 @@ class TestClient {
   /** Reactions heard, as [seat, index]. */
   reactions: [number, number][] = [];
 
-  constructor(server: FakeServer, token: string, name: string, control?: 'blitz' | 'rapid' | 'classic') {
+  constructor(
+    server: FakeServer, token: string, name: string, control?: 'blitz' | 'rapid' | 'classic', watch = false,
+  ) {
     this.session = new OnlineSession({
       factory: server.connect(),
       token,
       name,
       control,
+      watch,
       callbacks: {
         reset: snap => {
           this.resets++;
@@ -994,6 +1066,39 @@ await checkAsync('a reaction reaches both players, sender included', async () =>
 
   ama.session.close();
   kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a spectator follows the game move by move, and cannot play', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  const fan = new TestClient(server, TOKEN_C, 'Fan', undefined, true);
+  await server.settle();
+
+  assert.equal(fan.session.current.watching, true);
+  assert.equal(fan.session.current.connection, 'online');
+  assert.equal(fan.seat, null, 'no seat for a spectator');
+  assert.deepEqual(fan.session.current.snapshot?.players.map(p => p?.name), ['Ama', 'Kofi']);
+
+  for (let i = 0; i < 6 && ama.status === 'playing'; i++) {
+    (ama.myTurn ? ama : kofi).playFirstLegal();
+    await server.settle();
+    assert.deepEqual(fan.pits, server.state.pits, `the spectator's board after move ${i + 1}`);
+    assert.equal(fan.desyncs, 0);
+  }
+
+  // A move from the spectator's socket goes nowhere.
+  const before = server.state.ply;
+  fan.session.sendMove(legalMoves(server.state.pits, server.state.turn)[0]);
+  await server.settle();
+  assert.equal(server.state.ply, before);
+
+  ama.session.resign();
+  await server.settle();
+  assert.equal(fan.over?.reason, 'resign', 'and it hears how the game ended');
+
+  for (const c of [ama, kofi, fan]) c.session.close();
   await server.settle();
 });
 

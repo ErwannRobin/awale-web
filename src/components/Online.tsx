@@ -18,8 +18,13 @@ interface Props {
   myCountry: string;
   /** The nations ranking, behind the nudge. */
   onNations: () => void;
-  /** `control` is absent when joining by code: the room already has its clock. */
-  onStart: (room: string, control?: TimeControlId) => void;
+  /**
+   * `control` is absent when joining by code: the room already has its clock.
+   * `listed` is quick match asking for a place in the public live list.
+   */
+  onStart: (room: string, control?: TimeControlId, listed?: boolean) => void;
+  /** The public list of games to watch. */
+  onLive: () => void;
   onBack: () => void;
   onToast: (msg: string) => void;
 }
@@ -27,7 +32,7 @@ interface Props {
 /** How long to wait for the matchmaker before giving up and saying so. */
 const QUEUE_TIMEOUT_MS = 8000;
 
-export default function Online({ myCountry, onNations, onStart, onBack, onToast }: Props) {
+export default function Online({ myCountry, onNations, onStart, onLive, onBack, onToast }: Props) {
   const t = useT();
   const { language, timeControl } = useSettings();
 
@@ -79,7 +84,7 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
       const body = await response.json() as { code?: unknown };
       const clean = typeof body.code === 'string' ? normaliseRoomCode(body.code) : null;
       if (!clean) throw new Error('bad reply');
-      onStart(clean, timeControl);
+      onStart(clean, timeControl, true);
     } catch {
       // The matchmaker is the only part of online play that needs plain HTTP,
       // so this is also the first place a misconfigured URL shows up.
@@ -156,6 +161,13 @@ export default function Online({ myCountry, onNations, onStart, onBack, onToast 
             <span className="pill-body">
               <span className="pill-title">{t('online.join')}</span>
               <span className="pill-sub">{t('online.joinSub')}</span>
+            </span>
+          </button>
+          <button className="pill" onClick={() => { tap(); onLive(); }}>
+            <span className="pill-icon">👁</span>
+            <span className="pill-body">
+              <span className="pill-title">{t('live.menu')}</span>
+              <span className="pill-sub">{t('live.menuSub')}</span>
             </span>
           </button>
         </div>

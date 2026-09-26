@@ -31,6 +31,13 @@ interface Props {
   goal?: string;          // challenge goal text (shown instead of rotating tips)
   title?: string;         // e.g. "Challenge 3"
   oppName?: string;       // override opponent label
+  /** Override the near player's label — a spectator sees two names, not "You". */
+  youName?: string;
+  /**
+   * Watching someone else's game: the near seat is South, nothing can be
+   * played, sent or resigned, and every line names the players.
+   */
+  spectating?: boolean;
   /** Extra lines for the game-over card, under the rating change. */
   overExtra?: React.ReactNode;
   resume?: SavedGame | null;
@@ -108,7 +115,8 @@ function PlayerCard({
 }
 
 export default function Game({
-  mode, level, setup, goal, title, oppName: oppOverride, overExtra, resume, persist, rated,
+  mode, level, setup, goal, title, oppName: oppOverride, youName: youOverride, spectating = false,
+  overExtra, resume, persist, rated,
   online, onExit, onNext, winText, onShare, exitLabel, assists = true,
   onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
@@ -125,14 +133,16 @@ export default function Game({
   const levelName = useCallback((i: number) => t(`level.${i + 1}.name` as StringKey), [t]);
 
   const viewpointRef = useRef<0 | 1>(setup?.humanPlayer ?? 0);
+  // A spectator's narration names the players; set every render, below.
+  const seatNamesRef = useRef<[string, string] | null>(null);
 
   // Narration for the live region. Built from the same translation table as the
   // visible UI, so a screen reader follows the game in the player's language.
   const narrator = useMemo<Narrator>(() => {
     // The local board flips with every turn, so "you" always means whoever is
     // holding the device right now — the same person the near row belongs to.
-    const who = (p: 0 | 1) =>
-      p === viewpointRef.current ? t('common.you') : t('a11y.opponent');
+    const who = (p: 0 | 1) => seatNamesRef.current?.[p]
+      ?? (p === viewpointRef.current ? t('common.you') : t('a11y.opponent'));
     return {
       moved: (p, pit) => t('a11y.moved', { who: who(p), index: (pit % 6) + 1 }),
       captured: (p, count) => t('a11y.captured', { who: who(p), count }),
@@ -254,14 +264,19 @@ export default function Game({
     setTimeout(() => setReactCooldown(false), 1_500);
   };
 
-  const youName = mode === 'local' ? t('game.us') : t('common.you');
+  const youName = youOverride ?? (mode === 'local' ? t('game.us') : t('common.you'));
   const oppName = oppOverride
     ?? (isOnline ? (opponentSlot?.name || t('online.opponent'))
       : mode === 'ai' ? levelName(level)
         : t('game.them'));
+  const nameOf = (seat: 0 | 1) => (seat === viewpoint ? youName : oppName);
+  seatNamesRef.current = spectating
+    ? (viewpoint === 0 ? [youName, oppName] : [oppName, youName])
+    : null;
 
   const interactive =
-    state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint)
+    !spectating
+    && state.phase === 'idle' && (mode === 'local' || state.turn === viewpoint)
     // Online, a board you cannot reach the server from is a board you cannot
     // move on. Better a disabled pit than a tap that silently goes nowhere.
     && (!isOnline || online?.view.connection === 'online');
@@ -283,6 +298,9 @@ export default function Game({
         : { pill: t('game.thinking'), line: t('game.choosing', { name: oppName }) };
     }
     if (state.phase === 'animating') return { pill: t('game.sowing'), line: t('game.seedsMoving') };
+    if (spectating) {
+      return { pill: t('game.oppTurn', { name: nameOf(state.turn) }), line: t('watch.watching') };
+    }
     if (mode !== 'local') {
       return state.turn === viewpoint
         ? { pill: t('game.yourTurn'), line: t(selectPit) }
@@ -291,18 +309,19 @@ export default function Game({
     // Pass-and-play: the board turns round, so the side to move is always
     // the near one — "Us" — and naming it again in the pill adds nothing.
     return { pill: t('game.yourTurn'), line: t(selectPit) };
-  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, selectPit, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nameOf reads youName/oppName
+  }, [state.phase, state.turn, viewpoint, mode, isOnline, oppName, youName, spectating, selectPit, t]);
 
   // Every helper line this game can ever put under the pill, rendered as
   // invisible ghosts behind the live one. The slot is therefore as tall as its
   // longest line from the first paint, so a longer line — or a line that wraps
   // where the previous one did not — never nudges the board down the screen.
   const statusLines = useMemo(() => {
-    const all = [t(selectPit), t('game.seedsMoving')];
-    if (isOnline) all.push(t('online.sendingSub'), t('game.waiting'));
+    const all = spectating ? [t('watch.watching'), t('game.seedsMoving')] : [t(selectPit), t('game.seedsMoving')];
+    if (isOnline && !spectating) all.push(t('online.sendingSub'), t('game.waiting'));
     else if (mode === 'ai') all.push(t('game.choosing', { name: oppName }), t('game.waiting'));
     return [...new Set(all)];
-  }, [t, selectPit, isOnline, mode, oppName]);
+  }, [t, selectPit, isOnline, mode, oppName, spectating]);
 
   // One × switches off both coaching texts at once — the line under the pill
   // and the tip card below the board. Settings puts them back; the toast says
@@ -316,6 +335,7 @@ export default function Game({
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
+    if (spectating && state.winner !== null) return t('game.oppWins', { name: nameOf(state.winner) });
     if (isChallenge) return humanWon ? (winText ?? t('game.challengeDone')) : t('game.challengeFailed');
     if (mode === 'local') {
       return t('game.sideWins', { name: t(state.winner === viewpoint ? 'game.us' : 'game.them') });
@@ -327,6 +347,14 @@ export default function Game({
   const overReason = online?.view.snapshot?.reason ?? null;
   const overNote = (): string | null => {
     if (!isOnline) return null;
+    if (spectating) {
+      if (state.winner === null || state.winner === 'draw') return null;
+      const loser = nameOf((1 - state.winner) as 0 | 1);
+      if (overReason === 'resign') return t('watch.resigned', { name: loser });
+      if (overReason === 'abandoned') return t('watch.abandoned', { name: loser });
+      if (overReason === 'timeout') return t('watch.flagged', { name: loser });
+      return null;
+    }
     if (overReason === 'resign') {
       return humanWon ? t('online.oppResigned') : t('online.youResigned');
     }
@@ -371,11 +399,18 @@ export default function Game({
 
   const connection = online?.view.connection ?? 'online';
   const opponentGone = isOnline && opponentSlot !== null && !opponentSlot.online;
+  // A spectator cares about either player dropping out, and by name.
+  const players = online?.view.snapshot?.players;
+  const goneSeat: 0 | 1 | null = !spectating || !players ? null
+    : players[0] && !players[0].online ? 0
+      : players[1] && !players[1].online ? 1 : null;
   const banner = !isOnline ? null
     : connection === 'offline' ? t('online.reconnecting')
       : connection === 'connecting' ? t('online.connecting')
-        : opponentGone ? t('online.oppOffline', { name: oppName })
-          : null;
+        : goneSeat !== null ? t('online.oppOffline', { name: nameOf(goneSeat) })
+          : opponentGone && !spectating ? t('online.oppOffline', { name: oppName })
+            : null;
+  const audience = online?.view.audience ?? 0;
 
   return (
     <div className="screen game">
@@ -396,6 +431,11 @@ export default function Game({
       </div>
 
       {banner && <div className="net-banner" role="status">{banner}</div>}
+      {audience > 0 && (
+        <div className="audience-chip" aria-label={t('watch.audience', { n: audience })}>
+          <span aria-hidden>👁</span> {audience}
+        </div>
+      )}
 
       {/* One grid so the two player cards can sit above the board on a wide
           screen and flank it on a phone, where vertical space is scarce. */}
@@ -477,7 +517,7 @@ export default function Game({
           </div>
         ) : null}
         <div className="game-controls">
-          {isOnline && (
+          {isOnline && !spectating && (
             // No restart, no hint, no undo: none of the three mean anything
             // when a second person is sitting on the other side of the board.
             <button
@@ -488,7 +528,7 @@ export default function Game({
               🏳 {confirmResign ? t('online.resignConfirm') : t('online.resign')}
             </button>
           )}
-          {reactionsOn && (
+          {reactionsOn && !spectating && (
             <div className="react-anchor">
               <button
                 className="ctrl"
@@ -558,10 +598,11 @@ export default function Game({
             {overExtra}
             {isChallenge && humanWon && !goNext && <p className="over-note">{t('game.nextUnlocked')}</p>}
             {overNote() && <p className="over-note">{overNote()}</p>}
-            {isOnline && online?.view.rematchOffered && !online.view.rematchSent && (
+            {isOnline && !spectating && online?.view.rematchOffered && !online.view.rematchSent && (
               <p className="over-note">{t('online.rematchOffered', { name: oppName })}</p>
             )}
-            {isOnline ? (
+            {spectating && <p className="over-note">{t('watch.stay')}</p>}
+            {spectating ? null : isOnline ? (
               <button
                 className="pill pill-green"
                 onClick={() => { playTap(); hapticTap(); online?.rematch(); }}

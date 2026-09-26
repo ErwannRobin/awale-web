@@ -521,6 +521,13 @@ a.pill { text-decoration: none; color: inherit; }
   .react-bubble { animation: none; transform: translate(-50%, 0); }
 }
 .react-anchor { position: relative; display: inline-flex; }
+/* How many are watching: small, out of the way, only there when someone is. */
+.audience-chip {
+  align-self: center; margin-top: 6px;
+  font-size: 0.8rem; color: var(--ivory-70); font-variant-numeric: tabular-nums;
+  padding: 2px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--panel-line);
+}
 .react-tray {
   /* Opens from the button's outer edge towards the middle of the screen, in
      either reading direction, so it never runs off a phone. */
@@ -1231,6 +1238,10 @@ a.pill { text-decoration: none; color: inherit; }
 .code-form { display: flex; flex-direction: column; gap: 12px; }
 
 /* The clock picker: four segments in one row, the chosen one lit. */
+/* A live game: two names that may be long, so they wrap rather than clip. */
+.live-names { letter-spacing: 0.02em; text-transform: none; overflow-wrap: anywhere; }
+.live-vs { color: var(--gold-soft); font-weight: 400; font-size: 0.85em; }
+
 .tc-picker { display: flex; flex-direction: column; gap: 6px; }
 .tc-picker-label { font-size: 0.8rem; letter-spacing: 0.08em; color: var(--ivory-70); text-transform: uppercase; }
 .tc-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }

@@ -30,7 +30,10 @@ import { useBackButton } from './lib/useBackButton.ts';
 import { useEscapeKey } from './lib/useEscapeKey.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
-import { clearJoinCode, onlineEnabled, readJoinCode, readJoinControl } from './lib/onlineConfig.ts';
+import {
+  clearJoinCode, onlineEnabled, readJoinCode, readJoinControl, readWatchCode,
+} from './lib/onlineConfig.ts';
+import LiveGames from './components/LiveGames.tsx';
 import { detectCountry } from './lib/worldStats.ts';
 import { normaliseRoomCode, type TimeControlId } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
@@ -51,7 +54,12 @@ type Screen =
   // carries where to go back to.
   | { name: 'signIn'; back: Screen }
   // `tc` is the clock this player asked for; absent when joining by code.
-  | { name: 'onlineGame'; room: string; tc?: TimeControlId }
+  // `listed` is quick match's game, which goes in the public live list.
+  | { name: 'onlineGame'; room: string; tc?: TimeControlId; listed?: boolean }
+  // Someone else's game, watched.
+  | { name: 'watch'; room: string }
+  // The quick-match games being played now, to pick one to watch.
+  | { name: 'live' }
   | { name: 'challenge'; index: number }
   // The day is carried, so a puzzle opened before midnight is still that
   // day's puzzle after it — and Back/Forward bring back the same board.
@@ -83,6 +91,9 @@ export default function App() {
     // first and making the player find the code again would waste the link.
     () => {
       if (!onlineEnabled()) return { name: 'menu' };
+      const watching = readWatchCode();
+      const watchRoom = watching ? normaliseRoomCode(watching) : null;
+      if (watchRoom) return { name: 'watch', room: watchRoom };
       const code = readJoinCode();
       const room = code ? normaliseRoomCode(code) : null;
       return room ? { name: 'onlineGame', room, tc: readJoinControl() } : { name: 'menu' };
@@ -367,7 +378,9 @@ export default function App() {
       // that ended while it sat under a Settings screen, so ask, don't assume.
       case 'menu': if (nav.atRoot()) void exitApp(); else nav.back({ name: 'menu' }); return;
       case 'game': leaveGame(); return;
-      case 'onlineGame': leaveOnline(); return;
+      case 'onlineGame':
+      case 'watch': leaveOnline(); return;
+      case 'live': nav.back({ name: 'online' }); return;
       case 'signIn':
       case 'learn':
       case 'settings': goBackTo(screen.back)(); return;
@@ -416,7 +429,8 @@ export default function App() {
         <Online
           myCountry={profile.country}
           onNations={() => nav.go({ name: 'stats' })}
-          onStart={(room, tc) => nav.go({ name: 'onlineGame', room, tc })}
+          onStart={(room, tc, listed) => nav.go({ name: 'onlineGame', room, tc, listed })}
+          onLive={() => nav.go({ name: 'live' })}
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
         />
@@ -463,10 +477,34 @@ export default function App() {
           key={screen.room}
           room={screen.room}
           control={screen.tc}
+          listed={screen.listed}
+          // Sideways, not deeper: Back from watching goes where Back from the
+          // full room would have gone.
+          onWatch={room => nav.replace({ name: 'watch', room })}
           onExit={leaveOnline}
           onLearn={() => nav.go({ name: 'learn', back: screen })}
           onSettings={() => nav.go({ name: 'settings', back: screen })}
           onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'watch' && (
+        <OnlineGame
+          key={`watch-${screen.room}`}
+          room={screen.room}
+          watch
+          onExit={leaveOnline}
+          onLearn={() => nav.go({ name: 'learn', back: screen })}
+          onSettings={() => nav.go({ name: 'settings', back: screen })}
+          onToast={showToast}
+        />
+      )}
+
+      {screen.name === 'live' && (
+        <LiveGames
+          onWatch={room => nav.go({ name: 'watch', room })}
+          onPlay={() => nav.back({ name: 'online' })}
+          onBack={() => nav.back({ name: 'online' })}
         />
       )}
 

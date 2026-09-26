@@ -8,7 +8,8 @@
 // plumbing: sockets in, sockets out, state to storage, an alarm for the player
 // who walked away.
 import {
-  command, createRoom, disconnect, isExpired, isJoinable, join, nextAlarmAt, seatOf, sweep,
+  command, createRoom, disconnect, isExpired, isJoinable, join, liveChange, liveEntry,
+  nextAlarmAt, seatOf, spectate, sweep,
   type Effect, type RoomState,
 } from '../../src/lib/roomCore.ts';
 import {
@@ -19,9 +20,9 @@ import type { Seat } from '../../src/lib/rules.ts';
 import { claimsFromToken, post, stub, type AuthEnv } from './auth.ts';
 import type { UserRecord } from './identity.ts';
 
-/** The world table, where a rated game's two countries are counted. Optional:
- *  a deploy without it still rates games. */
-type RoomEnv = AuthEnv & { STATS?: DurableObjectNamespace };
+/** The world table, where a rated game's two countries are counted, and the
+ *  public list of live games. Both optional: a deploy without them still plays. */
+type RoomEnv = AuthEnv & { STATS?: DurableObjectNamespace; LIVE?: DurableObjectNamespace };
 
 const STATE_KEY = 'room';
 
@@ -38,6 +39,8 @@ export interface RoomProbe {
 interface SocketTag {
   token: string;
   seat: Seat | null;
+  /** A spectator: no token, no seat, and counted in the audience. */
+  watch?: boolean;
 }
 
 export class Room implements DurableObject {
@@ -101,6 +104,14 @@ export class Room implements DurableObject {
         ws.close(1002, 'protocol version');
         return;
       }
+      // A spectator takes no seat and needs no identity: the room as it is,
+      // then the same broadcast the players hear. Nothing is written.
+      if (msg.watch) {
+        ws.serializeAttachment({ token: '', seat: null, watch: true } satisfies SocketTag);
+        this.sendTo(ws, spectate(room, now));
+        this.announceAudience();
+        return;
+      }
       // A signed token outranks whatever the browser said about itself. It is
       // verified here rather than trusted from the page, because the page is
       // the one thing in this exchange an attacker controls.
@@ -108,7 +119,7 @@ export class Room implements DurableObject {
       const token = claims ? `u:${claims.sub}` : msg.token;
       const name = claims?.name || msg.name;
 
-      const result = join(room, token, name, now, msg.country, msg.tc);
+      const result = join(room, token, name, now, msg.country, msg.tc, msg.listed);
       if (result.error) {
         this.sendTo(ws, { t: 'err', code: result.error });
         ws.close(1000, result.error);
@@ -118,11 +129,19 @@ export class Room implements DurableObject {
       ws.serializeAttachment({ token, seat: result.seat } satisfies SocketTag);
       await this.commit(result.state);
       this.dispatch(result.effects);
+      // A player arriving should know who is already watching.
+      if (this.audience() > 0) this.sendTo(ws, { t: 'audience', n: this.audience() });
       await this.scheduleSweep();
+      await this.tellLive(room, result.state);
       return;
     }
 
     const tag = this.tagOf(ws);
+    // A spectator may keep its socket alive and nothing else.
+    if (tag.watch) {
+      if (msg.t === 'ping') this.sendTo(ws, { t: 'pong' });
+      return;
+    }
     if (!tag.token || seatOf(room, tag.token) === null) {
       this.sendTo(ws, { t: 'err', code: 'not-seated' });
       return;
@@ -131,6 +150,7 @@ export class Room implements DurableObject {
     const step = command(room, tag.token, msg, now);
     await this.commit(step.state);
     this.dispatch(step.effects);
+    await this.tellLive(room, step.state);
 
     // A move or a resign can end the game directly, with no alarm involved —
     // the alarm's own check below only catches the abandoned-opponent path.
@@ -159,6 +179,7 @@ export class Room implements DurableObject {
     const now = Date.now();
 
     if (isExpired(room, now)) {
+      await this.tellLive(room, { ...room, status: 'over' });
       await this.state.storage.deleteAlarm();
       await this.state.storage.deleteAll();
       this.cached = null;
@@ -172,6 +193,7 @@ export class Room implements DurableObject {
     await this.commit(step.state);
     this.dispatch(step.effects);
     await this.scheduleSweep();
+    await this.tellLive(room, step.state);
     
     // Only on the alarm that ended the game. Every later alarm finds the room
     // already over, and rating the same game again would count it twice.
@@ -207,6 +229,11 @@ export class Room implements DurableObject {
 
   private async dropped(ws: WebSocket): Promise<void> {
     const tag = this.tagOf(ws);
+    if (tag.watch) {
+      // The closing socket may still be in the list for a moment.
+      this.announceAudience(ws);
+      return;
+    }
     if (!tag.token) return;
     // A player with a second tab open has not left; only the last socket for a
     // seat counts as a disconnect.
@@ -224,6 +251,44 @@ export class Room implements DurableObject {
     await this.scheduleSweep();
   }
 
+  /** Spectators connected right now, not counting `leaving`. */
+  private audience(leaving?: WebSocket): number {
+    return this.state.getWebSockets()
+      .filter(ws => ws !== leaving && ws.readyState === OPEN && this.tagOf(ws).watch)
+      .length;
+  }
+
+  private announceAudience(leaving?: WebSocket): void {
+    this.dispatch([{ to: 'all', msg: { t: 'audience', n: this.audience(leaving) } }]);
+  }
+
+  /**
+   * Keep the public list of live games in step with this room. Best effort:
+   * a list that misses a game is a list, a room that fails a move over it is
+   * a bug.
+   */
+  private async tellLive(before: RoomState, after: RoomState): Promise<void> {
+    const change = liveChange(before, after);
+    if (!change || !this.env.LIVE) return;
+    const live = this.env.LIVE.get(this.env.LIVE.idFromName('global'));
+    try {
+      if (change === 'start') {
+        const entry = liveEntry(after);
+        if (entry) {
+          await live.fetch('https://live/start', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(entry),
+          });
+        }
+      } else {
+        await live.fetch(`https://live/end?room=${after.code}`, { method: 'POST' });
+      }
+    } catch (error) {
+      console.error('live list update failed:', error);
+    }
+  }
+
   private sendTo(ws: WebSocket, msg: ServerMsg): void {
     try {
       ws.send(JSON.stringify(msg));
@@ -237,7 +302,8 @@ export class Room implements DurableObject {
       const body = JSON.stringify(effect.msg);
       for (const ws of sockets) {
         if (ws.readyState !== OPEN) continue;
-        if (effect.to !== 'all' && this.tagOf(ws).seat !== effect.to) continue;
+        const tag = this.tagOf(ws);
+        if (effect.to === 'watchers' ? !tag.watch : effect.to !== 'all' && tag.seat !== effect.to) continue;
         try { ws.send(body); } catch { /* dropped mid-broadcast */ }
       }
     }
