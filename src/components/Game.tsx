@@ -74,7 +74,7 @@ function PlayerCard({
   return (
     <div className={`pcard pcard-${side} ${active ? 'pcard-active' : ''}`}>
       {side === 'opp' && <div className="pcard-score">{score}</div>}
-      <div className="pcard-info">
+      <div className="pcard-info" dir="auto">
         <div className="pcard-name">
           <span className="pcard-name-text">{name}</span>
           {active && <span className="live-dot" aria-hidden />}
@@ -355,8 +355,12 @@ export default function Game({
 
       {/* One grid so the two player cards can sit above the board on a wide
           screen and flank it on a phone, where vertical space is scarce. */}
-      <div className="play-area">
-        <div className="turn-center">
+      {/* Left to right even on an Arabic page: your card sits beside your own
+          row of pits, and mirroring the grid would put it on the far side. */}
+      <div className="play-area" dir="ltr">
+        {/* The grid is pinned left to right; its words are not. `auto` lets an
+            Arabic line run right to left, full stop and all. */}
+        <div className="turn-center" dir="auto">
           {/* Reserved whether or not there is a pill: the board stays put when
               the game ends and the status disappears. */}
           <div className="turn-pill-slot">

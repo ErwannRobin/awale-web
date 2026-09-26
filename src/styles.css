@@ -1033,6 +1033,7 @@ a.pill { text-decoration: none; color: inherit; }
 }
 .toggle-on { background: var(--green); border-color: var(--green-2); }
 .toggle-on .toggle-knob { transform: translateX(22px); background: #fff; }
+[dir="rtl"] .toggle-on .toggle-knob { transform: translateX(-22px); }
 
 .segmented {
   display: inline-flex; gap: 3px; padding: 3px; border-radius: 999px;

@@ -34,7 +34,7 @@ import { clearJoinCode, onlineEnabled, readJoinCode, readJoinControl } from './l
 import { detectCountry } from './lib/worldStats.ts';
 import { normaliseRoomCode, type TimeControlId } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
-import type { StringKey } from './i18n/index.ts';
+import { isRtl, type StringKey } from './i18n/index.ts';
 import { formatWait } from './lib/format.ts';
 
 type Screen =
@@ -112,6 +112,7 @@ export default function App() {
     const root = document.documentElement;
     root.setAttribute('data-theme', settings.theme);
     root.setAttribute('lang', settings.language);
+    root.setAttribute('dir', isRtl(settings.language) ? 'rtl' : 'ltr');
 
     // The browser paints its own furniture — the address bar on mobile web,
     // the status bar in an installed shell — and CSS cannot reach it. Left at

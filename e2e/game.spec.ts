@@ -68,6 +68,37 @@ test('board sows counterclockwise: pit indices run the right way round', async (
   expect(sum).toBeLessThan(0);
 });
 
+test('an Arabic page reads right to left, and the board still sows counterclockwise', async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('awale.settings.v1', JSON.stringify({ language: 'ar', speed: 'instant', sound: false }));
+    } catch { /* private mode */ }
+  });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+
+  // "Two players", in Arabic.
+  await page.getByText('لاعبان', { exact: true }).click();
+  await expect(page.locator('.board-wrap')).toHaveAttribute('dir', 'ltr');
+
+  // Measured from the pits' own indices, not DOM order, so nothing about the
+  // page's direction can hide a reversed ring.
+  const centres = await page.locator('[data-pit]').evaluateAll(els => els
+    .map(el => {
+      const r = el.getBoundingClientRect();
+      return { i: Number(el.getAttribute('data-pit')), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })
+    .sort((a, b) => a.i - b.i));
+  expect(centres.map(c => c.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  let sum = 0;
+  for (let i = 0; i < centres.length; i++) {
+    const p = centres[i], q = centres[(i + 1) % centres.length];
+    sum += p.x * q.y - q.x * p.y;
+  }
+  expect(sum).toBeLessThan(0);
+});
+
 test('a full game against the AI finishes and is recorded', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');

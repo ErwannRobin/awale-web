@@ -10,7 +10,13 @@ const KEY = 'awale.settings.v1';
 
 export type ThemeName = 'wood' | 'night' | 'sand';
 export type SpeedName = 'slow' | 'normal' | 'fast' | 'instant';
-export type Language = 'en' | 'fr';
+export type Language = 'en' | 'fr' | 'pt' | 'es' | 'ar';
+
+/** Every language with a table, in the order the language picker shows them. */
+export const LANGUAGE_CODES: Language[] = ['en', 'fr', 'pt', 'es', 'ar'];
+
+const isLanguage = (v: unknown): v is Language =>
+  typeof v === 'string' && (LANGUAGE_CODES as string[]).includes(v);
 
 export interface Settings {
   sound: boolean;
@@ -53,12 +59,20 @@ export const SPEED_FACTOR: Record<SpeedName, number> = {
   instant: 0,
 };
 
+/**
+ * The first of the browser's preferred languages that has a table, by its
+ * primary subtag — `pt-BR` and `pt-AO` are both Portuguese, `ar-MA` is Arabic.
+ */
 function detectLanguage(): Language {
   try {
     const langs = typeof navigator !== 'undefined'
       ? [navigator.language, ...(navigator.languages ?? [])]
       : [];
-    return langs.some(l => l?.toLowerCase().startsWith('fr')) ? 'fr' : 'en';
+    for (const tag of langs) {
+      const primary = tag?.toLowerCase().split('-')[0];
+      if (isLanguage(primary)) return primary;
+    }
+    return 'en';
   } catch {
     return 'en';
   }
@@ -100,7 +114,7 @@ function coerce(raw: unknown): Settings {
     leftHanded: bool(o.leftHanded, d.leftHanded),
     showCounts: bool(o.showCounts, d.showCounts),
     showTips: bool(o.showTips, d.showTips),
-    language: o.language === 'fr' || o.language === 'en' ? o.language : d.language,
+    language: isLanguage(o.language) ? o.language : d.language,
     reminders: bool(o.reminders, d.reminders),
     shareStats: bool(o.shareStats, d.shareStats),
     timeControl: isTimeControl(o.timeControl) ? o.timeControl : d.timeControl,

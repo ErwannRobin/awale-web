@@ -52,7 +52,13 @@ of the oware / mancala family.
   table](#countries-and-the-world-table).
 - **Settings** — sound, vibration, animation speed (including *instant*), three
   board themes, seed-count badges, a left-handed layout, and language.
-- **English and French**, auto-detected and overridable.
+- **Five languages** — English, French, Portuguese, Spanish and Arabic,
+  auto-detected from the browser and overridable. Arabic lays the page out right
+  to left; the board alone stays left to right, because a mirrored ring of pits
+  is a ring sown clockwise (an e2e test measures it). Every table is typed
+  against English, and `test/i18n.test.ts` checks each line keeps the same
+  placeholders. The Portuguese, Spanish and Arabic tables were written with
+  machine help and deserve a native speaker's read before a store release.
 - **Offline** — a service worker caches the whole game; it is installable from
   the browser.
 - **Back goes back** — every screen gets a browser history entry of its own, so
@@ -190,7 +196,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/haptics.ts` | Vibration feedback |
 | `src/lib/challenges.ts` | Challenge data + goal-text keys, and the daily pool |
 | `src/lib/daily.ts` | Which puzzle a date gets, and the streak |
-| `src/i18n/` | English and French tables, typed so a gap is a build error |
+| `src/i18n/` | English, French, Portuguese, Spanish and Arabic tables, typed so a gap is a build error |
 | `src/content/challenges.json` | The 24 fixed challenge positions |
 | `src/content/daily.json` | The daily pool: three tiers of proved positions |
 | `src/components/` | Every screen |
