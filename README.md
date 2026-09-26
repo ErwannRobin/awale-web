@@ -335,6 +335,15 @@ arrives too late, or on an alarm set for the exact moment the time runs out.
 Running out of time loses the game. The clock keeps running while a player is
 disconnected, like one across a real table.
 
+### Reactions
+
+Six emoji, sent from the 😊 button: 👋 👍 😮 😅 🔥 🤝. A fixed set rather than a
+chat box — it reads the same in every language and there is nothing to
+moderate. The index travels, not the emoji; the server relays it to everyone at
+the board and drops anything sent within 1.5 s of the same seat's last one.
+Allowed during the game and after it, for the 🤝. *Emoji reactions* in Settings
+turns them off: nothing shown, nothing offered.
+
 ### The things that go wrong
 
 - **A dropped connection** reconnects with backoff and walks back into its own

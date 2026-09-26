@@ -49,6 +49,8 @@ export interface Settings {
   shareStats: boolean;
   /** The clock online games are started with, and quick match queues for. */
   timeControl: TimeControlId;
+  /** Emoji reactions in online games: shown, and offered. Off hides both. */
+  reactions: boolean;
 }
 
 /** Animation tempo multiplier. `instant` skips the sowing animation entirely. */
@@ -92,6 +94,7 @@ export function defaultSettings(): Settings {
     reminders: false,
     shareStats: true,
     timeControl: 'rapid',
+    reactions: true,
   };
 }
 
@@ -118,6 +121,7 @@ function coerce(raw: unknown): Settings {
     reminders: bool(o.reminders, d.reminders),
     shareStats: bool(o.shareStats, d.shareStats),
     timeControl: isTimeControl(o.timeControl) ? o.timeControl : d.timeControl,
+    reactions: bool(o.reactions, d.reactions),
   };
 }
 

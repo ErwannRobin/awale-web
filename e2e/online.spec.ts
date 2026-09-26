@@ -132,6 +132,36 @@ test('a timed game shows both clocks, and the room keeps the creator\'s', async 
   }
 });
 
+test('a reaction sent on one screen floats up on the other', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByText('INVITE A FRIEND').click();
+    const code = await host.locator('.room-code').innerText();
+    const guest = await freshPlayer(two, 'Kofi');
+    await guest.goto(`/?join=${code}`);
+    await expect(host.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+
+    await host.getByRole('button', { name: 'Send a reaction' }).click();
+    await host.getByRole('menuitem', { name: 'On fire' }).click();
+
+    // On the guest's screen it rises from the opponent's card; on the host's,
+    // from their own.
+    await expect(guest.locator('.pcard-opp .react-bubble')).toHaveText('🔥', { timeout: 15_000 });
+    await expect(host.locator('.pcard-you .react-bubble')).toHaveText('🔥');
+    // And it goes away by itself.
+    await expect(guest.locator('.react-bubble')).toHaveCount(0, { timeout: 5_000 });
+  } finally {
+    await one.close();
+    await two.close();
+  }
+});
+
 test('a game between two countries is a round of their rivalry', async ({ browser }) => {
   const one = await browser.newContext();
   const two = await browser.newContext();

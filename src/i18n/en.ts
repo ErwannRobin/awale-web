@@ -90,6 +90,7 @@ export const en = {
   'a11y.gameOver': 'Game over. {result}. {you} to {them}.',
   'a11y.opponent': 'Opponent',
   'a11y.clock': "{who}'s clock: {time}",
+  'a11y.reacted': '{who} reacted: {name}',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture: land your last seed in an opponent pit that then holds 2 or 3 seeds.',
@@ -226,6 +227,8 @@ export const en = {
   'settings.tipsHelp': 'The helper line under the turn pill and the tip card below the board.',
   'settings.leftHanded': 'Left-handed layout',
   'settings.leftHandedHelp': 'Moves your store to the other side. The sowing direction never changes.',
+  'settings.reactions': 'Emoji reactions',
+  'settings.reactionsHelp': 'Quick emoji in online games — from a fixed set, so there is nothing to moderate. Off hides theirs and yours.',
   'settings.sectionNotify': 'Reminders',
   'settings.reminders': 'Play reminders',
   'settings.remindersHelp': 'One nudge if you have not played for a few days. Scheduled on this device — nothing is sent from a server.',
@@ -386,6 +389,13 @@ export const en = {
   'tc.blitz': 'Blitz',
   'tc.rapid': 'Rapid',
   'tc.classic': 'Classic',
+  'react.open': 'Send a reaction',
+  'react.0': 'Hello',
+  'react.1': 'Nice move',
+  'react.2': 'Wow',
+  'react.3': 'Oops',
+  'react.4': 'On fire',
+  'react.5': 'Good game',
   // ---- signing in ------------------------------------------------------
   'signIn.title': 'SIGN IN',
   'signIn.tagline': 'One phone number. No password to forget.',

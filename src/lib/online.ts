@@ -40,6 +40,8 @@ export interface SessionCallbacks {
   reset(snapshot: RoomSnapshot): void;
   over(winner: Winner, reason: OverReason, scores: number[]): void;
   change(view: OnlineView): void;
+  /** Someone at the board sent one of `REACTIONS`. Optional: a test may not care. */
+  react?(by: Seat, e: number): void;
 }
 
 /** A country worth sending, or null: `ZZ` is simply left out of the hello. */
@@ -106,6 +108,9 @@ export class OnlineSession {
   }
 
   resign(): void { this.send({ t: 'resign' }); }
+
+  /** One of `REACTIONS`, by index. The server rate-limits; so does the UI. */
+  react(e: number): void { this.send({ t: 'react', e }); }
 
   rematch(): void {
     this.patch({ rematchSent: true });
@@ -246,6 +251,10 @@ export class OnlineSession {
 
       case 'rematch':
         this.patch({ rematchOffered: true });
+        return;
+
+      case 'react':
+        this.opts.callbacks.react?.(msg.by, msg.e);
         return;
 
       case 'err':

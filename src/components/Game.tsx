@@ -14,6 +14,8 @@ import { reportGame } from '../lib/worldStats.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
 import { useClocks } from '../lib/useClocks.ts';
+import { REACTIONS } from '../lib/protocol.ts';
+import type { Seat } from '../lib/rules.ts';
 import { formatClock } from '../lib/format.ts';
 import { GearIcon } from './Icons.tsx';
 
@@ -62,17 +64,27 @@ const TIP_KEYS: StringKey[] = ['tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip
 /** Under this, a clock turns red: the moment a player starts counting. */
 const LOW_TIME_MS = 20_000;
 
+/** How long a reaction bubble stays up. */
+const BUBBLE_MS = 2_600;
+
 function PlayerCard({
-  name, score, active, side, avatar, clock, clockLabel,
+  name, score, active, side, avatar, clock, clockLabel, reaction,
 }: {
   name: string; score: number;
   active: boolean; side: 'you' | 'opp'; avatar: string;
   /** Milliseconds left and whether it is ticking; absent in an untimed game. */
   clock?: { ms: number; running: boolean };
   clockLabel?: string;
+  /** A reaction just sent from this seat; `n` restarts the bubble each time. */
+  reaction?: { emoji: string; label: string; n: number } | null;
 }) {
   return (
     <div className={`pcard pcard-${side} ${active ? 'pcard-active' : ''}`}>
+      {reaction && (
+        <span key={reaction.n} className="react-bubble" role="status" aria-label={reaction.label}>
+          {reaction.emoji}
+        </span>
+      )}
       {side === 'opp' && <div className="pcard-score">{score}</div>}
       <div className="pcard-info" dir="auto">
         <div className="pcard-name">
@@ -209,6 +221,38 @@ export default function Game({
   const clockFor = (seat: 0 | 1) => (clocks
     ? { ms: clocks.left[seat], running: clocks.running === seat && state.phase !== 'over' }
     : undefined);
+
+  // Reactions: the latest one floats up from its sender's card for a moment.
+  // Switched off in Settings, nothing is shown and nothing can be sent.
+  const reactionsOn = useSettings().reactions && isOnline;
+  const incoming = online?.reaction ?? null;
+  const [bubble, setBubble] = useState<{ by: Seat; e: number; n: number } | null>(null);
+  useEffect(() => {
+    if (!incoming || !reactionsOn) return;
+    setBubble(incoming);
+    const timer = setTimeout(() => setBubble(b => (b?.n === incoming.n ? null : b)), BUBBLE_MS);
+    return () => clearTimeout(timer);
+  }, [incoming, reactionsOn]);
+  const bubbleFor = (seat: 0 | 1) => (bubble && bubble.by === seat
+    ? {
+      emoji: REACTIONS[bubble.e],
+      label: t('a11y.reacted', {
+        who: seat === viewpoint ? youName : oppName,
+        name: t(`react.${bubble.e}` as StringKey),
+      }),
+      n: bubble.n,
+    }
+    : null);
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [reactCooldown, setReactCooldown] = useState(false);
+  const sendReaction = (e: number) => {
+    playTap(); hapticTap();
+    online?.react(e);
+    setTrayOpen(false);
+    // The server drops anything sent faster; greying the button says so first.
+    setReactCooldown(true);
+    setTimeout(() => setReactCooldown(false), 1_500);
+  };
 
   const youName = mode === 'local' ? t('game.us') : t('common.you');
   const oppName = oppOverride
@@ -390,6 +434,7 @@ export default function Game({
           side="you" avatar={youAvatar}
           clock={clockFor(viewpoint)}
           clockLabel={clocks ? t('a11y.clock', { who: youName, time: formatClock(clocks.left[viewpoint]) }) : undefined}
+          reaction={bubbleFor(viewpoint)}
         />
         <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
         <PlayerCard
@@ -398,6 +443,7 @@ export default function Game({
           side="opp" avatar="olive"
           clock={clockFor(opp)}
           clockLabel={clocks ? t('a11y.clock', { who: oppName, time: formatClock(clocks.left[opp]) }) : undefined}
+          reaction={bubbleFor(opp)}
         />
       </div>
 
@@ -431,7 +477,7 @@ export default function Game({
           </div>
         ) : null}
         <div className="game-controls">
-          {isOnline ? (
+          {isOnline && (
             // No restart, no hint, no undo: none of the three mean anything
             // when a second person is sitting on the other side of the board.
             <button
@@ -441,7 +487,36 @@ export default function Game({
             >
               🏳 {confirmResign ? t('online.resignConfirm') : t('online.resign')}
             </button>
-          ) : (
+          )}
+          {reactionsOn && (
+            <div className="react-anchor">
+              <button
+                className="ctrl"
+                onClick={() => { playTap(); setTrayOpen(o => !o); }}
+                disabled={reactCooldown || connection !== 'online'}
+                aria-expanded={trayOpen}
+                aria-label={t('react.open')}
+              >
+                😊
+              </button>
+              {trayOpen && (
+                <div className="react-tray" role="menu" aria-label={t('react.open')}>
+                  {REACTIONS.map((emoji, e) => (
+                    <button
+                      key={emoji}
+                      className="react-pick"
+                      role="menuitem"
+                      aria-label={t(`react.${e}` as StringKey)}
+                      onClick={() => sendReaction(e)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {!isOnline && (
             <button className="ctrl" onClick={restart}>
               ↻ {isChallenge ? t('game.restart') : t('game.newGame')}
             </button>

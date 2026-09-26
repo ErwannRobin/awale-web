@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import {
   ABANDON_MS,
-  IDLE_SWEEP_MS, MIN_ALARM_MS,
+  IDLE_SWEEP_MS, MIN_ALARM_MS, REACT_GAP_MS,
   command, createRoom, disconnect, isCoherent, isJoinable, join, nextAlarmAt, snapshot, sweep,
   type RoomState,
 } from '../src/lib/roomCore.ts';
@@ -564,6 +564,46 @@ check('only a known clock is accepted from the wire', () => {
 });
 
 // ---------------------------------------------------------------------------
+console.log('room: reactions');
+
+const reactionsIn = (effects: { to: unknown; msg: ServerMsg }[]) =>
+  effects.filter(e => e.msg.t === 'react').map(e => ({ to: e.to, ...(e.msg as { by: number; e: number }) }));
+
+check('a reaction goes to everyone at the board, from its seat', () => {
+  const step = command(seatedRoom(), TOKEN_B, { t: 'react', e: 4 }, 5000);
+  assert.deepEqual(reactionsIn(step.effects), [{ to: 'all', t: 'react', by: 1, e: 4 }]);
+});
+
+check('reacting too fast is dropped, not echoed', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'react', e: 0 }, 5000).state;
+  const again = command(room, TOKEN_A, { t: 'react', e: 1 }, 5000 + REACT_GAP_MS - 1);
+  assert.deepEqual(reactionsIn(again.effects), []);
+  assert.deepEqual(errorsIn(again.effects), [], 'and without an error to answer');
+  const later = command(room, TOKEN_A, { t: 'react', e: 1 }, 5000 + REACT_GAP_MS);
+  assert.equal(reactionsIn(later.effects).length, 1);
+});
+
+check('each seat has its own allowance', () => {
+  const room = command(seatedRoom(), TOKEN_A, { t: 'react', e: 0 }, 5000).state;
+  assert.equal(reactionsIn(command(room, TOKEN_B, { t: 'react', e: 5 }, 5001).effects).length, 1);
+});
+
+check('a handshake after the game is allowed; an empty waiting room is not', () => {
+  const over = command(seatedRoom(), TOKEN_A, { t: 'resign' }, 2000).state;
+  assert.equal(reactionsIn(command(over, TOKEN_B, { t: 'react', e: 5 }, 3000).effects).length, 1);
+  const waiting = join(createRoom('ABCDE', 1000), TOKEN_A, 'Ama', 1000).state;
+  assert.equal(reactionsIn(command(waiting, TOKEN_A, { t: 'react', e: 0 }, 3000).effects).length, 0);
+});
+
+check('only the fixed set travels', () => {
+  for (const e of [-1, 6, 1.5, '0', null]) {
+    assert.equal(parseClientMsg(JSON.stringify({ t: 'react', e })), null, `e = ${String(e)}`);
+  }
+  assert.deepEqual(parseClientMsg(JSON.stringify({ t: 'react', e: 2 })), { t: 'react', e: 2 });
+  assert.equal(parseServerMsg(JSON.stringify({ t: 'react', by: 2, e: 0 })), null, 'no such seat');
+});
+
+// ---------------------------------------------------------------------------
 // Two real sessions, talking to a fake server through in-memory pipes.
 // ---------------------------------------------------------------------------
 
@@ -679,6 +719,8 @@ class TestClient {
   resets = 0;
   /** Every error the session reported, in order. It clears itself on repair. */
   errors: string[] = [];
+  /** Reactions heard, as [seat, index]. */
+  reactions: [number, number][] = [];
 
   constructor(server: FakeServer, token: string, name: string, control?: 'blitz' | 'rapid' | 'classic') {
     this.session = new OnlineSession({
@@ -715,6 +757,7 @@ class TestClient {
           this.status = 'over';
           this.over = { winner, reason };
         },
+        react: (by, e) => { this.reactions.push([by, e]); },
         change: () => {
           this.seat = this.session.current.seat;
           const error = this.session.current.error;
@@ -932,6 +975,22 @@ await checkAsync('a timed game hands the clock over with every move', async () =
   await server.settle();
   assert.equal(ama.over?.reason, 'timeout');
   assert.equal(kofi.session.current.snapshot?.clock?.running, null, 'both clocks stopped');
+
+  ama.session.close();
+  kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a reaction reaches both players, sender included', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  await server.settle();
+
+  kofi.session.react(1);
+  await server.settle();
+  assert.deepEqual(ama.reactions, [[1, 1]]);
+  assert.deepEqual(kofi.reactions, [[1, 1]], 'the sender sees their own bubble too');
 
   ama.session.close();
   kofi.session.close();

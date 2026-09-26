@@ -92,6 +92,7 @@ export const es: Record<keyof typeof en, string> = {
   'a11y.gameOver': 'Fin de la partida. {result}. {you} a {them}.',
   'a11y.opponent': 'Rival',
   'a11y.clock': 'Reloj de {who}: {time}',
+  'a11y.reacted': '{who} ha reaccionado: {name}',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Captura: deja tu última semilla en un hoyo rival que quede con 2 o 3 semillas.',
@@ -226,6 +227,8 @@ export const es: Record<keyof typeof en, string> = {
   'settings.tipsHelp': 'La línea de ayuda bajo el indicador de turno y la tarjeta de consejos bajo el tablero.',
   'settings.leftHanded': 'Modo zurdo',
   'settings.leftHandedHelp': 'Pasa tu granero al otro lado. El sentido de la siembra nunca cambia.',
+  'settings.reactions': 'Reacciones emoji',
+  'settings.reactionsHelp': 'Emoji rápidos en las partidas online, de una lista fija: no hay nada que moderar. Desactivado, no ves ni envías ninguna.',
   'settings.sectionNotify': 'Recordatorios',
   'settings.reminders': 'Recordatorios para jugar',
   'settings.remindersHelp': 'Un aviso si llevas unos días sin jugar. Programado en este dispositivo: nada se envía desde un servidor.',
@@ -386,6 +389,13 @@ export const es: Record<keyof typeof en, string> = {
   'tc.blitz': 'Blitz',
   'tc.rapid': 'Rápida',
   'tc.classic': 'Clásica',
+  'react.open': 'Enviar una reacción',
+  'react.0': 'Hola',
+  'react.1': 'Buena jugada',
+  'react.2': 'Guau',
+  'react.3': 'Uy',
+  'react.4': 'En racha',
+  'react.5': 'Buena partida',
   // ---- signing in ------------------------------------------------------
   'signIn.title': 'INICIAR SESIÓN',
   'signIn.tagline': 'Un número de teléfono. Ninguna contraseña que olvidar.',

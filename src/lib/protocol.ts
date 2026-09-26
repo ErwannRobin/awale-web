@@ -38,6 +38,16 @@ export const TIME_CONTROL_IDS = Object.keys(TIME_CONTROLS) as TimeControlId[];
 export const isTimeControl = (v: unknown): v is TimeControlId =>
   typeof v === 'string' && v in TIME_CONTROLS;
 
+/**
+ * The reactions a player can send, by index. A fixed set rather than free
+ * text: it says "nice move" in every language at once, and there is nothing
+ * to moderate. Append only — the index is what travels.
+ */
+export const REACTIONS = ['👋', '👍', '😮', '😅', '🔥', '🤝'] as const;
+
+export const isReaction = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < REACTIONS.length;
+
 /** A running game's clocks, as the server had them when it sent this. */
 export interface ClockView {
   control: TimeControlId;
@@ -112,6 +122,8 @@ export type ClientMsg =
   | { t: 'rematch' }
   /** "My board and yours disagree — send me yours." */
   | { t: 'resync' }
+  /** One of `REACTIONS`, by index. */
+  | { t: 'react'; e: number }
   | { t: 'ping' };
 
 export type ErrorCode =
@@ -136,6 +148,8 @@ export type ServerMsg =
   | { t: 'over'; winner: Winner; reason: OverReason; scores: number[]; clock?: [number, number] }
   | { t: 'peer'; seat: Seat; player: PlayerView | null }
   | { t: 'rematch'; from: Seat }
+  /** Someone at the board reacted. */
+  | { t: 'react'; by: Seat; e: number }
   | { t: 'err'; code: ErrorCode }
   | { t: 'pong' };
 
@@ -236,6 +250,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     case 'rematch': return { t: 'rematch' };
     case 'resync': return { t: 'resync' };
     case 'ping': return { t: 'ping' };
+    case 'react': return isReaction(o.e) ? { t: 'react', e: o.e } : null;
     default: return null;
   }
 }
@@ -311,6 +326,8 @@ export function parseServerMsg(raw: string): ServerMsg | null {
     }
     case 'rematch':
       return isSeat(o.from) ? { t: 'rematch', from: o.from } : null;
+    case 'react':
+      return isSeat(o.by) && isReaction(o.e) ? { t: 'react', by: o.by, e: o.e } : null;
     case 'err':
       return typeof o.code === 'string' ? { t: 'err', code: o.code as ErrorCode } : null;
     case 'pong':

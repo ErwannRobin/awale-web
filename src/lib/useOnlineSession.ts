@@ -28,6 +28,13 @@ export interface OnlineHandle {
   bind(api: GameBridge | null): void;
   resign(): void;
   rematch(): void;
+  /** Send one of `REACTIONS`. */
+  react(e: number): void;
+  /**
+   * The latest reaction from either seat, with a counter so the same emoji
+   * twice in a row is still two bubbles.
+   */
+  reaction: { by: Seat; e: number; n: number } | null;
 }
 
 export interface OnlineOptions {
@@ -58,6 +65,7 @@ export function useOnlineSession(
   { room, name, token, auth, country, control, factory }: OnlineOptions,
 ): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
+  const [reaction, setReaction] = useState<OnlineHandle['reaction']>(null);
   const sessionRef = useRef<OnlineSession | null>(null);
   const bridgeRef = useRef<GameBridge | null>(null);
 
@@ -79,6 +87,8 @@ export function useOnlineSession(
       control,
       callbacks: {
         change: next => setView(next),
+
+        react: (by, e) => setReaction(prev => ({ by, e, n: (prev?.n ?? 0) + 1 })),
 
         reset: (snapshot: RoomSnapshot) => {
           bridgeRef.current?.resetTo({
@@ -128,6 +138,7 @@ export function useOnlineSession(
   const bind = useCallback((api: GameBridge | null) => { bridgeRef.current = api; }, []);
   const resign = useCallback(() => sessionRef.current?.resign(), []);
   const rematch = useCallback(() => sessionRef.current?.rematch(), []);
+  const react = useCallback((e: number) => sessionRef.current?.react(e), []);
 
-  return { view, remote, bind, resign, rematch };
+  return { view, remote, bind, resign, rematch, react, reaction };
 }

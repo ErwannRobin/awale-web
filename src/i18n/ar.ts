@@ -94,6 +94,7 @@ export const ar: Record<keyof typeof en, string> = {
   'a11y.gameOver': 'انتهت المباراة. {result}. {you} مقابل {them}.',
   'a11y.opponent': 'الخصم',
   'a11y.clock': 'ساعة {who}: {time}',
+  'a11y.reacted': 'تفاعل {who}: {name}',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'الأسر: اجعل بذرتك الأخيرة تقع في حفرة للخصم فتصبح فيها 2 أو 3 بذور.',
@@ -228,6 +229,8 @@ export const ar: Record<keyof typeof en, string> = {
   'settings.tipsHelp': 'سطر المساعدة تحت مؤشر الدور وبطاقة النصائح تحت اللوحة.',
   'settings.leftHanded': 'وضع الأعسر',
   'settings.leftHandedHelp': 'ينقل مخزنك إلى الجهة الأخرى. اتجاه البذر لا يتغير أبدًا.',
+  'settings.reactions': 'تفاعلات الإيموجي',
+  'settings.reactionsHelp': 'إيموجي سريعة في المباريات عبر الإنترنت — من قائمة ثابتة، فلا شيء يحتاج إلى إشراف. عند الإيقاف لا ترى ولا ترسل شيئًا.',
   'settings.sectionNotify': 'التذكيرات',
   'settings.reminders': 'تذكيرات اللعب',
   'settings.remindersHelp': 'تنبيه واحد إذا لم تلعب منذ بضعة أيام. يُجدول على هذا الجهاز — لا يُرسل شيء من خادم.',
@@ -388,6 +391,13 @@ export const ar: Record<keyof typeof en, string> = {
   'tc.blitz': 'خاطفة',
   'tc.rapid': 'سريعة',
   'tc.classic': 'كلاسيكية',
+  'react.open': 'أرسل تفاعلًا',
+  'react.0': 'مرحبًا',
+  'react.1': 'نقلة جميلة',
+  'react.2': 'رائع',
+  'react.3': 'عفوًا',
+  'react.4': 'مشتعل',
+  'react.5': 'مباراة جيدة',
   // ---- signing in ------------------------------------------------------
   'signIn.title': 'تسجيل الدخول',
   'signIn.tagline': 'رقم هاتف واحد. لا كلمة مرور لتنساها.',

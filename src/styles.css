@@ -501,6 +501,40 @@ a.pill { text-decoration: none; color: inherit; }
 .pcard-clock-low { color: #ff8a7a; border-color: #d9534f; }
 .pcard-clock-low.pcard-clock-running { animation: clock-pulse 1s ease-in-out infinite; }
 @keyframes clock-pulse { 50% { background: rgba(217, 83, 79, 0.25); } }
+
+/* Reactions: a bubble that rises off the sender's card and fades. */
+.pcard { position: relative; }
+.react-bubble {
+  position: absolute; top: -14px; left: 50%; z-index: 5;
+  font-size: 2rem; line-height: 1; pointer-events: none;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+  animation: react-rise 2.6s ease-out forwards;
+}
+@keyframes react-rise {
+  0% { transform: translate(-50%, 12px) scale(0.4); opacity: 0; }
+  12% { transform: translate(-50%, 0) scale(1.15); opacity: 1; }
+  20% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { transform: translate(-50%, -26px) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-bubble { animation: none; transform: translate(-50%, 0); }
+}
+.react-anchor { position: relative; display: inline-flex; }
+.react-tray {
+  /* Opens from the button's outer edge towards the middle of the screen, in
+     either reading direction, so it never runs off a phone. */
+  position: absolute; bottom: calc(100% + 8px); inset-inline-end: 0;
+  display: flex; gap: 2px; padding: 5px; border-radius: 999px; z-index: 20;
+  background: linear-gradient(180deg, var(--card-1), var(--card-2));
+  border: 1px solid var(--gold); box-shadow: var(--shadow);
+}
+.react-pick {
+  font-size: 1.45rem; line-height: 1; padding: 6px; border-radius: 50%;
+  background: none; border: none; cursor: pointer;
+  transition: transform 0.12s, background 0.12s;
+}
+.react-pick:hover, .react-pick:focus-visible { transform: scale(1.2); background: rgba(255, 255, 255, 0.08); }
 @media (prefers-reduced-motion: reduce) {
   .pcard-clock-low.pcard-clock-running { animation: none; }
 }
