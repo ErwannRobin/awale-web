@@ -24,7 +24,12 @@ of the oware / mancala family.
   lifting your finger plays nothing.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
 - **Undo** (vs AI) — restores your previous position.
-- **Challenges** — 12 fixed puzzle positions, every one machine-verified as
+- **Daily puzzle** — one position a day, the same for everybody, offline
+  included: the date alone picks it. Gentle on Monday and Tuesday, trickier
+  midweek, tough at the weekend. Its goal states how many moves the forced win
+  takes, and that number is proved exact. Solve it to keep a streak, and share
+  the result (tries, no spoilers). No hint and no undo — it is compared.
+- **Challenges** — 24 fixed puzzle positions, every one machine-verified as
   winnable. You play North and move first; win one to unlock the next.
 - **Tutorial** — a guided 13-step walkthrough with demo moves, a hands-on turn,
   and a short free-play finish.
@@ -134,7 +139,9 @@ npm test                   # engine, layout, navigation, AI, state, online and
                            # self-play suites
 npm run test:e2e           # Playwright, desktop + phone viewports (spawns the
                            # dev match server, and plays a game in two browsers)
-npm run verify:challenges  # seed conservation + solvability of the 12 puzzles
+npm run verify:challenges  # seed conservation + solvability of every puzzle,
+                           # and the exact length of every daily one
+npm run puzzles:generate   # mine new proved positions — see scripts/gen-puzzles.ts
 
 npm run sounds:generate    # regenerate the seed sample pack — needs an
                            # ELEVENLABS_API_KEY in .env, see the Sound section
@@ -181,12 +188,15 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/saveGame.ts` | The resumable in-progress game |
 | `src/lib/sound.ts` | Web Audio effects — recorded seed samples, synthesised fallback |
 | `src/lib/haptics.ts` | Vibration feedback |
-| `src/lib/challenges.ts` | Challenge data + goal-text keys |
+| `src/lib/challenges.ts` | Challenge data + goal-text keys, and the daily pool |
+| `src/lib/daily.ts` | Which puzzle a date gets, and the streak |
 | `src/i18n/` | English and French tables, typed so a gap is a build error |
-| `src/content/challenges.json` | The 12 fixed challenge positions |
+| `src/content/challenges.json` | The 24 fixed challenge positions |
+| `src/content/daily.json` | The daily pool: three tiers of proved positions |
 | `src/components/` | Every screen |
 | `server/` | The Cloudflare Worker — see [`server/README.md`](server/README.md) |
 | `scripts/verify-challenges.ts` | Proves each puzzle conserves seeds and is winnable |
+| `scripts/gen-puzzles.ts` | Mines and proves new puzzle positions |
 | `scripts/gen-sounds.ts` | Generates the seed sample pack (ElevenLabs) |
 | `public/sounds/v1/` | The sample pack itself — versioned, see below |
 

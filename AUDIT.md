@@ -243,6 +243,11 @@ one. Challenge positions 6 and 11 no longer verify as winnable under the
 corrected rule (`npm run verify:challenges`, inconclusive at 4M nodes); they need
 re-tuning or replacing.
 
+**Replaced (September 2026).** Positions 4, 6 and 11 were still unproved at 20M
+nodes each. Since challenges unlock in order, an unwinnable #4 would have locked
+every challenge after it. All three are now positions found by
+`scripts/gen-puzzles.ts` and proved exactly, with new goal text.
+
 ---
 
 ## 4. Native mobile — shipped
@@ -304,11 +309,10 @@ Short list now, and honest about why.
 
 1. ~~**Online multiplayer.**~~ Built — see §7. What is still missing from it is
    a ladder, and that is the part that genuinely needs accounts and a database.
-2. **Challenge 4 is unverified.** Its position leaves 36 seeds on the player's
-   row, so the solver cannot exhaust the tree within a sane budget. The verifier
-   reports it as *inconclusive* — a warning, not a failure — because a "no win
-   found" under a node cap is not proof of unwinnability (see the asymmetry note
-   in `scripts/challenges.ts`). The other eleven are proved solvable.
+2. ~~**Challenge 4 is unverified.**~~ Replaced, with 6 and 11 — see §3. All 24
+   challenges are now proved solvable. The verifier first asks for the
+   shortest forced win (`solveWithin`, 2 moves, then 3, …), which proves in
+   milliseconds what the open-ended search could not find in 400k nodes.
 3. **The rating is local and self-referential.** It measures you against four
    fixed AI levels on one device. That is what the Stats screen says.
 4. **The `LICENSE` is a guess.** MIT, copyright Erwann Robin. The README

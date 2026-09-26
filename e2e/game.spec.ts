@@ -246,9 +246,25 @@ test('challenges unlock in order', async ({ page }) => {
   await page.getByText('Challenges').first().click();
 
   const items = page.locator('.challenge-item');
-  await expect(items).toHaveCount(12);
+  await expect(items).toHaveCount(24);
   await expect(items.first()).toBeEnabled();
   await expect(items.nth(1)).toBeDisabled();
+});
+
+test('the daily puzzle opens on a board with a stated goal', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('DAILY PUZZLE').click();
+
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.brand')).toContainText(/DAILY #\d+/);
+  // The goal is a claim the verifier proves: a forced win in so many moves.
+  await expect(page.locator('.goal-card')).toContainText(/force the win in \d+ moves/);
+  // The player moves first, as North.
+  await expect(playablePits(page).first()).toBeVisible();
+
+  // Back returns to the menu, where the puzzle is still on offer.
+  await page.goBack();
+  await expect(page.getByText('DAILY PUZZLE')).toBeVisible();
 });
 
 /**

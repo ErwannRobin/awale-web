@@ -390,6 +390,8 @@ a.pill { text-decoration: none; color: inherit; }
   background: linear-gradient(180deg, #5a8c40, #34611f);
   border-color: rgba(255,255,255,0.18);
 }
+/* Done for today: still a way in, just no longer calling for attention. */
+.pill-done .pill-icon { color: var(--gold); }
 /* A button centres its own contents in every browser's default stylesheet,
    which pushed these icons into the middle of the pill. */
 .menu-actions .pill { justify-content: flex-start; }

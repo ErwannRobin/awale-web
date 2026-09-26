@@ -5,7 +5,7 @@
 // player payout, which differs from `engine.endGame`'s own rule. Keep the two
 // in step or the verifier will bless positions the game does not.
 import { isValid, distribute, WINNING_SCORE } from '../src/lib/engine.ts';
-import { AwaleAI } from '../src/lib/ai.ts';
+import { AwaleAI, value, delay2 } from '../src/lib/ai.ts';
 
 export interface Position {
   pits: number[];
@@ -71,7 +71,45 @@ export function aiReply(pits: number[], scores: number[], level: number): number
   return new AwaleAI(level).bestMove(pits, scores, AI_SIDE, () => 0.5);
 }
 
-export interface SolveOptions { maxPly?: number; nodeBudget?: number }
+/**
+ * The AI's reply at one fixed search depth — `AwaleAI.bestMove` with the
+ * self-tuning taken out.
+ *
+ * Levels 0 and 1 never leave their starting depth, so `aiReply` is exactly the
+ * opponent the player meets. Level 2 starts at 4 and may creep up to 6 when
+ * the device is fast, so a level-2 puzzle is only sound if it survives every
+ * depth in that range; the generator checks each one with this.
+ */
+export function aiReplyAtDepth(pits: number[], scores: number[], depth: number): number | null {
+  const moves = legalMoves(pits, AI_SIDE);
+  if (moves.length === 0) return null;
+  if (moves.length === 1) return moves[0];
+  let bestValue = -100;
+  const values = new Map<number, number>();
+  for (const j of moves) {
+    const v = value(pits, scores, j, 0, depth);
+    values.set(j, v);
+    bestValue = Math.max(bestValue, v);
+  }
+  let move = moves[moves.length - 1], bestDelay = -100;
+  for (const j of moves) if (values.get(j) === bestValue) {
+    const d = delay2(pits, scores, j, 0, depth);
+    if (d > bestDelay) { bestDelay = d; move = j; }
+  }
+  return move;
+}
+
+export interface SolveOptions {
+  maxPly?: number;
+  nodeBudget?: number;
+  /**
+   * Every reply the AI might make here, in place of the level's own one. The
+   * player only wins a line by beating ALL of them, so a level whose depth
+   * drifts during a game (level 2) can be checked against every depth it may
+   * reach, in any mix, in one search.
+   */
+  replies?: (pits: number[], scores: number[]) => (number | null)[];
+}
 
 export interface SolveReport {
   solvable: boolean;
@@ -104,11 +142,12 @@ export function solve(pos: Position, opts: SolveOptions = {}): SolveReport {
   // The AI is a pure function of the position, and a depth-5 search is by far
   // the most expensive thing here — cache it or the same reply is recomputed
   // once per transposition.
-  const replies = new Map<string, number | null>();
-  const cachedReply = (p: number[], s: number[]): number | null => {
+  const replies = new Map<string, (number | null)[]>();
+  const cachedReplies = (p: number[], s: number[]): (number | null)[] => {
     const k = key(p, s, AI_SIDE);
-    if (replies.has(k)) return replies.get(k)!;
-    const mv = aiReply(p, s, pos.level);
+    const hit = replies.get(k);
+    if (hit) return hit;
+    const mv = opts.replies ? [...new Set(opts.replies(p, s))] : [aiReply(p, s, pos.level)];
     replies.set(k, mv);
     return mv;
   };
@@ -139,12 +178,16 @@ export function solve(pos: Position, opts: SolveOptions = {}): SolveReport {
 
     let answer = false;
     if (turn === AI_SIDE) {
-      const reply = cachedReply(pits, scores);
-      if (reply == null) {
-        answer = decide(blockedPayout(pits, scores)) === 'human';
-      } else {
-        const st = step(pits, scores, turn, reply);
-        answer = st.over ? st.over === 'human' : humanWins(st.pits, st.scores, st.turn, ply + 1);
+      answer = true;
+      for (const reply of cachedReplies(pits, scores)) {
+        let won: boolean;
+        if (reply == null) {
+          won = decide(blockedPayout(pits, scores)) === 'human';
+        } else {
+          const st = step(pits, scores, turn, reply);
+          won = st.over ? st.over === 'human' : humanWins(st.pits, st.scores, st.turn, ply + 1);
+        }
+        if (!won) { answer = false; break; }
       }
     } else {
       for (const mv of legalMoves(pits, turn)) {
@@ -174,6 +217,116 @@ export function solve(pos: Position, opts: SolveOptions = {}): SolveReport {
     nodes,
     exhausted,
   };
+}
+
+export interface BoundedReport {
+  solvable: boolean;
+  /** First moves that force a win within the move limit. */
+  winningFirstMoves: number[];
+  firstMoves: number[];
+  nodes: number;
+  /** The node budget ran out, so a missing win is "not found", not "none". */
+  budgetHit: boolean;
+}
+
+/**
+ * Can the player force a win using at most `ownMoves` moves of their own?
+ *
+ * The question a "win in N" puzzle asks, and one `solve` cannot answer: its
+ * memo ignores how deep a position was reached, so a win proved from a
+ * shallow node would be reused at a deep one where the line no longer fits in
+ * the limit. Here every entry carries its depth:
+ *
+ *   - a win is stored with the plies it needs, and reused only where that
+ *     many plies are still left;
+ *   - a "no win" is stored with the plies it was proved for, and reused only
+ *     where no more are left than that.
+ *
+ * A "no win" that leaned on a repetition cut is not stored at all — whether a
+ * line repeats depends on the path that reached it, so the verdict is only
+ * true of that path. With that, and with the budget untouched, both verdicts
+ * are exact: `solvable` false means no win exists within the limit.
+ */
+export function solveWithin(pos: Position, ownMoves: number, opts: SolveOptions = {}): BoundedReport {
+  const nodeBudget = opts.nodeBudget ?? 2_000_000;
+  const memoWin = new Map<string, number>();
+  const memoNoWin = new Map<string, number>();
+  const onPath = new Set<string>();
+  let nodes = 0;
+  let budgetHit = false;
+  let cuts = 0;
+
+  const key = (p: number[], s: number[], t: number) => `${p.join(',')}|${s[0]},${s[1]}|${t}`;
+  const replyCache = new Map<string, (number | null)[]>();
+  const repliesAt = (p: number[], s: number[]): (number | null)[] => {
+    const k = key(p, s, AI_SIDE);
+    const hit = replyCache.get(k);
+    if (hit) return hit;
+    const mv = opts.replies ? [...new Set(opts.replies(p, s))] : [aiReply(p, s, pos.level)];
+    replyCache.set(k, mv);
+    return mv;
+  };
+
+  /** Plies needed to force the win from here (≤ `left`), or -1. */
+  function win(pits: number[], scores: number[], turn: 0 | 1, left: number): number {
+    if (left <= 0) return -1;
+    if (nodes++ > nodeBudget) { budgetHit = true; return -1; }
+    const k = key(pits, scores, turn);
+    const w = memoWin.get(k);
+    if (w !== undefined && w <= left) return w;
+    const lost = memoNoWin.get(k);
+    if (lost !== undefined && lost >= left) return -1;
+    if (onPath.has(k)) { cuts++; return -1; }
+    onPath.add(k);
+    const cutsBefore = cuts;
+
+    // One ply from here: the move itself, then whatever the rest needs.
+    const after = (move: number): number => {
+      const st = step(pits, scores, turn, move);
+      if (st.over) return st.over === 'human' ? 1 : -1;
+      const rest = win(st.pits, st.scores, st.turn, left - 1);
+      return rest < 0 ? -1 : rest + 1;
+    };
+
+    let result = -1;
+    if (turn === AI_SIDE) {
+      let worst = 0;
+      for (const reply of repliesAt(pits, scores)) {
+        const d = reply == null
+          ? (decide(blockedPayout(pits, scores)) === 'human' ? 0 : -1)
+          : after(reply);
+        if (d < 0) { worst = -1; break; }
+        worst = Math.max(worst, d);
+      }
+      result = worst;
+    } else {
+      for (const mv of legalMoves(pits, turn)) {
+        const d = after(mv);
+        if (d >= 0) { result = d; break; }
+      }
+    }
+
+    onPath.delete(k);
+    if (result >= 0) {
+      memoWin.set(k, Math.min(memoWin.get(k) ?? Infinity, result));
+    } else if (!budgetHit && cuts === cutsBefore) {
+      memoNoWin.set(k, Math.max(memoNoWin.get(k) ?? 0, left));
+    }
+    return result;
+  }
+
+  // The first move is the first of `ownMoves`; the player moves on every
+  // other ply after it, so the whole line is at most 2·ownMoves − 1 plies.
+  const firstMoves = legalMoves(pos.pits, HUMAN);
+  const winningFirstMoves: number[] = [];
+  for (const mv of firstMoves) {
+    const st = step(pos.pits, pos.scores, HUMAN, mv);
+    const won = st.over
+      ? st.over === 'human'
+      : win(st.pits, st.scores, st.turn, 2 * ownMoves - 2) >= 0;
+    if (won) winningFirstMoves.push(mv);
+  }
+  return { solvable: winningFirstMoves.length > 0, winningFirstMoves, firstMoves, nodes, budgetHit };
 }
 
 export const seedTotal = (pos: Position): number =>

@@ -37,6 +37,18 @@ interface Props {
   onExit: () => void;
   /** Challenges only: open the next one, when this is not the last. */
   onNext?: () => void;
+  /** Puzzles only: the title a solved puzzle gets, instead of "Challenge complete!". */
+  winText?: string;
+  /** Puzzles only: offered as the main action once the puzzle is solved. */
+  onShare?: () => void;
+  /** The label of the way out on the game-over card, when it is not the default. */
+  exitLabel?: string;
+  /**
+   * Hint and Undo. On by default against the AI; the daily puzzle turns them
+   * off, because its result is shared and compared, and a solve that took an
+   * engine's hint or three undos is not the same solve.
+   */
+  assists?: boolean;
   onLearn: () => void;
   onSettings: () => void;
   onToast: (msg: string) => void;
@@ -68,7 +80,8 @@ function PlayerCard({
 
 export default function Game({
   mode, level, setup, goal, title, oppName: oppOverride, overExtra, resume, persist, rated,
-  online, onExit, onNext, onLearn, onSettings, onToast, onStatsChange,
+  online, onExit, onNext, winText, onShare, exitLabel, assists = true,
+  onLearn, onSettings, onToast, onStatsChange,
 }: Props) {
   const t = useT();
   const isOnline = mode === 'online';
@@ -235,7 +248,7 @@ export default function Game({
   const humanWon = state.winner === viewpoint;
   const winnerText = (): string => {
     if (state.winner === 'draw') return t('game.draw');
-    if (isChallenge) return humanWon ? t('game.challengeDone') : t('game.challengeFailed');
+    if (isChallenge) return humanWon ? (winText ?? t('game.challengeDone')) : t('game.challengeFailed');
     if (mode === 'local') {
       return t('game.sideWins', { name: t(state.winner === viewpoint ? 'game.us' : 'game.them') });
     }
@@ -398,12 +411,12 @@ export default function Game({
               ↻ {isChallenge ? t('game.restart') : t('game.newGame')}
             </button>
           )}
-          {mode === 'ai' && (
+          {mode === 'ai' && assists && (
             <button className="ctrl" onClick={() => void hint()} disabled={!interactive}>
               💡 {t('game.hint')}
             </button>
           )}
-          {mode === 'ai' && (
+          {mode === 'ai' && assists && (
             <button className="ctrl" onClick={() => { playTap(); undo(); }} disabled={!state.canUndo}>
               ↩ {t('game.undo')}
             </button>
@@ -456,6 +469,12 @@ export default function Game({
                   <span className="pill-title">{t('game.nextChallenge')}</span>
                 </span>
               </button>
+            ) : isChallenge && humanWon && onShare ? (
+              <button className="pill pill-green" onClick={() => { playTap(); hapticTap(); onShare(); }}>
+                <span className="pill-body">
+                  <span className="pill-title">{t('daily.share')}</span>
+                </span>
+              </button>
             ) : (
               <button className="pill pill-green" onClick={restart}>
                 <span className="pill-body">
@@ -472,7 +491,9 @@ export default function Game({
             ) : (
               <button className="pill" onClick={onExit}>
                 <span className="pill-body">
-                  <span className="pill-title">{isChallenge ? t('game.toChallenges') : t('game.backToMenu')}</span>
+                  <span className="pill-title">
+                    {exitLabel ?? (isChallenge ? t('game.toChallenges') : t('game.backToMenu'))}
+                  </span>
                 </span>
               </button>
             )}
