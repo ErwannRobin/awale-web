@@ -14,6 +14,7 @@ import { reportGame } from '../lib/worldStats.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
 import { useClocks } from '../lib/useClocks.ts';
+import { useWinProbability } from '../lib/useWinProbability.ts';
 import { REACTIONS } from '../lib/protocol.ts';
 import type { Seat } from '../lib/rules.ts';
 import { formatClock } from '../lib/format.ts';
@@ -70,6 +71,24 @@ const TIP_KEYS: StringKey[] = ['tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip
 
 /** Under this, a clock turns red: the moment a player starts counting. */
 const LOW_TIME_MS = 20_000;
+
+/**
+ * Each side's chance to win, the near side on the left like its card. Pinned
+ * left to right for the same reason as the play area: on an Arabic page the
+ * left number must still belong to the left card.
+ */
+function WinBar({ p, label }: { p: number; label: string }) {
+  const near = Math.round(p * 100);
+  return (
+    <div className="winbar" dir="ltr" role="img" aria-label={label}>
+      <span className="winbar-pct">{near}%</span>
+      <div className="winbar-track">
+        <div className="winbar-fill" style={{ width: `${p * 100}%` }} />
+      </div>
+      <span className="winbar-pct">{100 - near}%</span>
+    </div>
+  );
+}
 
 /** How long a reaction bubble stays up. */
 const BUBBLE_MS = 2_600;
@@ -412,6 +431,14 @@ export default function Game({
             : null;
   const audience = online?.view.audience ?? 0;
 
+  // The bar: against the AI and pass-and-play, and for spectators. Never for
+  // the players of an online game — an engine's opinion mid-game is help — and
+  // never in a puzzle, where it would be the answer.
+  const winBarOn = useSettings().winBar
+    && ((mode === 'ai' && !isChallenge) || mode === 'local' || spectating);
+  const southWins = useWinProbability(state.pits, state.scores, state.turn, state.phase, state.winner, winBarOn);
+  const nearWins = southWins === null ? null : viewpoint === 0 ? southWins : 1 - southWins;
+
   return (
     <div className="screen game">
       <header className="game-top">
@@ -441,7 +468,7 @@ export default function Game({
           screen and flank it on a phone, where vertical space is scarce. */}
       {/* Left to right even on an Arabic page: your card sits beside your own
           row of pits, and mirroring the grid would put it on the far side. */}
-      <div className="play-area" dir="ltr">
+      <div className={`play-area ${nearWins !== null ? 'play-area-bar' : ''}`} dir="ltr">
         {/* The grid is pinned left to right; its words are not. `auto` lets an
             Arabic line run right to left, full stop and all. */}
         <div className="turn-center" dir="auto">
@@ -485,6 +512,14 @@ export default function Game({
           clockLabel={clocks ? t('a11y.clock', { who: oppName, time: formatClock(clocks.left[opp]) }) : undefined}
           reaction={bubbleFor(opp)}
         />
+        {nearWins !== null && (
+          <WinBar
+            p={nearWins}
+            label={t('winbar.label', {
+              you: youName, p: Math.round(nearWins * 100), them: oppName, q: 100 - Math.round(nearWins * 100),
+            })}
+          />
+        )}
       </div>
 
       <div className="game-bottom">

@@ -23,6 +23,14 @@ of the oware / mancala family.
   not yours to play. Holding and sliding walks the preview from pit to pit;
   lifting your finger plays nothing.
 - **Hint** — asks the strongest engine for the best move and pulses that pit.
+- **Win probability** — a bar under the board with each side's chance to win,
+  like a chess site's evaluation bar. The engine looks 9 plies ahead, and the
+  score it expects is turned into odds by a curve *fitted to outcomes*:
+  123,675 positions from about 1,450 self-play games between players of every
+  strength (`npm run winprob:calibrate`). It is calibrated — of the positions
+  it calls 75%, 74.5% were won. Shown against the AI, in pass-and-play and to
+  spectators; never to the players of an online game (that would be help), and
+  never in a puzzle (that would be the answer). A setting turns it off.
 - **Undo** (vs AI) — restores your previous position.
 - **Daily puzzle** — one position a day, the same for everybody, offline
   included: the date alone picks it. Gentle on Monday and Tuesday, trickier
@@ -195,6 +203,8 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `src/lib/worldStats.ts` | Detect a country, count a game, read the world table |
 | `src/lib/saveGame.ts` | The resumable in-progress game |
 | `src/lib/sound.ts` | Web Audio effects — recorded seed samples, synthesised fallback |
+| `src/lib/winProbability.ts` | Evaluation → odds: the fitted curve behind the win bar |
+| `src/lib/useWinProbability.ts` | The bar's number, from a worker of its own |
 | `src/lib/haptics.ts` | Vibration feedback |
 | `src/lib/challenges.ts` | Challenge data + goal-text keys, and the daily pool |
 | `src/lib/daily.ts` | Which puzzle a date gets, and the streak |
@@ -205,6 +215,7 @@ CI runs all of these on every push (`.github/workflows/ci.yml`).
 | `server/` | The Cloudflare Worker — see [`server/README.md`](server/README.md) |
 | `scripts/verify-challenges.ts` | Proves each puzzle conserves seeds and is winnable |
 | `scripts/gen-puzzles.ts` | Mines and proves new puzzle positions |
+| `scripts/calibrate-winprob.ts` | Fits the win bar's curve to self-play outcomes |
 | `scripts/gen-sounds.ts` | Generates the seed sample pack (ElevenLabs) |
 | `public/sounds/v1/` | The sample pack itself — versioned, see below |
 

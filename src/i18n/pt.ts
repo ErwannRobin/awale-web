@@ -94,6 +94,7 @@ export const pt: Record<keyof typeof en, string> = {
   'a11y.opponent': 'Adversário',
   'a11y.clock': 'Relógio de {who}: {time}',
   'a11y.reacted': '{who} reagiu: {name}',
+  'winbar.label': 'Probabilidade de vitória: {you} {p}%, {them} {q}%',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Captura: deixe a última semente numa casa do adversário que fique com 2 ou 3 sementes.',
@@ -228,6 +229,8 @@ export const pt: Record<keyof typeof en, string> = {
   'settings.tipsHelp': 'A linha de ajuda sob o indicador de vez e o cartão de dicas sob o tabuleiro.',
   'settings.leftHanded': 'Modo canhoto',
   'settings.leftHandedHelp': 'Passa o seu celeiro para o outro lado. O sentido da sementeira nunca muda.',
+  'settings.winBar': 'Probabilidade de vitória',
+  'settings.winBarHelp': 'Uma barra sob o tabuleiro com as hipóteses de cada lado, segundo o cálculo do motor. Nunca aparece aos jogadores de uma partida online, nem nos puzzles.',
   'settings.reactions': 'Reações emoji',
   'settings.reactionsHelp': 'Emoji rápidos nas partidas online — de uma lista fixa, por isso não há nada a moderar. Desligado, não vê nem envia nenhuma.',
   'settings.sectionNotify': 'Lembretes',

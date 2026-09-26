@@ -92,6 +92,7 @@ export const fr: Record<keyof typeof en, string> = {
   'a11y.opponent': 'L’adversaire',
   'a11y.clock': 'Pendule de {who} : {time}',
   'a11y.reacted': '{who} a réagi : {name}',
+  'winbar.label': 'Probabilité de gain : {you} {p} %, {them} {q} %',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture : votre dernière graine doit tomber dans un trou adverse qui contient alors 2 ou 3 graines.',
@@ -226,6 +227,8 @@ export const fr: Record<keyof typeof en, string> = {
   'settings.tipsHelp': 'La ligne d’aide sous la pastille de tour et la carte de conseil sous le plateau.',
   'settings.leftHanded': 'Disposition gaucher',
   'settings.leftHandedHelp': 'Déplace votre grenier de l’autre côté. Le sens du semis ne change jamais.',
+  'settings.winBar': 'Probabilité de gain',
+  'settings.winBarHelp': 'Une barre sous le plateau avec les chances de chaque camp, d’après le calcul du moteur. Jamais montrée aux joueurs d’une partie en ligne, ni dans les puzzles.',
   'settings.reactions': 'Réactions emoji',
   'settings.reactionsHelp': 'Des emoji rapides en ligne — une liste fixe, donc rien à modérer. Désactivé, vous ne voyez ni n’envoyez rien.',
   'settings.sectionNotify': 'Rappels',

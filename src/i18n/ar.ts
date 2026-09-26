@@ -95,6 +95,7 @@ export const ar: Record<keyof typeof en, string> = {
   'a11y.opponent': 'الخصم',
   'a11y.clock': 'ساعة {who}: {time}',
   'a11y.reacted': 'تفاعل {who}: {name}',
+  'winbar.label': 'احتمال الفوز: {you} {p}٪، {them} {q}٪',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'الأسر: اجعل بذرتك الأخيرة تقع في حفرة للخصم فتصبح فيها 2 أو 3 بذور.',
@@ -229,6 +230,8 @@ export const ar: Record<keyof typeof en, string> = {
   'settings.tipsHelp': 'سطر المساعدة تحت مؤشر الدور وبطاقة النصائح تحت اللوحة.',
   'settings.leftHanded': 'وضع الأعسر',
   'settings.leftHandedHelp': 'ينقل مخزنك إلى الجهة الأخرى. اتجاه البذر لا يتغير أبدًا.',
+  'settings.winBar': 'احتمال الفوز',
+  'settings.winBarHelp': 'شريط تحت اللوحة يبيّن فرصة كل طرف في الفوز، بحسب حساب المحرك. لا يظهر أبدًا للاعبي مباراة عبر الإنترنت، ولا في الألغاز.',
   'settings.reactions': 'تفاعلات الإيموجي',
   'settings.reactionsHelp': 'إيموجي سريعة في المباريات عبر الإنترنت — من قائمة ثابتة، فلا شيء يحتاج إلى إشراف. عند الإيقاف لا ترى ولا ترسل شيئًا.',
   'settings.sectionNotify': 'التذكيرات',

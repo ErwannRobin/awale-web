@@ -99,6 +99,31 @@ test('an Arabic page reads right to left, and the board still sows counterclockw
   expect(sum).toBeLessThan(0);
 });
 
+test('the win bar shows against the AI, and never in a puzzle', async ({ page }) => {
+  await useInstantSpeed(page);
+  await page.goto('/');
+  await page.getByText('PLAY VS AI').click();
+  await page.getByText('Novice').first().click();
+
+  const bar = page.locator('.winbar');
+  await expect(bar).toBeVisible({ timeout: 15_000 });
+  const [near, far] = await bar.locator('.winbar-pct').allInnerTexts();
+  expect(parseInt(near, 10) + parseInt(far, 10)).toBe(100);
+  await expect(bar).toHaveAttribute('aria-label', /Win probability: You \d+%, Novice \d+%/);
+
+  // A puzzle's bar would be its answer.
+  await page.goBack();
+  await page.getByText('Challenges').first().click();
+  await page.locator('.challenge-item').first().click();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.winbar')).toHaveCount(0);
+  await page.goBack();
+  await page.goBack();
+  await page.getByText('DAILY PUZZLE').click();
+  await expect(page.locator('.board')).toBeVisible();
+  await expect(page.locator('.winbar')).toHaveCount(0);
+});
+
 test('a full game against the AI finishes and is recorded', async ({ page }) => {
   await useInstantSpeed(page);
   await page.goto('/');

@@ -181,6 +181,9 @@ export default function Settings({ onBack, onToast, onDataReset }: Props) {
           <Row label={t('settings.leftHanded')} help={t('settings.leftHandedHelp')}>
             <Toggle on={s.leftHanded} label={t('settings.leftHanded')} onChange={v => set('leftHanded', v)} />
           </Row>
+          <Row label={t('settings.winBar')} help={t('settings.winBarHelp')}>
+            <Toggle on={s.winBar} label={t('settings.winBar')} onChange={v => set('winBar', v)} />
+          </Row>
           <Row label={t('settings.reactions')} help={t('settings.reactionsHelp')}>
             <Toggle on={s.reactions} label={t('settings.reactions')} onChange={v => set('reactions', v)} />
           </Row>

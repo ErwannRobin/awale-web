@@ -51,6 +51,12 @@ export interface Settings {
   timeControl: TimeControlId;
   /** Emoji reactions in online games: shown, and offered. Off hides both. */
   reactions: boolean;
+  /**
+   * The win-probability bar under the board. Only ever where it cannot help
+   * anyone cheat: against the AI, pass-and-play, and watching — never to the
+   * players of an online game, and never in a puzzle.
+   */
+  winBar: boolean;
 }
 
 /** Animation tempo multiplier. `instant` skips the sowing animation entirely. */
@@ -95,6 +101,7 @@ export function defaultSettings(): Settings {
     shareStats: true,
     timeControl: 'rapid',
     reactions: true,
+    winBar: true,
   };
 }
 
@@ -122,6 +129,7 @@ function coerce(raw: unknown): Settings {
     shareStats: bool(o.shareStats, d.shareStats),
     timeControl: isTimeControl(o.timeControl) ? o.timeControl : d.timeControl,
     reactions: bool(o.reactions, d.reactions),
+    winBar: bool(o.winBar, d.winBar),
   };
 }
 

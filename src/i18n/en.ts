@@ -91,6 +91,7 @@ export const en = {
   'a11y.opponent': 'Opponent',
   'a11y.clock': "{who}'s clock: {time}",
   'a11y.reacted': '{who} reacted: {name}',
+  'winbar.label': 'Win probability: {you} {p}%, {them} {q}%',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture: land your last seed in an opponent pit that then holds 2 or 3 seeds.',
@@ -227,6 +228,8 @@ export const en = {
   'settings.tipsHelp': 'The helper line under the turn pill and the tip card below the board.',
   'settings.leftHanded': 'Left-handed layout',
   'settings.leftHandedHelp': 'Moves your store to the other side. The sowing direction never changes.',
+  'settings.winBar': 'Win probability',
+  'settings.winBarHelp': "A bar under the board with each side's chance to win, from the engine's look ahead. Never shown to the players of an online game, nor in puzzles.",
   'settings.reactions': 'Emoji reactions',
   'settings.reactionsHelp': 'Quick emoji in online games — from a fixed set, so there is nothing to moderate. Off hides theirs and yours.',
   'settings.sectionNotify': 'Reminders',

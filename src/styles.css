@@ -471,6 +471,15 @@ a.pill { text-decoration: none; color: inherit; }
 .play-area .pcard-you { grid-area: you; }
 .play-area .pcard-opp { grid-area: opp; }
 .play-area .board-wrap { grid-area: board; min-width: 0; }
+/* The win bar gets a row of its own under the board, only when it is shown —
+   an empty row would still cost a gap. */
+.play-area-bar {
+  grid-template-areas:
+    "you  turn  opp"
+    "board board board"
+    "bar  bar  bar";
+}
+.play-area .winbar { grid-area: bar; margin-top: 0; }
 .pcard {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; border-radius: 18px;
@@ -520,6 +529,24 @@ a.pill { text-decoration: none; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .react-bubble { animation: none; transform: translate(-50%, 0); }
 }
+/* The win-probability bar: two numbers and the split between them. */
+.winbar {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; max-width: 520px; margin: 10px auto 0;
+  font-variant-numeric: tabular-nums; font-size: 0.85rem; font-weight: 700;
+}
+.winbar-pct { min-width: 3ch; text-align: center; color: var(--ivory-70); }
+.winbar-track {
+  flex: 1; height: 10px; border-radius: 999px; overflow: hidden;
+  background: rgba(0, 0, 0, 0.45); border: 1px solid var(--panel-line);
+}
+.winbar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-soft), var(--gold));
+  transition: width 0.6s ease;
+}
+@media (prefers-reduced-motion: reduce) { .winbar-fill { transition: none; } }
+
 .react-anchor { position: relative; display: inline-flex; }
 /* How many are watching: small, out of the way, only there when someone is. */
 .audience-chip {
@@ -904,6 +931,12 @@ a.pill { text-decoration: none; color: inherit; }
       "you  board opp";
     gap: 8px;
     margin-top: 10px;
+  }
+  .play-area-bar {
+    grid-template-areas:
+      "turn turn turn"
+      "you  board opp"
+      "bar  bar  bar";
   }
   .pcard {
     flex-direction: column; gap: 4px;

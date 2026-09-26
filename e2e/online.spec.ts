@@ -117,6 +117,10 @@ test('a timed game shows both clocks, and the room keeps the creator\'s', async 
     // Three minutes each, give or take the second the page took to load.
     await expect(guest.locator('.pcard-clock').first()).toHaveText(/^(3:00|2:5\d)$/);
 
+    // An engine's opinion mid-game would be help: players never get the bar.
+    await expect(host.locator('.winbar')).toHaveCount(0);
+    await expect(guest.locator('.winbar')).toHaveCount(0);
+
     // One clock runs: the one belonging to whoever is to move.
     const first = await mover(host, guest);
     await expect(first.locator('.pcard-you .pcard-clock-running')).toHaveCount(1);
@@ -257,6 +261,8 @@ test('a full room offers to be watched, and the spectator follows the game', asy
     await expect(fan.locator('.brand')).toContainText('LIVE');
     await expect(fan.locator('.pcard-you')).toContainText('Ama');
     await expect(fan.locator('.pcard-opp')).toContainText('Kofi');
+    // A spectator gets the bar the players do not.
+    await expect(fan.locator('.winbar')).toBeVisible({ timeout: 15_000 });
     // Nothing to play, resign or react with.
     await expect(fan.locator('.pit-legal')).toHaveCount(0);
     await expect(fan.getByRole('button', { name: /Resign/ })).toHaveCount(0);
