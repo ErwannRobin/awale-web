@@ -437,6 +437,14 @@ must have `awale-web.vercel.app` assigned to production. A production branch tha
 was set to a feature branch, then deleted, leaves every later push deploying as a
 *preview* — green ticks on GitHub, an unchanged site.
 
+## Promo film
+
+[`promo/index.html`](promo/index.html) is a 30-second marketing film for the
+game, drawn live in the page from the game's own rules, colours and sounds, with
+an export panel: MP4 or WebM, 16:9, 9:16, 1:1 or 4:5, 480p to 4K, 24 to 60 fps,
+English or French. Open the file in a browser; no build step. It is not part of
+the app build. See [`promo/README.md`](promo/README.md).
+
 ## Native mobile app
 
 The game logic is platform-free: `src/lib/` has no DOM dependencies except

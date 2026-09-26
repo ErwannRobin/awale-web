@@ -41,6 +41,20 @@ export default tseslint.config(
     },
   },
 
+  // The promo film page: classic browser scripts with no build step, so it
+  // also runs opened straight from disk. assets/ is generated data.
+  {
+    files: ['promo/**/*.js'],
+    ignores: ['promo/assets/**'],
+    extends: [js.configs.recommended],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: globals.browser },
+  },
+  {
+    files: ['promo/tools/**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
   // The service worker is plain JS in a worker global scope.
   {
     files: ['public/sw.js'],
