@@ -108,7 +108,7 @@ export class Room implements DurableObject {
       const token = claims ? `u:${claims.sub}` : msg.token;
       const name = claims?.name || msg.name;
 
-      const result = join(room, token, name, now, msg.country);
+      const result = join(room, token, name, now, msg.country, msg.tc);
       if (result.error) {
         this.sendTo(ws, { t: 'err', code: result.error });
         ws.close(1000, result.error);

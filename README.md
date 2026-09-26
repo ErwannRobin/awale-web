@@ -310,6 +310,25 @@ The rules live in [`src/lib/rules.ts`](src/lib/rules.ts) and
 by the browser, the Worker and the tests alike, so the two sides cannot drift
 apart on what a move means.
 
+### The clock
+
+Four time controls: **untimed**, **Blitz 3+2**, **Rapid 5+5** and **Classic
+10+10** (minutes for the game, plus seconds added back after each move). The
+choice is remembered, and it travels:
+
+- **Invite a friend** puts it in the link (`?join=CODE&tc=blitz`). Whoever
+  reaches the room first sets its clock, so with the control in the link it is
+  the same clock either way round. A player who joins by typing the code plays
+  at the room's clock, whatever they picked.
+- **Quick match** queues per control: a player who asked for three minutes is
+  never paired with one who asked for ten.
+
+The server's clock is the only one that counts. The client draws a countdown
+from the last numbers it was sent; a flag falls on the server — on a move that
+arrives too late, or on an alarm set for the exact moment the time runs out.
+Running out of time loses the game. The clock keeps running while a player is
+disconnected, like one across a real table.
+
 ### The things that go wrong
 
 - **A dropped connection** reconnects with backoff and walks back into its own
@@ -322,7 +341,7 @@ apart on what a move means.
 
 ### What it is not
 
-No ratings, no stored history, no clock, and no ladder. A room code is still the
+No stored history. A room code is still the
 whole authorisation model for a room: anyone holding it can take a free seat,
 which is right for a game shared by link and is not more than that. The
 trade-offs are written down in [`server/README.md`](server/README.md).

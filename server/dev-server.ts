@@ -16,8 +16,8 @@ import {
   type Effect, type RoomState,
 } from '../src/lib/roomCore.ts';
 import {
-  PROTOCOL_VERSION, makeRoomCode, normaliseRoomCode, parseClientMsg,
-  type ServerMsg,
+  PROTOCOL_VERSION, isTimeControl, makeRoomCode, normaliseRoomCode, parseClientMsg,
+  type ServerMsg, type TimeControlId,
 } from '../src/lib/protocol.ts';
 import {
   addCountryGame, addHeadToHead, addPvpMatch, rankCountries, rankNations, rivalryKey,
@@ -28,7 +28,9 @@ import type { Seat } from '../src/lib/rules.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WAIT_TTL_MS = 120_000;
-const SWEEP_EVERY_MS = 5_000;
+// Often enough that a flag falls within a second of the clock reaching zero —
+// the Durable Object gets an alarm set for the exact moment instead.
+const SWEEP_EVERY_MS = 1_000;
 
 interface Conn {
   ws: WebSocket;
@@ -77,7 +79,8 @@ function countOnlineGame(room: RoomState): void {
 
 const rooms = new Map<string, RoomState>();
 const conns = new Map<string, Set<Conn>>();
-let waiting: { code: string; at: number } | null = null;
+/** One waiting code per time control, like the Worker's one lobby per control. */
+const waiting = new Map<TimeControlId, { code: string; at: number }>();
 
 const roomOf = (code: string): RoomState => {
   const existing = rooms.get(code);
@@ -180,17 +183,20 @@ function http(request: IncomingMessage, response: ServerResponse): void {
   }
   if (url.pathname === '/queue' && request.method === 'POST') {
     const now = Date.now();
+    const asked = url.searchParams.get('tc');
+    const tc: TimeControlId = isTimeControl(asked) ? asked : 'none';
     let body: { code: string; role: 'created' | 'joined' };
     // A waiting code is only worth handing out if somebody is still sitting in
     // it. See the same check, against the Room object, in `src/index.ts`.
-    const fresh = waiting && now - waiting.at < WAIT_TTL_MS ? waiting : null;
+    const held = waiting.get(tc);
+    const fresh = held && now - held.at < WAIT_TTL_MS ? held : null;
     const room = fresh ? rooms.get(fresh.code) : undefined;
     if (fresh && room && isJoinable(room)) {
       body = { code: fresh.code, role: 'joined' };
-      waiting = null;
+      waiting.delete(tc);
     } else {
       const code = makeRoomCode();
-      waiting = { code, at: now };
+      waiting.set(tc, { code, at: now });
       body = { code, role: 'created' };
     }
     response.writeHead(200, { ...cors, 'content-type': 'application/json' })
@@ -253,7 +259,7 @@ function attach(code: string, ws: WebSocket): void {
         ws.close();
         return;
       }
-      const result = join(room, msg.token, msg.name, now, msg.country);
+      const result = join(room, msg.token, msg.name, now, msg.country, msg.tc);
       if (result.error) {
         send(ws, { t: 'err', code: result.error });
         ws.close();

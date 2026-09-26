@@ -5,6 +5,7 @@
 // is untouched. That is what keeps `npm run build` honest in CI, where there is
 // no server to point at.
 import { getStore } from './storage.ts';
+import { isTimeControl, type TimeControlId } from './protocol.ts';
 
 const TOKEN_KEY = 'awale.online.token.v1';
 
@@ -47,17 +48,25 @@ export function roomSocketUrl(code: string): string {
   return `${ws}/room/${encodeURIComponent(code)}`;
 }
 
-export function queueUrl(): string {
+/** Quick match, in the queue for one time control. */
+export function queueUrl(control: TimeControlId = 'none'): string {
   const base = onlineBaseUrl();
-  return `${base.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')}/queue`;
+  const tc = control === 'none' ? '' : `?tc=${control}`;
+  return `${base.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')}/queue${tc}`;
 }
 
-/** The link a player sends to a friend. Points at this build, not the server. */
-export function shareLink(code: string): string {
+/**
+ * The link a player sends to a friend. Points at this build, not the server.
+ *
+ * It carries the time control too: whichever of the two players reaches the
+ * room first sets its clock, and with the control in the link that is the
+ * same clock either way round.
+ */
+export function shareLink(code: string, control: TimeControlId = 'none'): string {
   if (typeof location === 'undefined') return code;
   const url = new URL(location.href);
   url.hash = '';
-  url.search = `?join=${encodeURIComponent(code)}`;
+  url.search = `?join=${encodeURIComponent(code)}${control === 'none' ? '' : `&tc=${control}`}`;
   return url.toString();
 }
 
@@ -71,6 +80,17 @@ export function readJoinCode(): string | null {
   }
 }
 
+/** The time control an invite link asked for, if it named one. */
+export function readJoinControl(): TimeControlId | undefined {
+  if (typeof location === 'undefined') return undefined;
+  try {
+    const tc = new URL(location.href).searchParams.get('tc');
+    return isTimeControl(tc) ? tc : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Drops `?join=` once used, so a refresh does not rejoin a finished game. */
 export function clearJoinCode(): void {
   if (typeof history === 'undefined' || typeof location === 'undefined') return;
@@ -78,6 +98,7 @@ export function clearJoinCode(): void {
     const url = new URL(location.href);
     if (!url.searchParams.has('join')) return;
     url.searchParams.delete('join');
+    url.searchParams.delete('tc');
     // Keep whatever state the entry holds: this rewrites the address only, and
     // the screen stack (lib/navigation.ts) lives in that state.
     history.replaceState(history.state, '', url.toString());

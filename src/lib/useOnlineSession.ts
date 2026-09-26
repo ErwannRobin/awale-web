@@ -7,7 +7,7 @@
 // moves reach it from there.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OnlineSession, type OnlineView } from './online.ts';
-import type { OverReason, RoomSnapshot } from './protocol.ts';
+import type { OverReason, RoomSnapshot, TimeControlId } from './protocol.ts';
 import type { Seat, Winner } from './rules.ts';
 import type { TransportFactory } from './transport.ts';
 import { webSocketTransport } from './wsTransport.ts';
@@ -38,6 +38,8 @@ export interface OnlineOptions {
   auth?: string;
   /** Where the player says they play from. */
   country?: string;
+  /** The clock this player asked for — see `SessionOptions.control`. */
+  control?: TimeControlId;
   /** Injectable for tests; defaults to a real WebSocket. */
   factory?: TransportFactory;
 }
@@ -49,10 +51,11 @@ const startingView: OnlineView = {
   error: null,
   rematchOffered: false,
   rematchSent: false,
+  clockAt: 0,
 };
 
 export function useOnlineSession(
-  { room, name, token, auth, country, factory }: OnlineOptions,
+  { room, name, token, auth, country, control, factory }: OnlineOptions,
 ): OnlineHandle {
   const [view, setView] = useState<OnlineView>(startingView);
   const sessionRef = useRef<OnlineSession | null>(null);
@@ -73,6 +76,7 @@ export function useOnlineSession(
       auth,
       name: nameRef.current,
       country: countryRef.current,
+      control,
       callbacks: {
         change: next => setView(next),
 
@@ -101,7 +105,7 @@ export function useOnlineSession(
           // A game that ended on the board has already ended locally, at the
           // end of its own animation. Only the endings the board cannot see
           // need telling.
-          if (reason === 'resign' || reason === 'abandoned') {
+          if (reason === 'resign' || reason === 'abandoned' || reason === 'timeout') {
             bridgeRef.current?.endWith(winner);
           }
         },
@@ -115,7 +119,7 @@ export function useOnlineSession(
       bridgeRef.current = null;
       setView(startingView);
     };
-  }, [room, token, auth, factory]);
+  }, [room, token, auth, control, factory]);
 
   const remote = useMemo(() => ({
     sendMove: (pit: number) => sessionRef.current?.sendMove(pit),

@@ -13,9 +13,13 @@ import { countryFlag, UNKNOWN_COUNTRY } from '../lib/country.ts';
 import { rivalryKey, type HeadToHead } from '../lib/countryStats.ts';
 import { fetchRivalry } from '../lib/worldStats.ts';
 import { HeadToHeadLine } from './Rivalry.tsx';
+import { timeControlLabel } from './timeControl.ts';
+import type { TimeControlId } from '../lib/protocol.ts';
 
 interface Props {
   room: string;
+  /** The clock this player asked for; the room keeps the first one it hears. */
+  control?: TimeControlId;
   onExit: () => void;
   onLearn: () => void;
   onSettings: () => void;
@@ -35,7 +39,7 @@ const ERROR_KEYS: Partial<Record<string, StringKey>> = {
   'bad-version': 'online.errVersion',
 };
 
-export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast }: Props) {
+export default function OnlineGame({ room, control, onExit, onLearn, onSettings, onToast }: Props) {
   const t = useT();
   const profile = useMemo(loadProfile, []);
   const token = useMemo(playerToken, []);
@@ -51,8 +55,11 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
     token,
     auth: account?.token,
     country: profile.country === UNKNOWN_COUNTRY ? undefined : profile.country,
+    control,
   });
   const { snapshot, seat, connection, error } = online.view;
+  // What the room actually plays at, once it has said; until then, what we asked.
+  const roomControl: TimeControlId = snapshot?.clock?.control ?? control ?? 'none';
 
   // Two countries at one board: the game is also a round of their rivalry.
   const mine = seat === null ? undefined : snapshot?.players[seat]?.country;
@@ -84,7 +91,7 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
 
   const copyLink = async () => {
     playTap(); hapticTap();
-    const link = shareLink(room);
+    const link = shareLink(room, roomControl);
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
@@ -151,6 +158,7 @@ export default function OnlineGame({ room, onExit, onLearn, onSettings, onToast 
           <>
             <p className="wait-label">{t('online.roomCode')}</p>
             <p className="room-code">{room}</p>
+            <p className="wait-label">{t('online.roomClock', { tc: timeControlLabel(t, roomControl) })}</p>
             <p className="wait-line">
               {connection === 'online' ? t('online.waiting') : t('online.connecting')}
             </p>

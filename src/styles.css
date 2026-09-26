@@ -490,6 +490,20 @@ a.pill { text-decoration: none; color: inherit; }
 .pcard-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pcard-score { font-size: clamp(1.6rem, 5vw, 2.3rem); font-weight: 800; color: var(--gold-soft); min-width: 1.4em; text-align: center; }
 .live-dot { width: 9px; height: 9px; border-radius: 50%; background: #6ad06a; box-shadow: 0 0 8px #6ad06a; }
+/* The clock: tabular digits so a ticking second never shifts the card. */
+.pcard-clock {
+  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1rem;
+  padding: 2px 10px; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28); color: var(--ivory-70);
+  border: 1px solid var(--panel-line);
+}
+.pcard-clock-running { color: var(--ivory); border-color: var(--gold); }
+.pcard-clock-low { color: #ff8a7a; border-color: #d9534f; }
+.pcard-clock-low.pcard-clock-running { animation: clock-pulse 1s ease-in-out infinite; }
+@keyframes clock-pulse { 50% { background: rgba(217, 83, 79, 0.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .pcard-clock-low.pcard-clock-running { animation: none; }
+}
 
 /* The status block keeps a constant height whatever it says: the pill has a
    reserved slot, and the helper line under it is a ghost stack (see
@@ -1180,6 +1194,21 @@ a.pill { text-decoration: none; color: inherit; }
 }
 
 .code-form { display: flex; flex-direction: column; gap: 12px; }
+
+/* The clock picker: four segments in one row, the chosen one lit. */
+.tc-picker { display: flex; flex-direction: column; gap: 6px; }
+.tc-picker-label { font-size: 0.8rem; letter-spacing: 0.08em; color: var(--ivory-70); text-transform: uppercase; }
+.tc-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tc-option {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; border-radius: 12px; min-width: 0;
+  background: linear-gradient(180deg, var(--pill-1), var(--pill-2));
+  border: 1px solid var(--panel-line); color: var(--ivory);
+  font: inherit; cursor: pointer;
+}
+.tc-option-on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.tc-option-name { font-size: 0.78rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tc-option-time { font-size: 0.95rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--gold-soft); }
 .code-input {
   padding: 14px; border-radius: 14px; text-align: center;
   font-family: inherit; font-size: 1.6rem; font-weight: 700;

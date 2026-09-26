@@ -86,6 +86,52 @@ test('two browsers play the same game over a websocket', async ({ browser }) => 
   }
 });
 
+test('a timed game shows both clocks, and the room keeps the creator\'s', async ({ browser }) => {
+  const one = await browser.newContext();
+  const two = await browser.newContext();
+
+  try {
+    const host = await freshPlayer(one, 'Ama');
+    await host.goto('/');
+    await host.getByText('PLAY ONLINE').click();
+    await host.getByRole('radio', { name: /Blitz/ }).click();
+    await expect(host.getByRole('radio', { name: /Blitz/ })).toHaveAttribute('aria-checked', 'true');
+    await host.getByText('INVITE A FRIEND').click();
+    await expect(host.getByText('Clock: Blitz 3+2')).toBeVisible();
+    const code = await host.locator('.room-code').innerText();
+
+    // The guest types the code rather than following the link, so names no
+    // clock of their own — and still plays at the room's.
+    const guest = await freshPlayer(two, 'Kofi');
+    await guest.goto('/');
+    await guest.getByText('PLAY ONLINE').click();
+    await guest.getByRole('radio', { name: /Classic/ }).click();
+    await guest.getByText('JOIN A GAME').click();
+    await guest.getByLabel('Enter the code').fill(code);
+    await guest.getByRole('button', { name: 'JOIN', exact: true }).click();
+
+    await expect(host.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(guest.locator('.board')).toBeVisible({ timeout: 15_000 });
+    await expect(host.locator('.pcard-clock')).toHaveCount(2);
+    await expect(guest.locator('.pcard-clock')).toHaveCount(2);
+    // Three minutes each, give or take the second the page took to load.
+    await expect(guest.locator('.pcard-clock').first()).toHaveText(/^(3:00|2:5\d)$/);
+
+    // One clock runs: the one belonging to whoever is to move.
+    const first = await mover(host, guest);
+    await expect(first.locator('.pcard-you .pcard-clock-running')).toHaveCount(1);
+    await expect(first.locator('.pcard-opp .pcard-clock-running')).toHaveCount(0);
+
+    // A move hands it over.
+    await legalPits(first).first().click();
+    await expect(first.locator('.pcard-opp .pcard-clock-running')).toHaveCount(1, { timeout: 15_000 });
+    await expect(first.locator('.pcard-you .pcard-clock-running')).toHaveCount(0);
+  } finally {
+    await one.close();
+    await two.close();
+  }
+});
+
 test('a game between two countries is a round of their rivalry', async ({ browser }) => {
   const one = await browser.newContext();
   const two = await browser.newContext();

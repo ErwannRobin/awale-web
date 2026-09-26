@@ -4,6 +4,7 @@
 // (anything outside React). Writes notify every subscriber, so a change in the
 // Settings screen reaches the board without prop-drilling.
 import { getStore } from './storage.ts';
+import { isTimeControl, type TimeControlId } from './protocol.ts';
 
 const KEY = 'awale.settings.v1';
 
@@ -40,6 +41,8 @@ export interface Settings {
    * locally only and the Worker never hears about it. See lib/worldStats.ts.
    */
   shareStats: boolean;
+  /** The clock online games are started with, and quick match queues for. */
+  timeControl: TimeControlId;
 }
 
 /** Animation tempo multiplier. `instant` skips the sowing animation entirely. */
@@ -74,6 +77,7 @@ export function defaultSettings(): Settings {
     language: detectLanguage(),
     reminders: false,
     shareStats: true,
+    timeControl: 'rapid',
   };
 }
 
@@ -99,6 +103,7 @@ function coerce(raw: unknown): Settings {
     language: o.language === 'fr' || o.language === 'en' ? o.language : d.language,
     reminders: bool(o.reminders, d.reminders),
     shareStats: bool(o.shareStats, d.shareStats),
+    timeControl: isTimeControl(o.timeControl) ? o.timeControl : d.timeControl,
   };
 }
 

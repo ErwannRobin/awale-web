@@ -178,5 +178,7 @@ Worth knowing before it is public:
 - **Nothing is rated, and nothing is stored.** Results do not go anywhere. A
   ladder would need accounts, which would need a real database and a privacy
   policy that says more than "nothing leaves the device".
-- **There is no clock.** A player can think for as long as they like. The only
-  timer is the 90-second grace period for someone who has disconnected.
+- **The clock is optional.** An untimed game lets a player think for as long as
+  they like; a timed one (3+2, 5+5, 10+10) is refereed here, with an alarm set
+  for the moment the side to move runs out. Quick match keeps one lobby per
+  control (`/queue?tc=blitz`); the untimed lobby keeps its old name, `global`.

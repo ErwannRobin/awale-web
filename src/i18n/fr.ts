@@ -90,6 +90,7 @@ export const fr: Record<keyof typeof en, string> = {
   'a11y.turnNow': 'Au tour de {who}.',
   'a11y.gameOver': 'Partie terminée. {result}. {you} à {them}.',
   'a11y.opponent': 'L’adversaire',
+  'a11y.clock': 'Pendule de {who} : {time}',
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture : votre dernière graine doit tomber dans un trou adverse qui contient alors 2 ou 3 graines.',
@@ -376,6 +377,14 @@ export const fr: Record<keyof typeof en, string> = {
   'online.unratedTitle': 'Les parties en ligne ne sont pas classées',
   'online.unratedBody': "Votre classement vous mesure face aux quatre niveaux d'IA sur cet appareil ; un inconnu ne peut pas le faire bouger.",
   'online.errFull': 'Ce salon a déjà deux joueurs.',
+  'online.timeControl': 'Pendule',
+  'online.roomClock': 'Pendule : {tc}',
+  'online.oppFlagged': 'Son temps est écoulé.',
+  'online.youFlagged': 'Votre temps est écoulé.',
+  'tc.none': 'Sans pendule',
+  'tc.blitz': 'Blitz',
+  'tc.rapid': 'Rapide',
+  'tc.classic': 'Classique',
   // ---- signing in ------------------------------------------------------
   'signIn.title': 'CONNEXION',
   'signIn.tagline': 'Un numéro de téléphone. Aucun mot de passe à oublier.',

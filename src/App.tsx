@@ -30,9 +30,9 @@ import { useBackButton } from './lib/useBackButton.ts';
 import { useEscapeKey } from './lib/useEscapeKey.ts';
 import { exitApp } from './lib/native.ts';
 import { refreshReminder } from './lib/notifications.ts';
-import { clearJoinCode, onlineEnabled, readJoinCode } from './lib/onlineConfig.ts';
+import { clearJoinCode, onlineEnabled, readJoinCode, readJoinControl } from './lib/onlineConfig.ts';
 import { detectCountry } from './lib/worldStats.ts';
-import { normaliseRoomCode } from './lib/protocol.ts';
+import { normaliseRoomCode, type TimeControlId } from './lib/protocol.ts';
 import { useT } from './i18n/useT.ts';
 import type { StringKey } from './i18n/index.ts';
 import { formatWait } from './lib/format.ts';
@@ -50,7 +50,8 @@ type Screen =
   // Sign-in is reached from the profile screen, so like Learn and Settings it
   // carries where to go back to.
   | { name: 'signIn'; back: Screen }
-  | { name: 'onlineGame'; room: string }
+  // `tc` is the clock this player asked for; absent when joining by code.
+  | { name: 'onlineGame'; room: string; tc?: TimeControlId }
   | { name: 'challenge'; index: number }
   // The day is carried, so a puzzle opened before midnight is still that
   // day's puzzle after it — and Back/Forward bring back the same board.
@@ -84,7 +85,7 @@ export default function App() {
       if (!onlineEnabled()) return { name: 'menu' };
       const code = readJoinCode();
       const room = code ? normaliseRoomCode(code) : null;
-      return room ? { name: 'onlineGame', room } : { name: 'menu' };
+      return room ? { name: 'onlineGame', room, tc: readJoinControl() } : { name: 'menu' };
     },
     useCallback((target: Screen): Screen => {
       if (target.name !== 'game') return target;
@@ -414,7 +415,7 @@ export default function App() {
         <Online
           myCountry={profile.country}
           onNations={() => nav.go({ name: 'stats' })}
-          onStart={room => nav.go({ name: 'onlineGame', room })}
+          onStart={(room, tc) => nav.go({ name: 'onlineGame', room, tc })}
           onBack={() => nav.back({ name: 'menu' })}
           onToast={showToast}
         />
@@ -460,6 +461,7 @@ export default function App() {
         <OnlineGame
           key={screen.room}
           room={screen.room}
+          control={screen.tc}
           onExit={leaveOnline}
           onLearn={() => nav.go({ name: 'learn', back: screen })}
           onSettings={() => nav.go({ name: 'settings', back: screen })}

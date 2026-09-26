@@ -13,6 +13,8 @@ import { loadProfile } from '../lib/profile.ts';
 import { reportGame } from '../lib/worldStats.ts';
 import { maybeRequestReview } from '../lib/review.ts';
 import type { OnlineHandle } from '../lib/useOnlineSession.ts';
+import { useClocks } from '../lib/useClocks.ts';
+import { formatClock } from '../lib/format.ts';
 import { GearIcon } from './Icons.tsx';
 
 /** Long enough for the win banner and its chime to land before the OS sheet. */
@@ -57,11 +59,17 @@ interface Props {
 
 const TIP_KEYS: StringKey[] = ['tip.1', 'tip.2', 'tip.3', 'tip.4', 'tip.5', 'tip.6'];
 
+/** Under this, a clock turns red: the moment a player starts counting. */
+const LOW_TIME_MS = 20_000;
+
 function PlayerCard({
-  name, score, active, side, avatar,
+  name, score, active, side, avatar, clock, clockLabel,
 }: {
   name: string; score: number;
   active: boolean; side: 'you' | 'opp'; avatar: string;
+  /** Milliseconds left and whether it is ticking; absent in an untimed game. */
+  clock?: { ms: number; running: boolean };
+  clockLabel?: string;
 }) {
   return (
     <div className={`pcard pcard-${side} ${active ? 'pcard-active' : ''}`}>
@@ -71,6 +79,15 @@ function PlayerCard({
           <span className="pcard-name-text">{name}</span>
           {active && <span className="live-dot" aria-hidden />}
         </div>
+        {clock && (
+          <div
+            className={`pcard-clock ${clock.running ? 'pcard-clock-running' : ''} ${clock.ms < LOW_TIME_MS ? 'pcard-clock-low' : ''}`}
+            role="timer"
+            aria-label={clockLabel}
+          >
+            {formatClock(clock.ms)}
+          </div>
+        )}
       </div>
       {side === 'you' && <div className="pcard-score">{score}</div>}
       <div className={`avatar avatar-${side} avatar-${avatar}`} aria-hidden />
@@ -186,6 +203,13 @@ export default function Game({
 
   const opponentSlot = online?.view.snapshot?.players[1 - viewpoint] ?? null;
 
+  // The clocks, in a timed online game. They read the server's last word and
+  // count down from it — see lib/useClocks.ts.
+  const clocks = useClocks(online?.view.snapshot?.clock, online?.view.clockAt ?? 0);
+  const clockFor = (seat: 0 | 1) => (clocks
+    ? { ms: clocks.left[seat], running: clocks.running === seat && state.phase !== 'over' }
+    : undefined);
+
   const youName = mode === 'local' ? t('game.us') : t('common.you');
   const oppName = oppOverride
     ?? (isOnline ? (opponentSlot?.name || t('online.opponent'))
@@ -264,6 +288,9 @@ export default function Game({
     }
     if (overReason === 'abandoned') {
       return humanWon ? t('online.oppLeftForGood') : t('online.youTimedOut');
+    }
+    if (overReason === 'timeout') {
+      return humanWon ? t('online.oppFlagged') : t('online.youFlagged');
     }
     return null;
   };
@@ -357,12 +384,16 @@ export default function Game({
           name={youName} score={state.scores[viewpoint]}
           active={state.turn === viewpoint && state.phase !== 'over'}
           side="you" avatar={youAvatar}
+          clock={clockFor(viewpoint)}
+          clockLabel={clocks ? t('a11y.clock', { who: youName, time: formatClock(clocks.left[viewpoint]) }) : undefined}
         />
         <Board state={state} viewpoint={viewpoint} interactive={interactive} onPlay={play} />
         <PlayerCard
           name={oppName} score={state.scores[opp]}
           active={state.turn === opp && state.phase !== 'over'}
           side="opp" avatar="olive"
+          clock={clockFor(opp)}
+          clockLabel={clocks ? t('a11y.clock', { who: oppName, time: formatClock(clocks.left[opp]) }) : undefined}
         />
       </div>
 

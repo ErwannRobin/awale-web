@@ -89,6 +89,7 @@ export const en = {
   'a11y.turnNow': '{who} to play.',
   'a11y.gameOver': 'Game over. {result}. {you} to {them}.',
   'a11y.opponent': 'Opponent',
+  'a11y.clock': "{who}'s clock: {time}",
 
   // ---- tips ------------------------------------------------------------
   'tip.1': 'Capture: land your last seed in an opponent pit that then holds 2 or 3 seeds.',
@@ -377,6 +378,14 @@ export const en = {
   'online.unratedTitle': 'Online games are not rated',
   'online.unratedBody': 'Your rating measures you against the four AI levels on this device, so a stranger cannot move it.',
   'online.errFull': 'That room already has two players.',
+  'online.timeControl': 'Clock',
+  'online.roomClock': 'Clock: {tc}',
+  'online.oppFlagged': 'Their clock ran out.',
+  'online.youFlagged': 'Your clock ran out.',
+  'tc.none': 'Untimed',
+  'tc.blitz': 'Blitz',
+  'tc.rapid': 'Rapid',
+  'tc.classic': 'Classic',
   // ---- signing in ------------------------------------------------------
   'signIn.title': 'SIGN IN',
   'signIn.tagline': 'One phone number. No password to forget.',

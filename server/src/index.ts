@@ -2,7 +2,8 @@
 // built web app sitting next to it.
 //
 //   GET  /room/:code   WebSocket upgrade into that room's Durable Object
-//   POST /queue        quick match: a code to sit in, or one to walk into
+//   POST /queue        quick match: a code to sit in, or one to walk into —
+//                      `?tc=blitz|rapid|classic` for a timed game
 //   POST /auth/*       signing in with a phone number, via phone-verif.com
 //   GET  /geo          which country this request came from
 //   POST /stats/game   count one finished AI game: level, outcome, country —
@@ -26,7 +27,7 @@
 // needs. Signing in adds an identity on top of that rather than replacing it —
 // a signed-in player's seat is proved by a token nobody else can forge, and
 // everyone else plays exactly as before, anonymously.
-import { normaliseRoomCode } from '../../src/lib/protocol.ts';
+import { isTimeControl, normaliseRoomCode, type TimeControlId } from '../../src/lib/protocol.ts';
 import { normaliseCountry, UNKNOWN_COUNTRY } from '../../src/lib/country.ts';
 import {
   rankNations, sanitiseLevel, sanitiseOutcome,
@@ -86,11 +87,13 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
  * sitting in that room, we go back to the lobby, which by then has forgotten
  * the stale code and issues a fresh one to wait in.
  */
-async function queue(env: Env): Promise<QueueReply> {
-  // One lobby for everyone. A single Durable Object is a bottleneck only at a
-  // scale this game is nowhere near; sharding it later is a one-line change to
-  // the name below.
-  const lobby = env.LOBBY.get(env.LOBBY.idFromName('global'));
+async function queue(env: Env, control: TimeControlId): Promise<QueueReply> {
+  // One lobby per time control: a player who asked for three-minute games is
+  // never paired with one who asked for ten. A single Durable Object each is a
+  // bottleneck only at a scale this game is nowhere near. The untimed lobby
+  // keeps the name it had before clocks, so nobody waiting in it is stranded
+  // by a deploy.
+  const lobby = env.LOBBY.get(env.LOBBY.idFromName(control === 'none' ? 'global' : `global:${control}`));
   // A fresh request each time, rather than forwarding the player's: a Request
   // cannot be sent twice, and the lobby wants nothing from theirs but the verb.
   const ask = async (): Promise<QueueReply> => {
@@ -303,7 +306,8 @@ export default {
       if (request.method !== 'POST') {
         return new Response('use POST', { status: 405, headers: cors });
       }
-      const reply = await queue(env);
+      const tc = url.searchParams.get('tc');
+      const reply = await queue(env, isTimeControl(tc) ? tc : 'none');
       return Response.json(reply, { headers: cors });
     }
 

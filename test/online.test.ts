@@ -453,6 +453,117 @@ check('a room code is read the way a person would say it', () => {
 });
 
 // ---------------------------------------------------------------------------
+console.log('room: the clock');
+
+const MIN = 60_000;
+
+/** A timed room, both seated at `now`, the first seat to move. */
+function timedRoom(control: 'blitz' | 'rapid' | 'classic' = 'blitz', now = 1000): RoomState {
+  let room = createRoom('ABCDE', now);
+  room = join(room, TOKEN_A, 'Ama', now, undefined, control).state;
+  room = join(room, TOKEN_B, 'Kofi', now).state;
+  return room;
+}
+
+const clockOf = (effects: { msg: ServerMsg }[], t: 'move' | 'over') =>
+  (effects.find(e => e.msg.t === t)?.msg as { clock?: [number, number] } | undefined)?.clock;
+
+check('the first player to name a clock sets it; the game starts it', () => {
+  const room = timedRoom('blitz');
+  assert.equal(room.control, 'blitz');
+  const snap = snapshot(room, 1000);
+  assert.deepEqual(snap.clock, { control: 'blitz', left: [3 * MIN, 3 * MIN], running: 0 });
+});
+
+check('a later player cannot change the clock', () => {
+  let room = createRoom('ABCDE', 1000);
+  room = join(room, TOKEN_A, 'Ama', 1000, undefined, 'blitz').state;
+  room = join(room, TOKEN_B, 'Kofi', 1000, undefined, 'classic').state;
+  assert.equal(room.control, 'blitz');
+});
+
+check('an untimed room has no clock anywhere', () => {
+  const room = seatedRoom();
+  assert.equal(snapshot(room).clock, undefined);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 60_000);
+  assert.equal(clockOf(step.effects, 'move'), undefined);
+  assert.equal(sweep(step.state, 10 * 60 * MIN).state.status, 'playing', 'no flag ever falls');
+});
+
+check('the snapshot counts the running clock down', () => {
+  const room = timedRoom('blitz', 1000);
+  assert.deepEqual(snapshot(room, 11_000).clock?.left, [3 * MIN - 10_000, 3 * MIN]);
+});
+
+check('a move takes the thinking time off and adds the increment', () => {
+  const room = timedRoom('blitz', 1000);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 11_000);
+  // 3:00 − 0:10 + 0:02 for the mover; the other clock untouched and now running.
+  assert.deepEqual(clockOf(step.effects, 'move'), [3 * MIN - 8_000, 3 * MIN]);
+  assert.equal(step.state.turnStartedAt, 11_000);
+  assert.deepEqual(snapshot(step.state, 16_000).clock, {
+    control: 'blitz', left: [3 * MIN - 8_000, 3 * MIN - 5_000], running: 1,
+  });
+});
+
+check('a move that arrives after the flag loses on time and is not played', () => {
+  const room = timedRoom('blitz', 1000);
+  const step = command(room, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 1000 + 3 * MIN);
+  assert.equal(step.state.status, 'over');
+  assert.equal(step.state.winner, 1);
+  assert.equal(step.state.reason, 'timeout');
+  assert.equal(step.state.ply, 0, 'the board did not move');
+  assert.deepEqual(clockOf(step.effects, 'over'), [0, 3 * MIN]);
+});
+
+check('the alarm is set for the flag, and the sweep calls it', () => {
+  const room = timedRoom('blitz', 1000);
+  assert.equal(nextAlarmAt(room, 2000), 1000 + 3 * MIN, 'no later than the flag');
+  assert.equal(sweep(room, 1000 + 3 * MIN - 1).state.status, 'playing', 'not a moment early');
+  const flagged = sweep(room, 1000 + 3 * MIN);
+  assert.equal(flagged.state.winner, 1);
+  assert.equal(flagged.state.reason, 'timeout');
+  assert.equal(flagged.state.turnStartedAt, null, 'the clocks stop');
+  assert.ok(isCoherent(flagged.state));
+});
+
+check('resigning stops the clocks where they stand', () => {
+  const room = timedRoom('rapid', 1000);
+  const step = command(room, TOKEN_A, { t: 'resign' }, 31_000);
+  assert.deepEqual(clockOf(step.effects, 'over'), [5 * MIN - 30_000, 5 * MIN]);
+  assert.equal(snapshot(step.state, 99_000).clock?.running, null);
+});
+
+check('a rematch starts both clocks from full', () => {
+  let room = timedRoom('blitz', 1000);
+  room = command(room, TOKEN_A, { t: 'resign' }, 61_000).state;
+  room = command(room, TOKEN_A, { t: 'rematch' }, 62_000).state;
+  room = command(room, TOKEN_B, { t: 'rematch' }, 63_000).state;
+  assert.equal(room.status, 'playing');
+  assert.deepEqual(snapshot(room, 63_000).clock?.left, [3 * MIN, 3 * MIN]);
+  assert.equal(room.turnStartedAt, 63_000);
+});
+
+check('a room stored before clocks existed still plays, untimed', () => {
+  const legacy = seatedRoom() as Partial<RoomState>;
+  delete legacy.control;
+  delete legacy.left;
+  delete legacy.turnStartedAt;
+  const step = command(legacy as RoomState, TOKEN_A, { t: 'move', pit: 2, ply: 0 }, 2000);
+  assert.equal(step.state.ply, 1);
+  assert.equal(snapshot(step.state).clock, undefined);
+});
+
+check('only a known clock is accepted from the wire', () => {
+  const ok = parseClientMsg(JSON.stringify({ t: 'hello', v: 1, token: TOKEN_A, name: 'A', tc: 'rapid' }));
+  assert.equal(ok?.t === 'hello' && ok.tc, 'rapid');
+  const bad = parseClientMsg(JSON.stringify({ t: 'hello', v: 1, token: TOKEN_A, name: 'A', tc: 'forever' }));
+  assert.equal(bad?.t === 'hello' && bad.tc, undefined);
+  const move = parseServerMsg(JSON.stringify({ t: 'move', pit: 2, by: 0, ply: 1, hash: 'x', clock: [1, -5] }));
+  assert.equal(move?.t === 'move' && move.clock, undefined, 'a negative clock is dropped');
+});
+
+// ---------------------------------------------------------------------------
 // Two real sessions, talking to a fake server through in-memory pipes.
 // ---------------------------------------------------------------------------
 
@@ -498,7 +609,7 @@ class FakeServer {
     const msg = parseClientMsg(data);
     if (!msg) return;
     if (msg.t === 'hello') {
-      const result = join(this.state, msg.token, msg.name, this.now);
+      const result = join(this.state, msg.token, msg.name, this.now, msg.country, msg.tc);
       if (result.error) {
         this.send(socket, { t: 'err', code: result.error });
         return;
@@ -537,6 +648,14 @@ class FakeServer {
     this.queue.push(() => socket.handlers.message(body));
   }
 
+  /** The alarm: let time-driven rules (the flag, a walkout) act at `now`. */
+  sweepAt(now: number): void {
+    this.now = now;
+    const step = sweep(this.state, now);
+    this.state = step.state;
+    this.emit(step.effects);
+  }
+
   /** Runs everything in flight, including replies to replies. */
   async settle(): Promise<void> {
     for (let guard = 0; guard < 5000 && this.queue.length > 0; guard++) {
@@ -561,11 +680,12 @@ class TestClient {
   /** Every error the session reported, in order. It clears itself on repair. */
   errors: string[] = [];
 
-  constructor(server: FakeServer, token: string, name: string) {
+  constructor(server: FakeServer, token: string, name: string, control?: 'blitz' | 'rapid' | 'classic') {
     this.session = new OnlineSession({
       factory: server.connect(),
       token,
       name,
+      control,
       callbacks: {
         reset: snap => {
           this.resets++;
@@ -783,6 +903,35 @@ await checkAsync('a rematch restarts both boards with the other side opening', a
   assert.deepEqual(ama.scores, [0, 0]);
   assert.notEqual(server.state.startSeat, firstOpener);
   assert.equal(ama.turn, server.state.startSeat);
+
+  ama.session.close();
+  kofi.session.close();
+  await server.settle();
+});
+
+await checkAsync('a timed game hands the clock over with every move', async () => {
+  const server = new FakeServer();
+  const ama = new TestClient(server, TOKEN_A, 'Ama', 'blitz');
+  const kofi = new TestClient(server, TOKEN_B, 'Kofi');
+  await server.settle();
+
+  const clock = () => kofi.session.current.snapshot?.clock;
+  assert.equal(clock()?.control, 'blitz', 'the joiner plays at the creator\'s clock');
+  const opener = server.state.turn;
+  assert.equal(clock()?.running, opener);
+
+  server.now += 7_000;
+  (opener === 0 ? ama : kofi).playFirstLegal();
+  await server.settle();
+
+  assert.equal(clock()?.running, opener === 0 ? 1 : 0, 'the other clock runs now');
+  assert.equal(clock()?.left[opener], 3 * MIN - 7_000 + 2_000);
+
+  // Then the side to move lets the flag fall.
+  server.sweepAt(server.now + 3 * MIN);
+  await server.settle();
+  assert.equal(ama.over?.reason, 'timeout');
+  assert.equal(kofi.session.current.snapshot?.clock?.running, null, 'both clocks stopped');
 
   ama.session.close();
   kofi.session.close();

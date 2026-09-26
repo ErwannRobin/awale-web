@@ -16,9 +16,9 @@ import {
   type Seat, type Winner,
 } from './rules.ts';
 import {
-  stateHash,
-  type ClientMsg, type ErrorCode, type OverReason,
-  type PlayerView, type RoomSnapshot, type RoomStatus, type ServerMsg,
+  stateHash, TIME_CONTROLS,
+  type ClientMsg, type ClockView, type ErrorCode, type OverReason,
+  type PlayerView, type RoomSnapshot, type RoomStatus, type ServerMsg, type TimeControlId,
 } from './protocol.ts';
 import type { CountryKey } from './country.ts';
 
@@ -65,6 +65,14 @@ export interface RoomState {
   rematch: [boolean, boolean];
   createdAt: number;
   updatedAt: number;
+  // The clock. Optional because a room stored before clocks existed has none
+  // of these, and must still load: missing reads as an untimed game.
+  /** Set by the first player in who names one; fixed once the game starts. */
+  control?: TimeControlId;
+  /** Milliseconds left per seat, as of `turnStartedAt` for the side to move. */
+  left?: [number, number];
+  /** When the side to move started thinking; null while no clock runs. */
+  turnStartedAt?: number | null;
 }
 
 /** A message and who should get it. */
@@ -104,13 +112,62 @@ export function createRoom(code: string, now: number): RoomState {
     rematch: [false, false],
     createdAt: now,
     updatedAt: now,
+    control: 'none',
+    left: [0, 0],
+    turnStartedAt: null,
   };
+}
+
+// ---- the clock ------------------------------------------------------------
+//
+// The server's clock is the only one that counts. A client draws a countdown
+// from the last numbers it was sent, but a flag falls here: on the move that
+// arrives too late, or on the alarm set for the moment the time runs out —
+// whichever comes first. So a player cannot buy time by stopping their own
+// clock, and a slow network costs the player whose move it is, as it would
+// across a real table.
+
+const timing = (state: RoomState) => TIME_CONTROLS[state.control ?? 'none'];
+
+/** Both clocks as they stand at `now`, the running one counted down. */
+function clockAt(state: RoomState, now: number): [number, number] {
+  const left: [number, number] = [state.left?.[0] ?? 0, state.left?.[1] ?? 0];
+  if (state.status === 'playing' && state.turnStartedAt != null) {
+    left[state.turn] = Math.max(0, left[state.turn] - (now - state.turnStartedAt));
+  }
+  return left;
+}
+
+function clockView(state: RoomState, now: number): ClockView | undefined {
+  if (!timing(state)) return undefined;
+  const running = state.status === 'playing' && state.turnStartedAt != null ? state.turn : null;
+  return { control: state.control!, left: clockAt(state, now), running };
+}
+
+/** Full time on both clocks, and the side to move's already running. */
+function startClock(state: RoomState, now: number): RoomState {
+  const tc = timing(state);
+  if (!tc) return state;
+  return { ...state, left: [tc.base, tc.base], turnStartedAt: now };
+}
+
+/** Both clocks stopped where they stand. */
+function stopClock(state: RoomState, now: number): RoomState {
+  if (!timing(state)) return state;
+  return { ...state, left: clockAt(state, now), turnStartedAt: null };
+}
+
+/** When the side to move runs out of time, or null when no clock runs. */
+export function flagAt(state: RoomState): number | null {
+  if (!timing(state) || state.status !== 'playing' || state.turnStartedAt == null) return null;
+  return state.turnStartedAt + (state.left?.[state.turn] ?? 0);
 }
 
 const view = (p: PlayerSlot | null): PlayerView | null =>
   (p ? { name: p.name, online: p.online, ...(p.country ? { country: p.country } : {}) } : null);
 
-export function snapshot(state: RoomState): RoomSnapshot {
+export function snapshot(state: RoomState, now: number = state.updatedAt): RoomSnapshot {
+  const clock = clockView(state, now);
   return {
     room: state.code,
     status: state.status,
@@ -123,6 +180,7 @@ export function snapshot(state: RoomState): RoomSnapshot {
     winner: state.winner,
     reason: state.reason,
     rematch: [...state.rematch] as [boolean, boolean],
+    ...(clock ? { clock } : {}),
   };
 }
 
@@ -163,6 +221,7 @@ function touch(state: RoomState, now: number): RoomState {
  */
 export function join(
   state: RoomState, token: string, name: string, now: number, country?: CountryKey,
+  control?: TimeControlId,
 ): JoinResult {
   const existing = seatOf(state, token);
   const effects: Effect[] = [];
@@ -180,7 +239,7 @@ export function join(
     effects.push({ to: 'all', msg: { t: 'peer', seat: existing, player: view(players[existing]) } });
     // Coming back to a game that was still running is not a new game: this
     // snapshot rebuilds their board exactly as the server has it.
-    effects.push({ to: existing, msg: { t: 'welcome', seat: existing, snapshot: snapshot(next) } });
+    effects.push({ to: existing, msg: { t: 'welcome', seat: existing, snapshot: snapshot(next, now) } });
     return { state: next, effects, seat: existing, error: null };
   }
 
@@ -196,13 +255,20 @@ export function join(
   };
   let next = touch({ ...state, players }, now);
 
-  // The second player through the door starts the game.
-  if (next.status === 'waiting' && players[0] && players[1]) {
-    next = { ...next, status: 'playing', turn: next.startSeat };
+  // The room's time control is whatever the first player to name one asked
+  // for — the creator, normally, whose invite link carries it. A player who
+  // joins by typing a code names none and plays at the room's.
+  if (next.status === 'waiting' && (next.control ?? 'none') === 'none' && control) {
+    next = { ...next, control };
   }
 
-  effects.push({ to: free, msg: { t: 'welcome', seat: free, snapshot: snapshot(next) } });
-  effects.push({ to: other(free), msg: { t: 'sync', snapshot: snapshot(next) } });
+  // The second player through the door starts the game, and the clock.
+  if (next.status === 'waiting' && players[0] && players[1]) {
+    next = startClock({ ...next, status: 'playing', turn: next.startSeat }, now);
+  }
+
+  effects.push({ to: free, msg: { t: 'welcome', seat: free, snapshot: snapshot(next, now) } });
+  effects.push({ to: other(free), msg: { t: 'sync', snapshot: snapshot(next, now) } });
   return { state: next, effects, seat: free, error: null };
 }
 
@@ -227,6 +293,8 @@ export function disconnect(state: RoomState, token: string, now: number): Step {
  */
 export function sweep(state: RoomState, now: number): Step {
   if (state.status !== 'playing') return { state, effects: [] };
+  const flag = flagAt(state);
+  if (flag !== null && now >= flag) return endGame(state, other(state.turn), 'timeout', now);
   for (const seat of [0, 1] as Seat[]) {
     const p = state.players[seat];
     if (!p || p.online || p.offlineSince === null) continue;
@@ -251,8 +319,9 @@ export function sweep(state: RoomState, now: number): Step {
  */
 export function nextAlarmAt(state: RoomState, now: number): number {
   const deadlines = state.status === 'playing'
-    ? state.players
-      .map(p => (p && !p.online && p.offlineSince !== null ? p.offlineSince + ABANDON_MS : null))
+    ? [...state.players
+      .map(p => (p && !p.online && p.offlineSince !== null ? p.offlineSince + ABANDON_MS : null)),
+    flagAt(state)]
       .filter((t): t is number => t !== null)
     : [];
 
@@ -269,16 +338,18 @@ export function isExpired(state: RoomState, now: number): boolean {
 }
 
 function endGame(state: RoomState, winner: Winner, reason: OverReason, now: number): Step {
+  const stopped = stopClock(state, now);
   const next = touch({
-    ...state,
+    ...stopped,
     status: 'over' as RoomStatus,
     winner,
     reason,
     rematch: [false, false] as [boolean, boolean],
   }, now);
+  const clock = timing(next) ? { clock: clockAt(next, now) } : {};
   return {
     state: next,
-    effects: [{ to: 'all', msg: { t: 'over', winner, reason, scores: [...next.scores] } }],
+    effects: [{ to: 'all', msg: { t: 'over', winner, reason, scores: [...next.scores], ...clock } }],
   };
 }
 
@@ -299,7 +370,7 @@ export function command(
       return { state, effects: [{ to: seat, msg: { t: 'pong' } }] };
 
     case 'resync':
-      return { state, effects: [{ to: seat, msg: { t: 'sync', snapshot: snapshot(state) } }] };
+      return { state, effects: [{ to: seat, msg: { t: 'sync', snapshot: snapshot(state, now) } }] };
 
     case 'move':
       return move(state, seat, msg.pit, msg.ply, now);
@@ -320,7 +391,7 @@ export function command(
         // real edge in awalé, so it alternates rather than sticking with the
         // player who happened to create the room.
         const startSeat = other(next.startSeat);
-        next = touch({
+        next = startClock(touch({
           ...next,
           status: 'playing',
           pits: freshBoard(),
@@ -331,8 +402,8 @@ export function command(
           winner: null,
           reason: null,
           rematch: [false, false],
-        }, now);
-        effects.push({ to: 'all', msg: { t: 'sync', snapshot: snapshot(next) } });
+        }, now), now);
+        effects.push({ to: 'all', msg: { t: 'sync', snapshot: snapshot(next, now) } });
       }
       return { state: next, effects };
     }
@@ -353,6 +424,12 @@ function move(state: RoomState, seat: Seat, pit: number, ply: number, now: numbe
   if (ply !== state.ply) return fail(state, seat, 'stale-ply');
   if (!canPlay(state.pits, seat, pit)) return fail(state, seat, 'illegal-move');
 
+  // A move that arrives after the flag has fallen is not a move: the game was
+  // already lost on time, whether or not the alarm had got there first.
+  const tc = timing(state);
+  const flag = flagAt(state);
+  if (flag !== null && now >= flag) return endGame(state, other(seat), 'timeout', now);
+
   const outcome = applyMove(state.pits, state.scores, pit);
   let next = touch({
     ...state,
@@ -362,6 +439,16 @@ function move(state: RoomState, seat: Seat, pit: number, ply: number, now: numbe
     ply: state.ply + 1,
   }, now);
 
+  // The mover's thinking time comes off their clock and the increment goes
+  // back on; the other side's clock starts from this moment.
+  let clock: { clock: [number, number] } | Record<string, never> = {};
+  if (tc) {
+    const left = clockAt(state, now);
+    left[seat] += tc.inc;
+    next = { ...next, left, turnStartedAt: outcome.end ? null : now };
+    clock = { clock: [left[0], left[1]] };
+  }
+
   const effects: Effect[] = [{
     to: 'all',
     msg: {
@@ -370,6 +457,7 @@ function move(state: RoomState, seat: Seat, pit: number, ply: number, now: numbe
       by: seat,
       ply: next.ply,
       hash: stateHash(next.pits, next.scores, next.turn),
+      ...clock,
     },
   }];
 

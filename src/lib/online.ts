@@ -6,7 +6,7 @@
 import { isCountryCode, type CountryCode } from './country.ts';
 import {
   PROTOCOL_VERSION, parseServerMsg, stateHash,
-  type ClientMsg, type ErrorCode, type OverReason, type RoomSnapshot,
+  type ClientMsg, type ErrorCode, type OverReason, type RoomSnapshot, type TimeControlId,
 } from './protocol.ts';
 import type { Seat, Winner } from './rules.ts';
 import type { Transport, TransportFactory, TransportStatus } from './transport.ts';
@@ -25,6 +25,12 @@ export interface OnlineView {
   rematchOffered: boolean;
   /** You asked; you are waiting on them. */
   rematchSent: boolean;
+  /**
+   * When `snapshot.clock` arrived, on this device's clock. The countdown on
+   * screen is the server's numbers minus the time since — never a clock this
+   * device keeps on its own.
+   */
+  clockAt: number;
 }
 
 export interface SessionCallbacks {
@@ -55,6 +61,8 @@ export interface SessionOptions {
   name: string;
   /** Where the player says they play from; sent so the other side sees the flag. */
   country?: string;
+  /** The clock this player came for; the room keeps the first one it hears. */
+  control?: TimeControlId;
   callbacks: SessionCallbacks;
 }
 
@@ -68,6 +76,7 @@ export class OnlineSession {
     error: null,
     rematchOffered: false,
     rematchSent: false,
+    clockAt: 0,
   };
 
   private readonly opts: SessionOptions;
@@ -142,6 +151,7 @@ export class OnlineSession {
         name: this.opts.name,
         ...(this.opts.auth ? { auth: this.opts.auth } : {}),
         ...(countryOf(this.opts.country) ? { country: countryOf(this.opts.country)! } : {}),
+        ...(this.opts.control && this.opts.control !== 'none' ? { tc: this.opts.control } : {}),
       });
       // Stay "connecting" until the welcome lands: an open socket that has not
       // been seated yet is not a game.
@@ -169,6 +179,7 @@ export class OnlineSession {
           error: null,
           rematchOffered: false,
           rematchSent: false,
+          clockAt: Date.now(),
         });
         this.opts.callbacks.reset(msg.snapshot);
         return;
@@ -179,6 +190,7 @@ export class OnlineSession {
           error: null,
           rematchOffered: false,
           rematchSent: false,
+          clockAt: Date.now(),
         });
         this.opts.callbacks.reset(msg.snapshot);
         return;
@@ -187,6 +199,14 @@ export class OnlineSession {
         const snap = this.view.snapshot;
         // A move for a ply we have already played is a duplicate, not news.
         if (snap && msg.ply <= snap.ply) return;
+        // The clocks change hands the moment the move is made, not when this
+        // board has finished animating it.
+        if (snap?.clock && msg.clock) {
+          this.patch({
+            snapshot: { ...snap, clock: { ...snap.clock, left: msg.clock, running: msg.by === 0 ? 1 : 0 } },
+            clockAt: Date.now(),
+          });
+        }
         this.opts.callbacks.move(msg.pit, msg.by, msg.ply, msg.hash);
         return;
       }
@@ -202,9 +222,13 @@ export class OnlineSession {
               winner: msg.winner,
               reason: msg.reason,
               rematch: [false, false],
+              ...(snap.clock
+                ? { clock: { ...snap.clock, left: msg.clock ?? snap.clock.left, running: null } }
+                : {}),
             },
             rematchOffered: false,
             rematchSent: false,
+            clockAt: Date.now(),
           });
         }
         this.opts.callbacks.over(msg.winner, msg.reason, msg.scores);
