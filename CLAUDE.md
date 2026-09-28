@@ -18,7 +18,10 @@ Any new `GET`/`POST` route added to the router must:
 
 ## Deploying
 
-`server/wrangler.toml` deploys the Worker; the live script does not auto-update on merge to
-`main` — run the deploy manually (`npm run build` at repo root, then `wrangler deploy` from
-`server/`) after merging routing changes, or new endpoints will 404/fall through to the SPA
-until someone does.
+A push to `main` deploys automatically: `.github/workflows/deploy.yml` runs lint, build and
+tests, then `wrangler deploy` with `dist/` attached, then checks `/health`. A merge is not
+live until that run is green — check `gh run list --workflow deploy.yml`. If it did not run
+(e.g. Actions blocked by a GitHub billing problem, which silently skipped the deploys for
+#25–#28 in Sept 2026) or failed, new endpoints 404/fall through to the SPA. Deploy by hand in that case:
+`npm run build` at repo root, then `npx wrangler deploy` from `server/`, or re-run the
+workflow with `gh workflow run deploy.yml`.

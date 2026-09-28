@@ -319,10 +319,13 @@ apart on what a move means.
 
 ### What it is not
 
-No ratings, no stored history, no clock, and no ladder. A room code is still the
-whole authorisation model for a room: anyone holding it can take a free seat,
-which is right for a game shared by link and is not more than that. The
-trade-offs are written down in [`server/README.md`](server/README.md).
+No clock, no skill matching, and no stored history of games. Rated games (both
+players signed in) move an online Elo and feed the leaderboard, profiles and
+nation points, but what is kept is running totals, never a list of games. A
+room code is still the whole authorisation model for a room: anyone holding it
+can take a free seat, which is right for a game shared by link and is not more
+than that. The trade-offs are written down in
+[`server/README.md`](server/README.md).
 
 ## Signing in
 
@@ -539,7 +542,13 @@ account, a Mac, or a decision:
 3. **Bundle id and signing.** `com.awale.game` is a placeholder; a real Apple
    team and a Play upload key are needed.
 4. **Store listings** — screenshots, an age rating, and a privacy policy URL.
-   The policy is short here: nothing leaves the device.
+   Offline play keeps everything on the device, but the policy has to cover
+   what online play sends: the anonymous per-country game counts (which
+   *Count my games worldwide* turns off), and, for a signed-in player, a
+   display name, country, avatar, rating and win/loss totals shown on a public
+   profile. No phone number and no IP address are stored — see
+   [Countries and the world table](#countries-and-the-world-table) and
+   [Signing in](#signing-in).
 5. **Guideline 4.2 ("minimum functionality")** rejects thin web wrappers. The
    defence is real — a full offline game, native haptics, no browser chrome —
    but it is worth knowing before the first submission.

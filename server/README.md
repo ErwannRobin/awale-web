@@ -1,9 +1,10 @@
 # The server
 
 One Cloudflare Worker serves the whole of Awalé: the game itself, and the rooms
-people play it in. It holds games in progress and a handful of counters — no
-accounts, no database of players, no history of games. A room lives for as long
-as two people are in it.
+people play it in. It holds games in progress, a handful of counters, and — for
+players who sign in — a small account: display name, country, avatar, online
+rating and win/loss totals. No phone number, no IP address, no history of
+games. A room lives for as long as two people are in it.
 
 ```
 GET  /room/:code       WebSocket upgrade into that room
@@ -175,8 +176,9 @@ Worth knowing before it is public:
   checked against its room before it is handed out, so someone who asks for a
   match and then leaves does not strand the next player; but if nobody else is
   looking for a game, you wait.
-- **Nothing is rated, and nothing is stored.** Results do not go anywhere. A
-  ladder would need accounts, which would need a real database and a privacy
-  policy that says more than "nothing leaves the device".
+- **No game history.** A rated game (both players signed in) updates each
+  player's Elo, their totals and the nation counters, and then it is gone:
+  there is no record of individual games to replay or audit. A game with an
+  anonymous player is not rated and changes nothing but the room.
 - **There is no clock.** A player can think for as long as they like. The only
   timer is the 90-second grace period for someone who has disconnected.
