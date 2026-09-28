@@ -1,7 +1,14 @@
 # Awalé
 
+[![CI](https://github.com/ErwannRobin/awale-web/actions/workflows/ci.yml/badge.svg)](https://github.com/ErwannRobin/awale-web/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d4a845.svg)](LICENSE)
+
 A polished web build of **Awalé** — the classic African seed-sowing strategy game
 of the oware / mancala family.
+
+**[Play it](https://awale-web.vercel.app)** · **[Project page](https://erwannrobin.github.io/awale-web/)** ·
+**[Promo film](https://erwannrobin.github.io/awale-web/promo/)** ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 ## Play
 
@@ -439,11 +446,19 @@ was set to a feature branch, then deleted, leaves every later push deploying as 
 
 ## Promo film
 
-[`promo/index.html`](promo/index.html) is a 30-second marketing film for the
+[`docs/promo/index.html`](docs/promo/index.html) is a 30-second marketing film for the
 game, drawn live in the page from the game's own rules, colours and sounds, with
 an export panel: MP4 or WebM, 16:9, 9:16, 1:1 or 4:5, 480p to 4K, 24 to 60 fps,
-English or French. Open the file in a browser; no build step. It is not part of
-the app build. See [`promo/README.md`](promo/README.md).
+English or French. Open the file in a browser, or the
+[hosted copy](https://erwannrobin.github.io/awale-web/promo/); no build step. It
+is not part of the app build. See [`docs/promo/README.md`](docs/promo/README.md).
+
+## Project page
+
+[`docs/index.html`](docs/index.html) is a one-page overview of the project,
+published with GitHub Pages (**Settings → Pages → Deploy from a branch →
+`main` / `/docs`**). It is static HTML with no build step, and it links to the
+film above. `docs/.nojekyll` stops Pages from running Jekyll over the folder.
 
 ## Native mobile app
 
@@ -544,3 +559,16 @@ VITE_ONLINE_URL=wss://awale.<your-subdomain>.workers.dev npm run build && npx ca
 **React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
 rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it
 needs (`useWindowDimensions` instead of `matchMedia`) in its doc comment.
+
+## Contributing
+
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for the checks a change has to pass and the invariants not to break. Report
+security problems privately, as described in [`SECURITY.md`](SECURITY.md).
+
+## Licence
+
+[MIT](LICENSE) © 2026 Erwann Robin. The promo film's fonts (Cormorant Garamond,
+Manrope) are under the SIL Open Font License 1.1, with their licences in
+[`docs/promo/assets/`](docs/promo/assets/); its world map is Natural Earth,
+public domain.
