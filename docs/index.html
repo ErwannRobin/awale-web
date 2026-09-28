@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Awalé — the seed-sowing strategy game</title>
+<meta name="description" content="Awalé, the classic West African seed-sowing strategy game of the oware / mancala family. Play the AI, a friend, or the world. Open source.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0704">
+<meta property="og:title" content="Awalé">
+<meta property="og:description" content="48 seeds. 12 pits. One winner. The classic seed-sowing game, in the browser, offline and online.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%235a3a1e'/%3E%3Ccircle cx='38' cy='42' r='11' fill='%23cfc3a5'/%3E%3Ccircle cx='62' cy='44' r='11' fill='%236e8a5a'/%3E%3Ccircle cx='50' cy='63' r='11' fill='%23d4a845'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0c0704;
+    --panel: #1a110a;
+    --panel-2: #22160d;
+    --line: rgba(212, 168, 69, 0.18);
+    --line-strong: rgba(212, 168, 69, 0.45);
+    --gold: #d4a845;
+    --gold-soft: #e6c988;
+    --ivory: #f4ead2;
+    --muted: rgba(244, 234, 210, 0.66);
+    --faint: rgba(244, 234, 210, 0.4);
+    --wood: #5a3a1e;
+    --wood-dark: #3b240f;
+    --serif: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --sans: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 50% -10%, rgba(212, 168, 69, 0.13), transparent 70%),
+      var(--ground);
+    color: var(--ivory);
+    font: 500 16px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--gold-soft); text-underline-offset: 3px; }
+  a:hover { color: var(--ivory); }
+  :focus-visible { outline: 2px solid var(--gold-soft); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+
+  /* ---- nav ---------------------------------------------------------------- */
+  nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ivory); font: 600 22px/1 var(--serif); letter-spacing: 0.06em; }
+  .brand svg { flex: none; }
+  nav ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; font-size: 14px; font-weight: 700; }
+  nav ul a { color: var(--muted); text-decoration: none; }
+  nav ul a:hover { color: var(--ivory); }
+  @media (max-width: 560px) { nav ul li.opt { display: none; } }
+
+  /* ---- hero --------------------------------------------------------------- */
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 40px 0 64px; }
+  @media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 16px; } }
+  .eyebrow { color: var(--gold); font: 800 12px/1 var(--sans); letter-spacing: 0.24em; text-transform: uppercase; margin: 0 0 18px; }
+  h1 { font: 600 clamp(48px, 9vw, 84px)/0.95 var(--serif); letter-spacing: 0.02em; margin: 0 0 18px; }
+  h1 em { color: var(--gold-soft); font-style: italic; font-weight: 500; }
+  .lede { color: var(--muted); font-size: 18px; max-width: 46ch; margin: 0 0 28px; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font-weight: 800; font-size: 15px; text-decoration: none; border: 1px solid var(--line-strong); color: var(--ivory); transition: background .15s, border-color .15s, color .15s; }
+  .btn:hover { border-color: var(--gold); color: var(--ivory); background: rgba(212, 168, 69, 0.08); }
+  .btn.primary { background: var(--gold); border-color: var(--gold); color: #1a1006; }
+  .btn.primary:hover { background: var(--gold-soft); border-color: var(--gold-soft); color: #1a1006; }
+  .board-art { width: 100%; height: auto; filter: drop-shadow(0 30px 50px rgba(0, 0, 0, 0.6)); }
+
+  /* ---- sections ----------------------------------------------------------- */
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font: 600 clamp(32px, 5vw, 42px)/1.05 var(--serif); margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 32px; max-width: 60ch; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .card { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; }
+  .card h3 { margin: 0 0 6px; font: 800 15px/1.3 var(--sans); color: var(--ivory); }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .card .ico { display: block; font-size: 20px; margin-bottom: 10px; color: var(--gold); }
+
+  /* ---- rules -------------------------------------------------------------- */
+  .rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  @media (max-width: 860px) { .rules { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .rules { grid-template-columns: 1fr; } }
+  .rules li { counter-increment: step; padding: 18px 0 0; border-top: 2px solid var(--gold); }
+  .rules li::before { content: counter(step, decimal-leading-zero); display: block; font: 600 30px/1 var(--serif); color: var(--gold); margin-bottom: 8px; }
+  .rules b { display: block; margin-bottom: 4px; }
+  .rules span { color: var(--muted); font-size: 14px; }
+
+  /* ---- film --------------------------------------------------------------- */
+  .film { display: grid; grid-template-columns: 1fr 1.1fr; gap: 32px; align-items: center; background: linear-gradient(135deg, var(--panel-2), var(--panel)); border: 1px solid var(--line-strong); border-radius: 20px; padding: 32px; }
+  @media (max-width: 760px) { .film { grid-template-columns: 1fr; padding: 22px; } }
+  .film p { color: var(--muted); margin: 0 0 20px; }
+  .reel { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid var(--line); display: grid; place-items: center; text-decoration: none; }
+  .reel::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,0,0,.55)); }
+  .reel .play { position: relative; z-index: 1; width: 68px; height: 68px; border-radius: 50%; background: var(--gold); display: grid; place-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); transition: transform .15s; }
+  .reel:hover .play { transform: scale(1.07); }
+  .reel .label { position: absolute; z-index: 1; left: 14px; bottom: 12px; font: 800 11px/1 var(--sans); letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-soft); }
+  .reel svg.bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* ---- tech --------------------------------------------------------------- */
+  .tech { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  @media (max-width: 760px) { .tech { grid-template-columns: 1fr; } }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 10px 18px; font-size: 14px; }
+  dt { color: var(--gold-soft); font-weight: 800; }
+  dd { margin: 0; color: var(--muted); }
+  pre { margin: 0; background: #080503; border: 1px solid var(--line); border-radius: var(--r); padding: 18px; overflow-x: auto; font: 13px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ivory); }
+  pre .c { color: var(--faint); }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.9em; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--faint); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+  footer a { color: var(--muted); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seed { animation: bob 5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .seed:nth-child(3n) { animation-delay: -1.6s; }
+    .seed:nth-child(3n+1) { animation-delay: -3.1s; }
+    @keyframes bob { 50% { transform: translateY(-1.5px); } }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav aria-label="Main">
+    <a class="brand" href="./">
+      <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="#5a3a1e"/><circle cx="38" cy="42" r="11" fill="#cfc3a5"/><circle cx="62" cy="44" r="11" fill="#6e8a5a"/><circle cx="50" cy="63" r="11" fill="#d4a845"/></svg>
+      AWALÉ
+    </a>
+    <ul>
+      <li class="opt"><a href="#features">Features</a></li>
+      <li class="opt"><a href="#rules">Rules</a></li>
+      <li><a href="promo/">Film</a></li>
+      <li><a href="https://github.com/ErwannRobin/awale-web">GitHub</a></li>
+    </ul>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Open-source · Web · iOS · Android</p>
+      <h1>48 seeds.<br>12 pits.<br><em>One winner.</em></h1>
+      <p class="lede">Awalé is the classic West African seed-sowing strategy game of the oware / mancala family, rebuilt for the browser. Play a four-level AI, a friend on the same device, or anyone online. Works offline and installs like an app.</p>
+      <div class="ctas">
+        <a class="btn primary" href="https://awale-web.vercel.app">Play now
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></a>
+        <a class="btn" href="promo/">Watch the 30-second film</a>
+        <a class="btn" href="https://github.com/ErwannRobin/awale-web">Source code</a>
+      </div>
+    </div>
+
+    <!-- 12 pits, counterclockwise sowing: South row left→right, North row right→left. -->
+    <svg class="board-art" viewBox="0 0 520 250" role="img" aria-label="An awalé board with seeds in its twelve pits">
+      <defs>
+        <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#6b4424"/><stop offset="1" stop-color="#3b240f"/>
+        </linearGradient>
+        <radialGradient id="pit" cx="50%" cy="40%" r="60%">
+          <stop offset="0" stop-color="#1c1007"/><stop offset="1" stop-color="#2e1c0c"/>
+        </radialGradient>
+      </defs>
+      <rect x="6" y="20" width="508" height="210" rx="105" fill="url(#wood)" stroke="rgba(212,168,69,.35)"/>
+      <g id="pits"></g>
+    </svg>
+  </header>
+</div>
+
+<div class="wrap">
+  <section id="features" aria-labelledby="f-h">
+    <h2 id="f-h">Everything in one small game</h2>
+    <p class="sub">No account needed, no ads, nothing leaves the device unless you play online.</p>
+    <div class="grid">
+      <div class="card"><span class="ico" aria-hidden="true">◆</span><h3>Four AI levels</h3><p>Novice to Master, a negamax search running in a Web Worker so the board never freezes.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">⇄</span><h3>Online play</h3><p>Invite link or quick match. The server replays every move, so nobody can cheat.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">⚑</span><h3>Nations and rivalries</h3><p>An Elo leaderboard, public profiles, nation points and head-to-head records between countries.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">✦</span><h3>12 challenges</h3><p>Fixed puzzle positions, each one machine-checked as winnable.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">◎</span><h3>Learn as you play</h3><p>A 13-step tutorial, hints from the strongest engine, undo, and a preview of where each move lands.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">♪</span><h3>Feels like wood</h3><p>Recorded seed sounds, haptics, three board themes and adjustable animation speed.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">⌁</span><h3>Offline and installable</h3><p>A service worker caches the whole game. Capacitor shells for iOS and Android are included.</p></div>
+      <div class="card"><span class="ico" aria-hidden="true">Aa</span><h3>English and French</h3><p>Detected automatically and easy to change. Left-handed layout included.</p></div>
+    </div>
+  </section>
+
+  <section id="rules" aria-labelledby="r-h">
+    <h2 id="r-h">The rules in four lines</h2>
+    <p class="sub">Two rows of six pits, four seeds in each. You own the row nearest you.</p>
+    <ol class="rules">
+      <li><b>Sow</b><span>Take every seed from one of your pits and drop them one by one, counterclockwise.</span></li>
+      <li><b>Capture</b><span>If your last seed makes an opponent's pit hold 2 or 3, take them, along with the pits just before it that also hold 2 or 3.</span></li>
+      <li><b>Feed</b><span>If your opponent has no seeds left, you must play a move that gives them some. You can't take all their seeds in one move.</span></li>
+      <li><b>Win</b><span>The first player to capture 25 seeds wins.</span></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="p-h">
+    <div class="film">
+      <div>
+        <p class="eyebrow">Promo film</p>
+        <h2 id="p-h">30 seconds of awalé</h2>
+        <p>The film is drawn live in the page, using the game's own rules, colours and sounds. You can export it as MP4 or WebM in any shape, from 16:9 to 9:16, at up to 4K, in English or French.</p>
+        <a class="btn primary" href="promo/">Open the film studio</a>
+      </div>
+      <a class="reel" href="promo/?play" aria-label="Play the promo film">
+        <svg class="bg" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="160" height="90" fill="#0c0704"/>
+          <circle cx="80" cy="45" r="60" fill="rgba(212,168,69,.08)"/>
+          <text x="80" y="30" text-anchor="middle" fill="#f4ead2" font-family="Cormorant Garamond, Georgia, serif" font-size="14" letter-spacing="1.5">AWALÉ</text>
+          <rect x="38" y="42" width="84" height="28" rx="14" fill="#5a3a1e"/>
+          <g fill="#1c1007">
+            <circle cx="50" cy="51" r="4.5"/><circle cx="62" cy="51" r="4.5"/><circle cx="74" cy="51" r="4.5"/><circle cx="86" cy="51" r="4.5"/><circle cx="98" cy="51" r="4.5"/><circle cx="110" cy="51" r="4.5"/>
+            <circle cx="50" cy="62" r="4.5"/><circle cx="62" cy="62" r="4.5"/><circle cx="74" cy="62" r="4.5"/><circle cx="86" cy="62" r="4.5"/><circle cx="98" cy="62" r="4.5"/><circle cx="110" cy="62" r="4.5"/>
+          </g>
+        </svg>
+        <span class="play"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1a1006" d="M8 5v14l11-7z"/></svg></span>
+        <span class="label">Play · 0:30</span>
+      </a>
+    </div>
+  </section>
+
+  <section aria-labelledby="t-h">
+    <h2 id="t-h">Under the board</h2>
+    <p class="sub">React and TypeScript on the front end, one Cloudflare Worker behind it. The rules are shared by the browser, the server and the tests, so they can't disagree.</p>
+    <div class="tech">
+      <dl>
+        <dt>Front end</dt><dd>React, TypeScript, Vite, PWA service worker</dd>
+        <dt>Engine</dt><dd>Pure TypeScript engine and AI, no DOM, a port of a long-standing C implementation</dd>
+        <dt>Server</dt><dd>Cloudflare Worker with Durable Objects for rooms, lobby, identity, leaderboard and stats</dd>
+        <dt>Mobile</dt><dd>Capacitor shells for iOS and Android</dd>
+        <dt>Tests</dt><dd>Unit and self-play suites, Playwright end-to-end tests, verified puzzles, run in CI on every push</dd>
+        <dt>Licence</dt><dd><a href="https://github.com/ErwannRobin/awale-web/blob/main/LICENSE">MIT</a></dd>
+      </dl>
+      <pre><span class="c"># run it locally</span>
+git clone https://github.com/ErwannRobin/awale-web
+cd awale-web
+npm install
+npm run dev          <span class="c"># the game</span>
+npm run dev:server   <span class="c"># optional: online play</span>
+npm test</pre>
+    </div>
+    <p style="margin:28px 0 0;color:var(--muted);font-size:14px">The full guide to architecture, deployment, sign-in and native builds is in the <a href="https://github.com/ErwannRobin/awale-web#readme">README</a>. Contributions are welcome: see <a href="https://github.com/ErwannRobin/awale-web/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+  </section>
+
+  <footer>
+    <span>Awalé · MIT licensed · © 2026 Erwann Robin</span>
+    <span><a href="https://awale-web.vercel.app">Play</a> · <a href="promo/">Film</a> · <a href="https://github.com/ErwannRobin/awale-web">GitHub</a> · <a href="https://github.com/ErwannRobin/awale-web/issues">Report an issue</a></span>
+  </footer>
+</div>
+
+<script>
+  // Draw the board: 12 pits with a mid-game position, seeds scattered deterministically.
+  (function () {
+    var counts = [3, 0, 5, 2, 7, 4, 1, 6, 0, 3, 9, 2];
+    var colors = ['#cfc3a5', '#6e8a5a', '#d4a845', '#b8764a', '#e8dcc0'];
+    var ns = 'http://www.w3.org/2000/svg';
+    var g = document.getElementById('pits');
+    var rand = (function (s) { return function () { s = (s * 16807) % 2147483647; return s / 2147483647; }; })(7);
+    for (var i = 0; i < 12; i++) {
+      var south = i < 6;
+      var col = south ? i : 11 - i;
+      var cx = 85 + col * 70, cy = south ? 170 : 80;
+      var pit = document.createElementNS(ns, 'circle');
+      pit.setAttribute('cx', cx); pit.setAttribute('cy', cy); pit.setAttribute('r', 29);
+      pit.setAttribute('fill', 'url(#pit)'); pit.setAttribute('stroke', 'rgba(0,0,0,.4)');
+      g.appendChild(pit);
+      var seeds = document.createElementNS(ns, 'g');
+      for (var k = 0; k < counts[i]; k++) {
+        var a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * (counts[i] > 1 ? 16 : 0);
+        var s = document.createElementNS(ns, 'ellipse');
+        s.setAttribute('class', 'seed');
+        s.setAttribute('cx', (cx + Math.cos(a) * d).toFixed(1));
+        s.setAttribute('cy', (cy + Math.sin(a) * d).toFixed(1));
+        s.setAttribute('rx', 6.2); s.setAttribute('ry', 5.2);
+        s.setAttribute('fill', colors[Math.floor(rand() * colors.length)]);
+        s.setAttribute('stroke', 'rgba(0,0,0,.35)');
+        seeds.appendChild(s);
+      }
+      g.appendChild(seeds);
+    }
+  })();
+</script>
+</body>
+</html>

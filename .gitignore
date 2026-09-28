@@ -15,3 +15,6 @@ test-results
 # See .env.example.
 .env
 .env.local
+
+# Per-developer Claude Code settings
+.claude/settings.local.json

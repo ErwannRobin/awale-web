@@ -1,7 +1,14 @@
 # Awalé
 
+[![CI](https://github.com/ErwannRobin/awale-web/actions/workflows/ci.yml/badge.svg)](https://github.com/ErwannRobin/awale-web/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d4a845.svg)](LICENSE)
+
 A polished web build of **Awalé** — the classic African seed-sowing strategy game
 of the oware / mancala family.
+
+**[Play it](https://awale-web.vercel.app)** · **[Project page](https://erwannrobin.github.io/awale-web/)** ·
+**[Promo film](https://erwannrobin.github.io/awale-web/promo/)** ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 ## Play
 
@@ -312,10 +319,13 @@ apart on what a move means.
 
 ### What it is not
 
-No ratings, no stored history, no clock, and no ladder. A room code is still the
-whole authorisation model for a room: anyone holding it can take a free seat,
-which is right for a game shared by link and is not more than that. The
-trade-offs are written down in [`server/README.md`](server/README.md).
+No clock, no skill matching, and no stored history of games. Rated games (both
+players signed in) move an online Elo and feed the leaderboard, profiles and
+nation points, but what is kept is running totals, never a list of games. A
+room code is still the whole authorisation model for a room: anyone holding it
+can take a free seat, which is right for a game shared by link and is not more
+than that. The trade-offs are written down in
+[`server/README.md`](server/README.md).
 
 ## Signing in
 
@@ -439,11 +449,19 @@ was set to a feature branch, then deleted, leaves every later push deploying as 
 
 ## Promo film
 
-[`promo/index.html`](promo/index.html) is a 30-second marketing film for the
+[`docs/promo/index.html`](docs/promo/index.html) is a 30-second marketing film for the
 game, drawn live in the page from the game's own rules, colours and sounds, with
 an export panel: MP4 or WebM, 16:9, 9:16, 1:1 or 4:5, 480p to 4K, 24 to 60 fps,
-English or French. Open the file in a browser; no build step. It is not part of
-the app build. See [`promo/README.md`](promo/README.md).
+English or French. Open the file in a browser, or the
+[hosted copy](https://erwannrobin.github.io/awale-web/promo/); no build step. It
+is not part of the app build. See [`docs/promo/README.md`](docs/promo/README.md).
+
+## Project page
+
+[`docs/index.html`](docs/index.html) is a one-page overview of the project,
+published with GitHub Pages (**Settings → Pages → Deploy from a branch →
+`main` / `/docs`**). It is static HTML with no build step, and it links to the
+film above. `docs/.nojekyll` stops Pages from running Jekyll over the folder.
 
 ## Native mobile app
 
@@ -524,7 +542,13 @@ account, a Mac, or a decision:
 3. **Bundle id and signing.** `com.awale.game` is a placeholder; a real Apple
    team and a Play upload key are needed.
 4. **Store listings** — screenshots, an age rating, and a privacy policy URL.
-   The policy is short here: nothing leaves the device.
+   Offline play keeps everything on the device, but the policy has to cover
+   what online play sends: the anonymous per-country game counts (which
+   *Count my games worldwide* turns off), and, for a signed-in player, a
+   display name, country, avatar, rating and win/loss totals shown on a public
+   profile. No phone number and no IP address are stored — see
+   [Countries and the world table](#countries-and-the-world-table) and
+   [Signing in](#signing-in).
 5. **Guideline 4.2 ("minimum functionality")** rejects thin web wrappers. The
    defence is real — a full offline game, native haptics, no browser chrome —
    but it is worth knowing before the first submission.
@@ -544,3 +568,16 @@ VITE_ONLINE_URL=wss://awale.<your-subdomain>.workers.dev npm run build && npx ca
 **React Native** — `src/lib/` transfers unchanged; only `src/components/` needs
 rewriting against `View`/`Pressable`. `useOrientation.ts` carries the swap it
 needs (`useWindowDimensions` instead of `matchMedia`) in its doc comment.
+
+## Contributing
+
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for the checks a change has to pass and the invariants not to break. Report
+security problems privately, as described in [`SECURITY.md`](SECURITY.md).
+
+## Licence
+
+[MIT](LICENSE) © 2026 Erwann Robin. The promo film's fonts (Cormorant Garamond,
+Manrope) are under the SIL Open Font License 1.1, with their licences in
+[`docs/promo/assets/`](docs/promo/assets/); its world map is Natural Earth,
+public domain.

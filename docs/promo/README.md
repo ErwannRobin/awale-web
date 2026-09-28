@@ -3,7 +3,7 @@
 A 30-second product film for Awalé, drawn live in a web page, with an export
 panel that writes it out as a video file.
 
-Open `promo/index.html` in a desktop browser. No build, no server, no network:
+Open `docs/promo/index.html` in a desktop browser (or the [hosted copy](https://erwannrobin.github.io/awale-web/promo/)). No build, no server, no network:
 double-clicking the file works. Chrome and Edge export fastest; Firefox and
 Safari work too.
 
